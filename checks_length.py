@@ -2,17 +2,19 @@ import os
 
 folder = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958\MWV01TF_WorldCompliancePlus_20260508_075958"
 
-print("Scanning files for maximum column lengths...\n")
+print("Starting scan for maximum column lengths...\n")
 
 for filename in os.listdir(folder):
     if filename.endswith(".txt"):
         filepath = os.path.join(folder, filename)
+        
+        # Live status print karna taaki progress dikhe
+        print(f"🔍 Scanning file: {filename} ... Please wait...")
+        
         try:
             f = open(filepath, "r", encoding="utf-8", errors="ignore")
-            # header columns
             header = f.readline().strip('\n').split('\t')
             
-            # initialize max lengths array
             max_lengths = [0] * len(header)
             
             for line in f:
@@ -24,15 +26,12 @@ for filename in os.listdir(folder):
                             max_lengths[i] = val_len
             f.close()
             
-            print(f"File: {filename}")
+            print(f"✅ COMPLETED: {filename}")
             for col, max_len in zip(header, max_lengths):
                 print(f"  - {col}: Max Length = {max_len}")
-            print("-" * 40)
+            print("-" * 50)
             
         except Exception as e:
-            print(f"Error reading {filename}: {e}")
+            print(f"❌ Error reading {filename}: {e}")
 
-print("\nScan completed!")
-
-
-Get-ChildItem -Path "D:\LexisNexis" -Directory | Select-Object -ExpandProperty Name
+print("\nAll files scanned successfully!")
