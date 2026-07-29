@@ -35,3 +35,5 @@ for filename in os.listdir(folder):
             print(f"❌ Error reading {filename}: {e}")
 
 print("\nAll files scanned successfully!")
+
+Get-ChildItem -Path "D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958"
