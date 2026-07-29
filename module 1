@@ -5,10 +5,13 @@ server = "WIN-Q6F1HDK5R4D"
 database = "LexisNexis_Staging"
 folder = r"D:\LexisNexis\Omni_DataMart_Lexisnexis_Test\Omni_DataMart_Lexisnexis_Test\DataSource"
 
+print("Connecting to database...")
 conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
 conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
-cursor.fast_executemany = True # Blazing fast load setting
+cursor.fast_executemany = True
+
+print("Connection established successfully!")
 
 files_list = [
     ("AssociatedEntity.txt", "AssociatedEntity"),
@@ -24,21 +27,23 @@ for filename, tablename in files_list:
     filepath = os.path.join(folder, filename)
     
     if os.path.exists(filepath):
-        print("Loading:", filename)
+        print(f"\n--- Processing: {filename} ---")
         
+        print("Step 1: Truncating table...")
         cursor.execute(f"TRUNCATE TABLE {tablename}")
         
+        print("Step 2: Fetching column count...")
         cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
         col_count = len(cursor.description)
+        print(f"Table {tablename} has {col_count} columns.")
         
+        print("Step 3: Reading file lines into memory...")
         f = open(filepath, "r", encoding="utf-8", errors="ignore")
         f.readline()
         
-        # Collect all rows in a list for bulk insert
         rows = []
         for line in f:
             fields = line.strip('\n').split('\t')
-            
             if not fields or fields == ['']:
                 continue
             
@@ -55,25 +60,21 @@ for filename, tablename in files_list:
                 clean_fields = clean_fields[:col_count]
                 
             rows.append(clean_fields)
-            
         f.close()
         
-        # Execute insert for all rows at once
+        print(f"Step 4: Read complete. Collected {len(rows)} rows. Now executing bulk insert...")
+        
         if rows:
             placeholders = ", ".join(["?" for i in range(col_count)])
             insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
             cursor.executemany(insert_query, rows)
             
+        print("Step 5: Committing transaction...")
         conn.commit()
-        print(filename, "done!\n")
+        print(f"SUCCESS: {filename} fully loaded!\n")
     else:
-        print("Not found:", filename)
+        print(f"File not found: {filename}")
 
 cursor.close()
 conn.close()
 print("All files loaded successfully!")
-
-
-
-ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
