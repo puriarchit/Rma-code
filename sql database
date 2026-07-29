@@ -195,3 +195,37 @@ CREATE TABLE EntitySourceItem (
     SourceURI NVARCHAR(MAX),
     LastUpdated DATETIME
 );
+
+USE LexisNexis_Staging;
+
+SELECT 'AssociatedEntity' AS TableName, COUNT(*) AS RowCount FROM AssociatedEntity
+UNION ALL
+SELECT 'ConsolidatedSanction', COUNT(*) FROM ConsolidatedSanction
+UNION ALL
+SELECT 'Entity', COUNT(*) FROM Entity
+UNION ALL
+SELECT 'EntityAddress', COUNT(*) FROM EntityAddress
+UNION ALL
+SELECT 'EntityAdverseMedia', COUNT(*) FROM EntityAdverseMedia
+UNION ALL
+SELECT 'EntityAdverseMediaSubCategory', COUNT(*) FROM EntityAdverseMediaSubCategory
+UNION ALL
+SELECT 'EntityAlias', COUNT(*) FROM EntityAlias
+UNION ALL
+SELECT 'EntityCountryAssociation', COUNT(*) FROM EntityCountryAssociation
+UNION ALL
+SELECT 'EntityDeletes', COUNT(*) FROM EntityDeletes
+UNION ALL
+SELECT 'EntityDOB', COUNT(*) FROM EntityDOB
+UNION ALL
+SELECT 'EntityEnforcement', COUNT(*) FROM EntityEnforcement
+UNION ALL
+SELECT 'EntityEnforcementSubCategory', COUNT(*) FROM EntityEnforcementSubCategory
+UNION ALL
+SELECT 'EntityIdentification', COUNT(*) FROM EntityIdentification
+UNION ALL
+SELECT 'EntityRemark', COUNT(*) FROM EntityRemark
+UNION ALL
+SELECT 'EntitySanction', COUNT(*) FROM EntitySanction
+UNION ALL
+SELECT 'EntitySourceItem', COUNT(*) FROM EntitySourceItem;
