@@ -8,6 +8,7 @@ folder = r"D:\LexisNexis\Omni_DataMart_Lexisnexis_Test\Omni_DataMart_Lexisnexis_
 conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
 conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
+cursor.fast_executemany = True # Blazing fast load setting
 
 files_list = [
     ("AssociatedEntity.txt", "AssociatedEntity"),
@@ -33,6 +34,8 @@ for filename, tablename in files_list:
         f = open(filepath, "r", encoding="utf-8", errors="ignore")
         f.readline()
         
+        # Collect all rows in a list for bulk insert
+        rows = []
         for line in f:
             fields = line.strip('\n').split('\t')
             
@@ -51,11 +54,16 @@ for filename, tablename in files_list:
             else:
                 clean_fields = clean_fields[:col_count]
                 
-            placeholders = ", ".join(["?" for i in range(col_count)])
-            insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
-            cursor.execute(insert_query, clean_fields)
+            rows.append(clean_fields)
             
         f.close()
+        
+        # Execute insert for all rows at once
+        if rows:
+            placeholders = ", ".join(["?" for i in range(col_count)])
+            insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
+            cursor.executemany(insert_query, rows)
+            
         conn.commit()
         print(filename, "done!\n")
     else:
