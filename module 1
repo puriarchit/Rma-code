@@ -72,3 +72,8 @@ for filename, tablename in files_list:
 cursor.close()
 conn.close()
 print("All files loaded successfully!")
+
+
+
+ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
