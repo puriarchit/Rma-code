@@ -1,9 +1,10 @@
+import zipfile
 import os
 import pyodbc
 
 server = "WIN-Q6F1HDK5R4D"
 database = "LexisNexis_Staging"
-folder = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958\MWV01TF_WorldCompliancePlus_20260508_075958"
+zip_path = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958.zip"
 
 conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
 conn = pyodbc.connect(conn_str)
@@ -29,52 +30,63 @@ files_list = [
     ("EntitySourceItem.txt", "EntitySourceItem")
 ]
 
-for filename, tablename in files_list:
-    filepath = os.path.join(folder, filename)
+print("Starting direct ZIP database loader...\n")
+
+with zipfile.ZipFile(zip_path, "r") as z:
+    zip_files = z.namelist()
     
-    if os.path.exists(filepath):
-        print("Loading:", filename)
-        
-        cursor.execute(f"TRUNCATE TABLE {tablename}")
-        
-        cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
-        col_count = len(cursor.description)
-        
-        f = open(filepath, "r", encoding="utf-8", errors="ignore")
-        f.readline()
-        
-        rows = []
-        for line in f:
-            fields = line.strip('\r\n').split('|')
-            
-            if not fields or fields == ['']:
-                continue
-            
-            clean_fields = []
-            for val in fields:
-                if val:
-                    clean_fields.append(val.strip().replace("'", "''"))
-                else:
-                    clean_fields.append(None)
-            
-            if len(clean_fields) < col_count:
-                clean_fields.extend([None] * (col_count - len(clean_fields)))
-            else:
-                clean_fields = clean_fields[:col_count]
+    for filename, tablename in files_list:
+        target_path = None
+        for zf in zip_files:
+            if zf.lower().endswith(filename.lower()):
+                target_path = zf
+                break
                 
-            rows.append(clean_fields)
+        if target_path:
+            print("Loading:", filename)
             
-        f.close()
-        
-        if rows:
-            placeholders = ", ".join(["?" for i in range(col_count)])
-            insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
-            cursor.executemany(insert_query, rows)
+            cursor.execute(f"TRUNCATE TABLE {tablename}")
             
-        conn.commit()
-        print(filename, "done!\n")
-    else:
-        print("Not found:", filename)
+            cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
+            col_count = len(cursor.description)
+            
+            # Read file stream from zip
+            f = z.open(target_path, "r")
+            f.readline()
+            
+            rows = []
+            for line_bytes in f:
+                line = line_bytes.decode("utf-8", errors="ignore")
+                fields = line.strip('\r\n').split('|')
+                
+                if not fields or fields == ['']:
+                    continue
+                
+                clean_fields = []
+                for val in fields:
+                    if val:
+                        clean_fields.append(val.strip().replace("'", "''"))
+                    else:
+                        clean_fields.append(None)
+            
+                if len(clean_fields) < col_count:
+                    clean_fields.extend([None] * (col_count - len(clean_fields)))
+                else:
+                    clean_fields = clean_fields[:col_count]
+                
+                rows.append(clean_fields)
+                
+            f.close()
+            
+            if rows:
+                placeholders = ", ".join(["?" for i in range(col_count)])
+                insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
+                cursor.executemany(insert_query, rows)
+                
+            conn.commit()
+            print(filename, f"done! ({len(rows)} rows loaded)\n")
+        else:
+            print("Not found inside ZIP:", filename)
 
 cursor.close()
 conn.close()
