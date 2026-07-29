@@ -1,30 +1,28 @@
 import zipfile
 import os
 
-# Zip file ka path set kiya hai
 zip_path = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958.zip"
 
 print("Opening ZIP file directly (No extraction needed)...\n")
 
 with zipfile.ZipFile(zip_path, "r") as z:
     for name in z.namelist():
-        # Sirf .txt files ko process karna hai
         if name.endswith(".txt"):
             filename = os.path.basename(name)
             print(f"🔍 Scanning file inside ZIP: {filename} ... Please wait...")
             
             try:
-                # Zip ke andar file stream open karna
                 with z.open(name, "r") as f:
-                    # Header line read karna
+                    # Pipe '|' se split kiya
                     header_line = f.readline().decode("utf-8", errors="ignore")
-                    header = header_line.strip('\n').split('\t')
+                    header = header_line.strip('\n').split('|')
                     
                     max_lengths = [0] * len(header)
                     
                     for line_bytes in f:
                         line = line_bytes.decode("utf-8", errors="ignore")
-                        fields = line.strip('\n').split('\t')
+                        # Pipe '|' se split kiya
+                        fields = line.strip('\n').split('|')
                         for i, val in enumerate(fields):
                             if i < len(max_lengths):
                                 val_len = len(val.strip()) if val else 0
