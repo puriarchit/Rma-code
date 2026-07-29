@@ -1,39 +1,42 @@
+import zipfile
 import os
 
-folder = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958\MWV01TF_WorldCompliancePlus_20260508_075958"
+# Zip file ka path set kiya hai
+zip_path = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958.zip"
 
-print("Starting scan for maximum column lengths...\n")
+print("Opening ZIP file directly (No extraction needed)...\n")
 
-for filename in os.listdir(folder):
-    if filename.endswith(".txt"):
-        filepath = os.path.join(folder, filename)
-        
-        # Live status print karna taaki progress dikhe
-        print(f"🔍 Scanning file: {filename} ... Please wait...")
-        
-        try:
-            f = open(filepath, "r", encoding="utf-8", errors="ignore")
-            header = f.readline().strip('\n').split('\t')
+with zipfile.ZipFile(zip_path, "r") as z:
+    for name in z.namelist():
+        # Sirf .txt files ko process karna hai
+        if name.endswith(".txt"):
+            filename = os.path.basename(name)
+            print(f"🔍 Scanning file inside ZIP: {filename} ... Please wait...")
             
-            max_lengths = [0] * len(header)
-            
-            for line in f:
-                fields = line.strip('\n').split('\t')
-                for i, val in enumerate(fields):
-                    if i < len(max_lengths):
-                        val_len = len(val.strip()) if val else 0
-                        if val_len > max_lengths[i]:
-                            max_lengths[i] = val_len
-            f.close()
-            
-            print(f"✅ COMPLETED: {filename}")
-            for col, max_len in zip(header, max_lengths):
-                print(f"  - {col}: Max Length = {max_len}")
-            print("-" * 50)
-            
-        except Exception as e:
-            print(f"❌ Error reading {filename}: {e}")
+            try:
+                # Zip ke andar file stream open karna
+                with z.open(name, "r") as f:
+                    # Header line read karna
+                    header_line = f.readline().decode("utf-8", errors="ignore")
+                    header = header_line.strip('\n').split('\t')
+                    
+                    max_lengths = [0] * len(header)
+                    
+                    for line_bytes in f:
+                        line = line_bytes.decode("utf-8", errors="ignore")
+                        fields = line.strip('\n').split('\t')
+                        for i, val in enumerate(fields):
+                            if i < len(max_lengths):
+                                val_len = len(val.strip()) if val else 0
+                                if val_len > max_lengths[i]:
+                                    max_lengths[i] = val_len
+                                    
+                print(f"✅ COMPLETED: {filename}")
+                for col, max_len in zip(header, max_lengths):
+                    print(f"  - {col}: Max Length = {max_len}")
+                print("-" * 50)
+                
+            except Exception as e:
+                print(f"❌ Error reading {filename}: {e}")
 
-print("\nAll files scanned successfully!")
-
-Get-ChildItem -Path "D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958"
+print("\nAll files scanned inside ZIP successfully!")
