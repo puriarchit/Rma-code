@@ -33,3 +33,6 @@ for filename in os.listdir(folder):
             print(f"Error reading {filename}: {e}")
 
 print("\nScan completed!")
+
+
+Get-ChildItem -Path "D:\LexisNexis" -Directory | Select-Object -ExpandProperty Name
