@@ -30,7 +30,7 @@ files_list = [
     ("EntitySourceItem.txt", "EntitySourceItem")
 ]
 
-print("Starting direct ZIP database loader...\n")
+print("Starting direct ZIP database loader (Batch Mode)...\n")
 
 with zipfile.ZipFile(zip_path, "r") as z:
     zip_files = z.namelist()
@@ -50,11 +50,12 @@ with zipfile.ZipFile(zip_path, "r") as z:
             cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
             col_count = len(cursor.description)
             
-            # Read file stream from zip
             f = z.open(target_path, "r")
             f.readline()
             
             rows = []
+            total_loaded = 0
+            
             for line_bytes in f:
                 line = line_bytes.decode("utf-8", errors="ignore")
                 fields = line.strip('\r\n').split('|')
@@ -76,15 +77,25 @@ with zipfile.ZipFile(zip_path, "r") as z:
                 
                 rows.append(clean_fields)
                 
-            f.close()
+                # 50,000 rows hone par bulk load chalana aur memory clear karna
+                if len(rows) >= 50000:
+                    placeholders = ", ".join(["?" for i in range(col_count)])
+                    insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
+                    cursor.executemany(insert_query, rows)
+                    conn.commit()
+                    total_loaded += len(rows)
+                    rows.clear() # RAM khali karna
             
+            # Bache hue rows ko last me insert karna
             if rows:
                 placeholders = ", ".join(["?" for i in range(col_count)])
                 insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
                 cursor.executemany(insert_query, rows)
+                conn.commit()
+                total_loaded += len(rows)
                 
-            conn.commit()
-            print(filename, f"done! ({len(rows)} rows loaded)\n")
+            f.close()
+            print(filename, f"done! (Total {total_loaded} rows loaded)\n")
         else:
             print("Not found inside ZIP:", filename)
 
