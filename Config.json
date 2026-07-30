@@ -1,0 +1,17 @@
+{
+    "database": {
+        "server": "WIN-Q6F1HDK5R4D",
+        "name": "LexisNexis_Staging",
+        "driver": "ODBC Driver 17 for SQL Server",
+        "trusted_connection": true
+    },
+    "paths": {
+        "zip_path": "D:\\LexisNexis\\MWV01TF_WorldCompliancePlus_20260508_075958.zip",
+        "unzipped_folder": "D:\\LexisNexis\\Omni_DataMart_Lexisnexis_Test\\DataSource"
+    },
+    "settings": {
+        "default_batch_size": 50000,
+        "large_table_batch_size": 1000,
+        "large_tables": ["EntityRemark"]
+    }
+}
