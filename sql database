@@ -229,3 +229,10 @@ UNION ALL
 SELECT 'EntitySanction', COUNT(*) FROM EntitySanction
 UNION ALL
 SELECT 'EntitySourceItem', COUNT(*) FROM EntitySourceItem;
+
+
+
+
+USE master;
+ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
