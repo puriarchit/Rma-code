@@ -109,7 +109,6 @@ print("All files loaded successfully!")
 
 
 
-
 import zipfile
 import os
 import pyodbc
@@ -143,7 +142,7 @@ files_list = [
     ("EntitySourceItem.txt", "EntitySourceItem")
 ]
 
-print("Starting Optimized Direct ZIP database loader...\n")
+print("Starting Optimized Direct ZIP database loader (Dynamic Batch Mode)...\n")
 global_start = time.time()
 
 with zipfile.ZipFile(zip_path, "r") as z:
@@ -165,6 +164,9 @@ with zipfile.ZipFile(zip_path, "r") as z:
             cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
             col_count = len(cursor.description)
             
+            # Dynamic batch size: EntityRemark ke liye 1000, baaki sab ke liye 50000
+            current_batch_size = 1000 if tablename == "EntityRemark" else 50000
+            
             f = z.open(target_path, "r")
             f.readline()
             
@@ -178,14 +180,13 @@ with zipfile.ZipFile(zip_path, "r") as z:
                 if not fields or fields == ['']:
                     continue
                 
-                # Optimized field cleaning and padding
                 clean_fields = [val.strip() if (val and val.strip() != "") else None for val in fields[:col_count]]
                 if len(clean_fields) < col_count:
                     clean_fields += [None] * (col_count - len(clean_fields))
                 
                 rows.append(clean_fields)
                 
-                if len(rows) >= 50000:
+                if len(rows) >= current_batch_size:
                     placeholders = ", ".join(["?" for _ in range(col_count)])
                     insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
                     cursor.executemany(insert_query, rows)
