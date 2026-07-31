@@ -18,6 +18,8 @@ cursor = conn.cursor()
 print("Starting Module 2: Merging duplicate web source links...\n")
 global_start = time.time()
 
+print("Step 1: Recreating staging helper and target tables...")
+step_start = time.time()
 cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
 cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_Dup]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](4000) NULL)")
 
@@ -27,7 +29,10 @@ cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_Uniqrecord]([EntityGUID] [n
 cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
 cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL)")
 conn.commit()
+print(f"✅ Staging tables reset! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
+print("Step 2: Identifying unique records (no duplicates)...")
+step_start = time.time()
 cursor.execute("""
     INSERT INTO EntitySourceItem_Uniqrecord (EntityGUID)
     SELECT EntityGUID 
@@ -36,20 +41,31 @@ cursor.execute("""
     HAVING COUNT(*) = 1
 """)
 conn.commit()
+uniq_count = cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_Uniqrecord").fetchone()[0]
+print(f"✅ Found {uniq_count} unique records! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
+print("Step 3: Creating duplicates workspace backup...")
+step_start = time.time()
 cursor.execute("""
     INSERT INTO EntitySourceItem_Dup (EntityGUID, SourceURI)
     SELECT EntityGUID, SourceURI 
     FROM EntitySourceItem
 """)
 conn.commit()
+print(f"✅ Backup created! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
+print("Step 4: Isolating duplicate records in workspace...")
+step_start = time.time()
 cursor.execute("""
     DELETE FROM EntitySourceItem_Dup 
     WHERE EntityGUID IN (SELECT EntityGUID FROM EntitySourceItem_Uniqrecord)
 """)
 conn.commit()
+dup_rows = cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_Dup").fetchone()[0]
+print(f"✅ Isolated {dup_rows} raw duplicate rows! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
+print("Step 5: Loading unique records directly to target table...")
+step_start = time.time()
 cursor.execute("""
     INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
     SELECT EntityGUID, SourceURI 
@@ -57,8 +73,11 @@ cursor.execute("""
     WHERE EntityGUID IN (SELECT EntityGUID FROM EntitySourceItem_Uniqrecord)
 """)
 conn.commit()
+print(f"✅ Unique records loaded to target table! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
+print("Step 6: Merging duplicate web links in batches...")
 batch_size = 100000
+processed_count = 0
 cursor.fast_executemany = True
 
 while True:
@@ -68,6 +87,9 @@ while True:
     if not batch_guids:
         break
         
+    print(f"Processing batch of {len(batch_guids)} duplicate GUIDs...")
+    batch_start = time.time()
+    
     cursor.execute("CREATE TABLE #BatchGUIDs (EntityGUID NVARCHAR(50))")
     cursor.executemany("INSERT INTO #BatchGUIDs (EntityGUID) VALUES (?)", [(g,) for g in batch_guids])
     conn.commit()
@@ -104,6 +126,9 @@ while True:
     
     cursor.execute("DROP TABLE #BatchGUIDs")
     conn.commit()
+    
+    processed_count += len(batch_guids)
+    print(f"✅ Merged {processed_count} duplicate groups... (Batch time: {time.time() - batch_start:.2f} seconds)")
 
 global_end = time.time()
 total_time = (global_end - global_start) / 60
@@ -114,3 +139,4 @@ print(f"🎉 Module 2 completed successfully!")
 print(f"Total merged records: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+
