@@ -247,3 +247,16 @@ SELECT session_id, command, percent_complete, estimated_completion_time
 FROM sys.dm_exec_requests
 WHERE command = 'ROLLBACK';
 
+
+
+SELECT 
+    request_session_id AS SessionID,
+    resource_type AS ResourceType,
+    DB_NAME(resource_database_id) AS DatabaseName,
+    OBJECT_NAME(resource_associated_entity_id) AS TableName,
+    request_mode AS LockMode,
+    request_status AS LockStatus
+FROM sys.dm_tran_locks
+WHERE resource_database_id = DB_ID('LexisNexis_Staging')
+  AND resource_associated_entity_id > 0;
+
