@@ -15,6 +15,11 @@ conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name'
 conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
 
+# Open a separate independent connection for inserts to prevent "Connection is busy" conflicts
+conn_insert = pyodbc.connect(conn_str)
+insert_cursor = conn_insert.cursor()
+insert_cursor.fast_executemany = True
+
 print("Starting Optimized Module 2: Merging duplicate web source links...\n")
 global_start = time.time()
 
@@ -90,9 +95,6 @@ batch_to_insert = []
 batch_size = 50000
 processed_groups = 0
 
-insert_cursor = conn.cursor()
-insert_cursor.fast_executemany = True
-
 while True:
     rows = cursor.fetchmany(batch_size)
     if not rows:
@@ -107,13 +109,13 @@ while True:
                 processed_groups += 1
                 
                 if len(batch_to_insert) >= batch_size:
-                    # Set inputsizes to SQL_WLONGVARCHAR with length 20000 to prevent driver precision/length errors
-                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 20000, 0)])
+                    # Run on independent insert connection to avoid busy cursor conflict
+                    insert_cursor.setinputsizes([pyodbc.SQL_WVARCHAR, pyodbc.SQL_WLONGVARCHAR])
                     insert_cursor.executemany("""
                         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
                         VALUES (?, ?)
                     """, batch_to_insert)
-                    conn.commit()
+                    conn_insert.commit()
                     print(f"✅ Loaded {processed_groups} merged duplicate profiles...")
                     batch_to_insert = []
             
@@ -133,12 +135,15 @@ if current_guid is not None:
     processed_groups += 1
 
 if batch_to_insert:
-    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 20000, 0)])
+    insert_cursor.setinputsizes([pyodbc.SQL_WVARCHAR, pyodbc.SQL_WLONGVARCHAR])
     insert_cursor.executemany("""
         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
         VALUES (?, ?)
     """, batch_to_insert)
-    conn.commit()
+    conn_insert.commit()
+
+# Close separate connection
+conn_insert.close()
 
 print(f"✅ All {processed_groups} duplicate profiles merged and loaded successfully! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
@@ -151,6 +156,8 @@ print(f"🎉 Optimized Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+conn.close()
+
 
 
 
