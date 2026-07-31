@@ -18,24 +18,28 @@ cursor = conn.cursor()
 print("Starting Optimized Module 2: Merging duplicate web source links...\n")
 global_start = time.time()
 
-print("Step 1: Recreating clean target table...")
+print("Step 1: Recreating target table and dropping old helper tables...")
 step_start = time.time()
 cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
 cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL)")
-conn.commit()
-print(f"✅ Target table reset! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
-print("Step 1.5: Creating Clustered Index on source table (EntitySourceItem)...")
+# Drop old helper tables to free up gigabytes of database space!
+cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
+cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
+conn.commit()
+print(f"✅ Target table reset & space cleared! (Time taken: {time.time() - step_start:.2f} seconds)\n")
+
+print("Step 1.5: Creating Non-Clustered Index on source table (EntitySourceItem)...")
 step_start = time.time()
 cursor.execute("""
     IF NOT EXISTS (
         SELECT * FROM sys.indexes 
         WHERE object_id = OBJECT_ID('EntitySourceItem') AND name = 'IX_EntitySourceItem_EntityGUID'
     )
-    CREATE CLUSTERED INDEX IX_EntitySourceItem_EntityGUID ON EntitySourceItem(EntityGUID)
+    CREATE NONCLUSTERED INDEX IX_EntitySourceItem_EntityGUID ON EntitySourceItem(EntityGUID)
 """)
 conn.commit()
-print(f"✅ Clustered Index created successfully! (Time taken: {time.time() - step_start:.2f} seconds)\n")
+print(f"✅ Non-Clustered Index created successfully! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
 print("Step 2: Identifying unique records (no duplicates)...")
 step_start = time.time()
@@ -123,7 +127,7 @@ total_time = (global_end - global_start) / 60
 final_count = cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_New").fetchone()[0]
 
 print(f"\n==========================================")
-print(f"🎉  Module 2 completed successfully!")
+print(f"🎉 Optimized Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
