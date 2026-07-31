@@ -285,3 +285,7 @@ Restart-Service -Name "MSSQLSERVER" -Force
     request_status AS LockStatus
 FROM sys.dm_tran_locks
 WHERE resource_database_id = DB_ID('LexisNexis_Staging');
+
+
+taskkill /f /im py.exe
+taskkill /f /im python.exe
