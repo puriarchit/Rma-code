@@ -70,13 +70,14 @@ print(f"✅ Unique records loaded directly to target! (Time taken: {time.time() 
 print("Step 3: Streaming, merging, and loading duplicate records...")
 step_start = time.time()
 
-# We select the duplicate records ordered by EntityGUID so they appear sequentially
+# We select the duplicate records ordered by EntityGUID without forcing index hints on the join,
+# allowing SQL Server Optimizer to use a fast Hash Match Join plan.
 cursor.execute("""
     SELECT e.EntityGUID, e.SourceURI
-    FROM EntitySourceItem e WITH (INDEX(IX_EntitySourceItem_EntityGUID))
+    FROM EntitySourceItem e
     INNER JOIN (
         SELECT EntityGUID 
-        FROM EntitySourceItem WITH (INDEX(IX_EntitySourceItem_EntityGUID))
+        FROM EntitySourceItem
         GROUP BY EntityGUID 
         HAVING COUNT(*) > 1
     ) d ON e.EntityGUID = d.EntityGUID
@@ -106,8 +107,8 @@ while True:
                 processed_groups += 1
                 
                 if len(batch_to_insert) >= batch_size:
-                    # Set inputsizes to map NVARCHAR(MAX) correctly and prevent pyodbc right-truncation bug
-                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 0, 0)])
+                    # Use type-only list to avoid ODBC Driver precision value error
+                    insert_cursor.setinputsizes([pyodbc.SQL_WVARCHAR, pyodbc.SQL_WLONGVARCHAR])
                     insert_cursor.executemany("""
                         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
                         VALUES (?, ?)
@@ -132,7 +133,7 @@ if current_guid is not None:
     processed_groups += 1
 
 if batch_to_insert:
-    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 0, 0)])
+    insert_cursor.setinputsizes([pyodbc.SQL_WVARCHAR, pyodbc.SQL_WLONGVARCHAR])
     insert_cursor.executemany("""
         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
         VALUES (?, ?)
@@ -150,6 +151,7 @@ print(f"🎉 Optimized Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+
 
 
 
