@@ -107,8 +107,8 @@ while True:
                 processed_groups += 1
                 
                 if len(batch_to_insert) >= batch_size:
-                    # Use type-only list to avoid ODBC Driver precision value error
-                    insert_cursor.setinputsizes([pyodbc.SQL_WVARCHAR, pyodbc.SQL_WLONGVARCHAR])
+                    # Set inputsizes to SQL_WLONGVARCHAR with length 20000 to prevent driver precision/length errors
+                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 20000, 0)])
                     insert_cursor.executemany("""
                         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
                         VALUES (?, ?)
@@ -133,7 +133,7 @@ if current_guid is not None:
     processed_groups += 1
 
 if batch_to_insert:
-    insert_cursor.setinputsizes([pyodbc.SQL_WVARCHAR, pyodbc.SQL_WLONGVARCHAR])
+    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 20000, 0)])
     insert_cursor.executemany("""
         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
         VALUES (?, ?)
@@ -151,6 +151,7 @@ print(f"🎉 Optimized Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+
 
 
 
