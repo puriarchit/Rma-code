@@ -269,3 +269,7 @@ SELECT
     request_status AS LockStatus
 FROM sys.dm_tran_locks
 WHERE resource_database_id = DB_ID('LexisNexis_Staging');
+
+USE master;
+ALTER DATABASE LexisNexis_Staging SET OFFLINE WITH ROLLBACK IMMEDIATE;
+ALTER DATABASE LexisNexis_Staging SET ONLINE;
