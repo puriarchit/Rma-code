@@ -25,23 +25,43 @@ cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar
 conn.commit()
 print(f"✅ Target table reset! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
-print("Step 2: Loading unique records (no duplicates) directly to target...")
+print("Step 1.5: Creating Clustered Index on source table (EntitySourceItem)...")
 step_start = time.time()
 cursor.execute("""
-    WITH UniqGUIDs AS (
-        SELECT EntityGUID
-        FROM EntitySourceItem
-        GROUP BY EntityGUID
-        HAVING COUNT(*) = 1
+    IF NOT EXISTS (
+        SELECT * FROM sys.indexes 
+        WHERE object_id = OBJECT_ID('EntitySourceItem') AND name = 'IX_EntitySourceItem_EntityGUID'
     )
-    INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
-    SELECT e.EntityGUID, e.SourceURI
-    FROM EntitySourceItem e
-    INNER JOIN UniqGUIDs u ON e.EntityGUID = u.EntityGUID
+    CREATE CLUSTERED INDEX IX_EntitySourceItem_EntityGUID ON EntitySourceItem(EntityGUID)
 """)
 conn.commit()
-uniq_count = cursor.rowcount
-print(f"✅ Loaded {uniq_count} unique records directly! (Time taken: {time.time() - step_start:.2f} seconds)\n")
+print(f"✅ Clustered Index created successfully! (Time taken: {time.time() - step_start:.2f} seconds)\n")
+
+print("Step 2: Identifying unique records (no duplicates)...")
+step_start = time.time()
+cursor.execute("IF OBJECT_ID('tempdb..#UniqGUIDs', 'U') IS NOT NULL DROP TABLE #UniqGUIDs")
+cursor.execute("CREATE TABLE #UniqGUIDs (EntityGUID NVARCHAR(50))")
+cursor.execute("""
+    INSERT INTO #UniqGUIDs (EntityGUID)
+    SELECT EntityGUID
+    FROM EntitySourceItem WITH (INDEX(IX_EntitySourceItem_EntityGUID))
+    GROUP BY EntityGUID
+    HAVING COUNT(*) = 1
+""")
+conn.commit()
+uniq_count = cursor.execute("SELECT COUNT(*) FROM #UniqGUIDs").fetchone()[0]
+print(f"✅ Identified {uniq_count} unique records! (Time taken: {time.time() - step_start:.2f} seconds)\n")
+
+print("Step 2.5: Loading unique records directly to target...")
+step_start = time.time()
+cursor.execute("""
+    INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
+    SELECT e.EntityGUID, e.SourceURI
+    FROM EntitySourceItem e WITH (INDEX(IX_EntitySourceItem_EntityGUID))
+    INNER JOIN #UniqGUIDs u ON e.EntityGUID = u.EntityGUID
+""")
+conn.commit()
+print(f"✅ Unique records loaded directly to target! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
 print("Step 3: Fetching duplicate keys...")
 step_start = time.time()
@@ -69,7 +89,7 @@ for i in range(0, len(duplicate_guids), batch_size):
     
     cursor.execute("""
         SELECT d.EntityGUID, d.SourceURI 
-        FROM EntitySourceItem d
+        FROM EntitySourceItem d WITH (INDEX(IX_EntitySourceItem_EntityGUID))
         INNER JOIN #BatchGUIDs b ON d.EntityGUID = b.EntityGUID
     """)
     rows = cursor.fetchall()
@@ -103,10 +123,11 @@ total_time = (global_end - global_start) / 60
 final_count = cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_New").fetchone()[0]
 
 print(f"\n==========================================")
-print(f"🎉 Optimized Module 2 completed successfully!")
+print(f"🎉  Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+
 
 
 
