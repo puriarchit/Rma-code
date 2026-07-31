@@ -2,7 +2,6 @@ import json
 import os
 import pyodbc
 import time
-from collections import defaultdict
 
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 with open(config_path, "r") as f:
@@ -67,60 +66,76 @@ cursor.execute("""
 conn.commit()
 print(f"✅ Unique records loaded directly to target! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
-print("Step 3: Fetching duplicate keys...")
+print("Step 3: Streaming, merging, and loading duplicate records...")
 step_start = time.time()
+
+# We select the duplicate records ordered by EntityGUID so they appear sequentially
 cursor.execute("""
-    SELECT EntityGUID 
-    FROM EntitySourceItem 
-    GROUP BY EntityGUID 
-    HAVING COUNT(*) > 1
+    SELECT e.EntityGUID, e.SourceURI
+    FROM EntitySourceItem e WITH (INDEX(IX_EntitySourceItem_EntityGUID))
+    INNER JOIN (
+        SELECT EntityGUID 
+        FROM EntitySourceItem WITH (INDEX(IX_EntitySourceItem_EntityGUID))
+        GROUP BY EntityGUID 
+        HAVING COUNT(*) > 1
+    ) d ON e.EntityGUID = d.EntityGUID
+    ORDER BY e.EntityGUID
 """)
-duplicate_guids = [row[0] for row in cursor.fetchall()]
-print(f"✅ Found {len(duplicate_guids)} duplicate profiles to merge! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
-print("Step 4: Merging duplicate links in memory-safe batches...")
+current_guid = None
+current_uris = []
+batch_to_insert = []
 batch_size = 50000
-processed_count = 0
-cursor.fast_executemany = True
+processed_groups = 0
 
-for i in range(0, len(duplicate_guids), batch_size):
-    batch = duplicate_guids[i:i + batch_size]
-    batch_start = time.time()
-    
-    cursor.execute("CREATE TABLE #BatchGUIDs (EntityGUID NVARCHAR(50))")
-    cursor.executemany("INSERT INTO #BatchGUIDs (EntityGUID) VALUES (?)", [(g,) for g in batch])
-    conn.commit()
-    
-    cursor.execute("""
-        SELECT d.EntityGUID, d.SourceURI 
-        FROM EntitySourceItem d WITH (INDEX(IX_EntitySourceItem_EntityGUID))
-        INNER JOIN #BatchGUIDs b ON d.EntityGUID = b.EntityGUID
-    """)
-    rows = cursor.fetchall()
-    
-    groups = defaultdict(list)
-    for guid, uri in rows:
-        if uri:
-            groups[guid].append(uri)
-        else:
-            groups[guid].append("")
-            
-    merged_data = []
-    for guid, uris in groups.items():
-        unique_uris = list(dict.fromkeys(uris))
-        merged_links = "; ".join(unique_uris)
-        merged_data.append((guid, merged_links))
+insert_cursor = conn.cursor()
+insert_cursor.fast_executemany = True
+
+while True:
+    rows = cursor.fetchmany(batch_size)
+    if not rows:
+        break
         
-    cursor.executemany("""
+    for guid, uri in rows:
+        if guid != current_guid:
+            if current_guid is not None:
+                unique_uris = list(dict.fromkeys(current_uris))
+                merged_links = "; ".join(unique_uris)
+                batch_to_insert.append((current_guid, merged_links))
+                processed_groups += 1
+                
+                if len(batch_to_insert) >= batch_size:
+                    insert_cursor.executemany("""
+                        INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
+                        VALUES (?, ?)
+                    """, batch_to_insert)
+                    conn.commit()
+                    print(f"✅ Loaded {processed_groups} merged duplicate profiles...")
+                    batch_to_insert = []
+            
+            current_guid = guid
+            current_uris = [uri] if uri else [""]
+        else:
+            if uri:
+                current_uris.append(uri)
+            else:
+                current_uris.append("")
+
+# Insert remaining records
+if current_guid is not None:
+    unique_uris = list(dict.fromkeys(current_uris))
+    merged_links = "; ".join(unique_uris)
+    batch_to_insert.append((current_guid, merged_links))
+    processed_groups += 1
+
+if batch_to_insert:
+    insert_cursor.executemany("""
         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
         VALUES (?, ?)
-    """, merged_data)
-    
-    cursor.execute("DROP TABLE #BatchGUIDs")
+    """, batch_to_insert)
     conn.commit()
-    
-    processed_count += len(batch)
-    print(f"✅ Merged {processed_count}/{len(duplicate_guids)} duplicate groups... (Batch time: {time.time() - batch_start:.2f} seconds)")
+
+print(f"✅ All {processed_groups} duplicate profiles merged and loaded successfully! (Time taken: {time.time() - step_start:.2f} seconds)\n")
 
 global_end = time.time()
 total_time = (global_end - global_start) / 60
