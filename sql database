@@ -242,3 +242,8 @@ ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
 USE master;
 ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
+
+SELECT session_id, command, percent_complete, estimated_completion_time
+FROM sys.dm_exec_requests
+WHERE command = 'ROLLBACK';
+
