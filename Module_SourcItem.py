@@ -29,14 +29,10 @@ print("Step 2: Loading unique records (no duplicates) directly to target...")
 step_start = time.time()
 cursor.execute("""
     INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
-    SELECT EntityGUID, SourceURI 
+    SELECT EntityGUID, MIN(SourceURI)
     FROM EntitySourceItem 
-    WHERE EntityGUID IN (
-        SELECT EntityGUID 
-        FROM EntitySourceItem 
-        GROUP BY EntityGUID 
-        HAVING COUNT(*) = 1
-    )
+    GROUP BY EntityGUID
+    HAVING COUNT(*) = 1
 """)
 conn.commit()
 uniq_count = cursor.rowcount
@@ -106,4 +102,5 @@ print(f"🎉 Optimized Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+
 
