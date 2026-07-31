@@ -2,6 +2,7 @@ import json
 import os
 import pyodbc
 import time
+from collections import defaultdict
 
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 with open(config_path, "r") as f:
@@ -105,6 +106,8 @@ while True:
                 processed_groups += 1
                 
                 if len(batch_to_insert) >= batch_size:
+                    # Set inputsizes to map NVARCHAR(MAX) correctly and prevent pyodbc right-truncation bug
+                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 0, 0)])
                     insert_cursor.executemany("""
                         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
                         VALUES (?, ?)
@@ -129,6 +132,7 @@ if current_guid is not None:
     processed_groups += 1
 
 if batch_to_insert:
+    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WLONGVARCHAR, 0, 0)])
     insert_cursor.executemany("""
         INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
         VALUES (?, ?)
@@ -146,6 +150,7 @@ print(f"🎉 Optimized Module 2 completed successfully!")
 print(f"Total merged records in target: {final_count}")
 print(f"Total time taken: {total_time:.2f} minutes")
 print(f"==========================================")
+
 
 
 
