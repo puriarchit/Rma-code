@@ -561,29 +561,33 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
+# Optimization: Avoid heavy SELECT Remark inside window partitioned COUNT by using pre-aggregated GROUP BY CTE
 cursor.execute("""
-    ;WITH Scanned AS (
-        SELECT EntityGUID, Remark,
-               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+    ;WITH RemarkCounts AS (
+        SELECT EntityGUID, COUNT(*) as cnt
         FROM EntityRemark
+        GROUP BY EntityGUID
     )
     INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT EntityGUID, SUBSTRING(Remark, 1, 4000)
-    FROM Scanned
-    WHERE cnt = 1
+    SELECT r.EntityGUID, SUBSTRING(r.Remark, 1, 4000)
+    FROM EntityRemark r
+    INNER JOIN RemarkCounts rc ON r.EntityGUID = rc.EntityGUID
+    WHERE rc.cnt = 1
 """)
 conn.commit()
 
+# Optimization: Avoid heavy SELECT Remark inside window partitioned COUNT by using pre-aggregated GROUP BY CTE
 cursor.execute("""
-    ;WITH Scanned AS (
-        SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated,
-               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+    ;WITH RemarkCounts AS (
+        SELECT EntityGUID, COUNT(*) as cnt
         FROM EntityRemark
+        GROUP BY EntityGUID
     )
     INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
-    SELECT EntityGUID, EntityRemarkGUID, SUBSTRING(Remark, 1, 4000), LastUpdated
-    FROM Scanned
-    WHERE cnt > 1
+    SELECT r.EntityGUID, r.EntityRemarkGUID, SUBSTRING(r.Remark, 1, 4000), r.LastUpdated
+    FROM EntityRemark r
+    INNER JOIN RemarkCounts rc ON r.EntityGUID = rc.EntityGUID
+    WHERE rc.cnt > 1
 """)
 conn.commit()
 
