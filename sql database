@@ -317,3 +317,20 @@ GO
 DBCC SHRINKDATABASE (LexisNexis_Staging);
 GO
 taskkill /f /im python.exe
+
+
+
+
+
+
+
+USE master;
+GO
+-- 1. Recovery model ko SIMPLE par set karein (Isse transaction log auto-clear hota rahega)
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+GO
+USE LexisNexis_Staging;
+GO
+-- 2. Log file ko shrink karke 10 MB par le aayein aur storage khali karein (2 = log file ID)
+DBCC SHRINKFILE (2, 10);
+GO
