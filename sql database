@@ -439,3 +439,22 @@ GO
 -- 2. Hamari loaded output table ko rename karke wapas original name 'EntityRemark_New' kar dein
 EXEC sp_rename 'EntityRemark_New_Final', 'EntityRemark_New';
 GO
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    t.name AS TableName, 
+    p.rows AS RowCount
+FROM sys.tables t
+INNER JOIN sys.partitions p ON t.object_id = p.object_id
+WHERE t.name IN (
+    'EntityAddress_New',
+    'Entity_Citizenship_New',
+    'EntityCountryAssociation_New',
+    'EntityDOB_New',
+    'EntityIdentification_New',
+    'EntityRemark_New'
+) AND p.index_id IN (0, 1)
+ORDER BY TableName;
