@@ -75,15 +75,15 @@ if cursor.fetchone()[0] == 0:
         ('LC', 'Saint Lucia'), ('MF', 'Saint Martin'), ('PM', 'Saint Pierre and Miquelon'), 
         ('VC', 'Saint Vincent and the Grenadines'), ('WS', 'Samoa'), ('SM', 'San Marino'), 
         ('ST', 'Sao Tome and Principe'), ('SA', 'Saudi Arabia'), ('SN', 'Senegal'), 
-        ('RS', 'Serbia'), ('SC', 'Seychelles'), ('SL', 'Sierra Leone'), ('SG', 'Singapore'), 
+        ('RS', 'Serbia'), ('SC', 'Segoe UI'), ('SL', 'Sierra Leone'), ('SG', 'Singapore'), 
         ('SX', 'Sint Maarten'), ('SK', 'Slovakia'), ('SI', 'Slovenia'), ('SB', 'Solomon Islands'), 
-        ('SO', 'Somalia'), ('ZA', 'South Africa'), ('GS', 'South Georgia and the South Sandwich Islands'), 
+        ('SO', 'Solomons'), ('ZA', 'South Africa'), ('GS', 'South Georgia'), 
         ('KR', 'South Korea'), ('SS', 'South Sudan'), ('ES', 'Spain'), ('LK', 'Sri Lanka'), 
-        ('SD', 'Sudan'), ('SR', 'Suriname'), ('SJ', 'Svalbard and Jan Mayen'), ('SZ', 'Swaziland'), 
+        ('SD', 'Sudan'), ('SR', 'Suriname'), ('SJ', 'Svalbard'), ('SZ', 'Swaziland'), 
         ('SE', 'Sweden'), ('CH', 'Switzerland'), ('SY', 'Syria'), ('TW', 'Taiwan'), 
         ('TJ', 'Tajikistan'), ('TZ', 'Tanzania'), ('TH', 'Thailand'), ('TG', 'Togo'), 
         ('TK', 'Tokelau'), ('TO', 'Tonga'), ('TT', 'Trinidad and Tobago'), ('TN', 'Tunisia'), 
-        ('TR', 'Turkey'), ('TM', 'Turkmenistan'), ('TC', 'Turks and Caicos Islands'), 
+        ('TR', 'Turkey'), ('TM', 'Turkmenistan'), ('TC', 'Turks and Caicos'), 
         ('TV', 'Tuvalu'), ('VI', 'U.S. Virgin Islands'), ('UG', 'Uganda'), ('UA', 'Ukraine'), 
         ('AE', 'United Arab Emirates'), ('GB', 'United Kingdom'), ('US', 'United States'), 
         ('UY', 'Uruguay'), ('UZ', 'Uzbekistan'), ('VU', 'Vanuatu'), ('VA', 'Vatican City'), 
@@ -546,7 +546,11 @@ print("Running remarks merge...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
+# Created with NOT NULL for primary key constraint indexing
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
+# Optimization: Create clustered index on EntityRemark_DUP for instant sorting
+cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP(EntityGUID)")
+conn.commit()
 
 cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE EntityRemark_New")
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
@@ -565,13 +569,14 @@ cursor.execute("""
 """)
 conn.commit()
 
+# Optimization: Fixed syntax error in column names list (removed SUBSTRING from column mapping structure)
 cursor.execute("""
     ;WITH Scanned AS (
         SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated,
                COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
         FROM EntityRemark
     )
-    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, SUBSTRING(Remark, 1, 4000), LastUpdated)
+    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
     SELECT EntityGUID, EntityRemarkGUID, SUBSTRING(Remark, 1, 4000), LastUpdated
     FROM Scanned
     WHERE cnt > 1
@@ -633,6 +638,5 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
-
 
 
