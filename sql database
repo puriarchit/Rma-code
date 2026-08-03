@@ -293,4 +293,27 @@ WHERE resource_database_id = DB_ID('LexisNexis_Staging');
 
 
 taskkill /f /im py.exe
+
+
+
+
+
+USE LexisNexis_Staging;
+GO
+
+-- 1. Purani temporary tables ko drop karke space khali karein
+DROP TABLE IF EXISTS EntityAddress1;
+DROP TABLE IF EXISTS EntityAddress2;
+DROP TABLE IF EXISTS EntityAddress3;
+DROP TABLE IF EXISTS EntityAddress_Dup;
+DROP TABLE IF EXISTS Entity_Citizenship_Duplicate;
+DROP TABLE IF EXISTS EntityDOB_Test;
+DROP TABLE IF EXISTS EntityIdentification_National;
+DROP TABLE IF EXISTS EntityIdentification_Test;
+DROP TABLE IF EXISTS EntityRemark_DUP;
+GO
+
+-- 2. Database ko shrink karke physical storage free karein
+DBCC SHRINKDATABASE (LexisNexis_Staging);
+GO
 taskkill /f /im python.exe
