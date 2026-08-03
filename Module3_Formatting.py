@@ -208,6 +208,14 @@ cursor.execute("""
     LEFT JOIN Country_Data c ON a.CountryCode = c.tISO
 """)
 conn.commit()
+
+# Optimization: Immediately drop temporary tables to free up DB storage space
+cursor.execute("DROP TABLE IF EXISTS EntityAddress1")
+cursor.execute("DROP TABLE IF EXISTS EntityAddress2")
+cursor.execute("DROP TABLE IF EXISTS EntityAddress3")
+cursor.execute("DROP TABLE IF EXISTS EntityAddress_Dup")
+conn.commit()
+
 print(f"Address formatting completed. Time taken: {time.time() - start_time:.2f} seconds")
 
 print("Running citizenship mapping...")
@@ -261,6 +269,11 @@ cursor.execute("""
     LEFT JOIN Country c ON d.ISOStandard = c.tISO
 """)
 conn.commit()
+
+# Optimization: Immediately drop temporary tables to free up DB storage space
+cursor.execute("DROP TABLE IF EXISTS Entity_Citizenship_Duplicate")
+conn.commit()
+
 print(f"Citizenship mapping completed. Time taken: {time.time() - start_time:.2f} seconds")
 
 print("Running nationalities merge...")
@@ -374,6 +387,11 @@ cursor.execute("""
     LEFT JOIN (SELECT EntityGUID, DOB AS ALTDOB3 FROM EntityDOB_Test WHERE row_rank = 4 AND LEN(DOB) > 7) D ON A.EntityGUID = D.EntityGUID
 """)
 conn.commit()
+
+# Optimization: Immediately drop temporary tables to free up DB storage space
+cursor.execute("DROP TABLE IF EXISTS EntityDOB_Test")
+conn.commit()
+
 print(f"DOB pivoting completed. Time taken: {time.time() - start_time:.2f} seconds")
 
 print("Running identification cards pivoting...")
@@ -516,6 +534,12 @@ cursor.execute("""
     LEFT JOIN (SELECT EntityGUID, IdentificationTypeDesc IdOtherInfo5, IdentificationNumber IdNo5 FROM EntityIdentification_Test WHERE row_rank = 5) E ON A.EntityGUID = E.EntityGUID
 """)
 conn.commit()
+
+# Optimization: Immediately drop temporary tables to free up DB storage space
+cursor.execute("DROP TABLE IF EXISTS EntityIdentification_National")
+cursor.execute("DROP TABLE IF EXISTS EntityIdentification_Test")
+conn.commit()
+
 print(f"Identification cards pivoting completed. Time taken: {time.time() - start_time:.2f} seconds")
 
 print("Running remarks merge...")
@@ -528,7 +552,6 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-# Optimization: Added SUBSTRING function to prevent truncation of raw remarks longer than 4000 characters
 cursor.execute("""
     ;WITH Scanned AS (
         SELECT EntityGUID, Remark,
@@ -542,14 +565,13 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Optimization: Added SUBSTRING function to prevent truncation of raw remarks longer than 4000 characters
 cursor.execute("""
     ;WITH Scanned AS (
         SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated,
                COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
         FROM EntityRemark
     )
-    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
+    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, SUBSTRING(Remark, 1, 4000), LastUpdated)
     SELECT EntityGUID, EntityRemarkGUID, SUBSTRING(Remark, 1, 4000), LastUpdated
     FROM Scanned
     WHERE cnt > 1
@@ -597,6 +619,10 @@ if batch_remark:
     insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
     insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
     conn_insert.commit()
+
+# Optimization: Immediately drop temporary tables to free up DB storage space
+cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
+conn.commit()
 
 print(f"Remarks merge completed. Time taken: {time.time() - start_time:.2f} seconds")
 
