@@ -389,3 +389,44 @@ GO
 -- Main data file (LexisNexis_Staging) ko shrink karke 10 GB par compress karein
 DBCC SHRINKFILE (LexisNexis_Staging, 10000);
 GO
+
+
+
+USE master;
+GO
+
+-- 1. Database ko force-reset karein taaki Session 53 ka rollback aur saare locks turant close ho jayein
+ALTER DATABASE LexisNexis_Staging SET OFFLINE WITH ROLLBACK IMMEDIATE;
+GO
+ALTER DATABASE LexisNexis_Staging SET ONLINE;
+GO
+
+-- 2. Logs ko shrink karke C aur D Drive ki space instantly free karein
+USE LexisNexis_Staging;
+GO
+CHECKPOINT;
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
+DBCC SHRINKFILE (LexisNexis_Staging_log2, EMPTYFILE);
+GO
+
+-- 3. D Drive se temporary log file ko permanently remove (delete) karein
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging REMOVE FILE LexisNexis_Staging_log2;
+GO
+
+-- 4. Module 3 ki sabhi new tables ko drop karein taaki database subah wali clean state me chala jaye
+USE LexisNexis_Staging;
+GO
+DROP TABLE IF EXISTS EntityAddress_New;
+DROP TABLE IF EXISTS Entity_Citizenship_New;
+DROP TABLE IF EXISTS EntityCountryAssociation_New;
+DROP TABLE IF EXISTS EntityDOB_New;
+DROP TABLE IF EXISTS EntityIdentification_New;
+DROP TABLE IF EXISTS EntityRemark_New;
+DROP TABLE IF EXISTS EntityRemark_New_Final;
+DROP TABLE IF EXISTS EntityRemark_DUP_Final;
+DROP TABLE IF EXISTS EntityAddress_Dup;
+DROP TABLE IF EXISTS Entity_Citizenship_Duplicate;
+GO
