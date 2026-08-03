@@ -228,7 +228,7 @@ cursor.execute("""
         WHERE AssociationTypeDesc = 'Citizenship'
     )
     INSERT INTO Entity_Citizenship_New (EntityGUID, ISOStandard, Citizenship)
-    SELECT s.EntityGUID, s.ISOStandard, c.tCountry
+    SELECT s.EntityGUID, s.ISOStandard, SUBSTRING(c.tCountry, 1, 100)
     FROM Scanned s
     LEFT JOIN Country c ON s.ISOStandard = c.tISO
     WHERE s.cnt = 1
@@ -243,7 +243,7 @@ cursor.execute("""
         WHERE AssociationTypeDesc = 'Citizenship'
     )
     INSERT INTO Entity_Citizenship_Duplicate (EntityGUID, ISOStandard, AdministrativeUnitName, Rank)
-    SELECT EntityGUID, ISOStandard, AdministrativeUnitName,
+    SELECT EntityGUID, ISOStandard, SUBSTRING(AdministrativeUnitName, 1, 200),
            RANK() OVER(PARTITION BY EntityGUID ORDER BY AdministrativeUnitName DESC)
     FROM Scanned
     WHERE cnt > 1
@@ -252,7 +252,7 @@ conn.commit()
 
 cursor.execute("""
     INSERT INTO Entity_Citizenship_New (EntityGUID, ISOStandard, Citizenship)
-    SELECT d.EntityGUID, d.ISOStandard, c.tCountry
+    SELECT d.EntityGUID, d.ISOStandard, SUBSTRING(c.tCountry, 1, 100)
     FROM (
         SELECT DISTINCT EntityGUID, ISOStandard
         FROM Entity_Citizenship_Duplicate
@@ -278,7 +278,7 @@ cursor.execute("""
         WHERE AssociationTypeDesc = 'Nationality'
     )
     INSERT INTO EntityCountryAssociation_New (EntityGUID, Nationality)
-    SELECT EntityGUID, AdministrativeUnitName
+    SELECT EntityGUID, SUBSTRING(AdministrativeUnitName, 1, 4000)
     FROM Scanned
     WHERE cnt = 1
 """)
@@ -400,7 +400,7 @@ cursor.execute("""
         WHERE IdentificationTypeDesc LIKE 'National Id%'
     )
     INSERT INTO EntityIdentification_National (EntityGUID, IdentificationTypeDesc, IdentificationNumber)
-    SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber
+    SELECT EntityGUID, SUBSTRING(IdentificationTypeDesc, 1, 85), SUBSTRING(IdentificationNumber, 1, 50)
     FROM Scanned
     WHERE cnt = 1
 """)
@@ -528,6 +528,7 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
+# Optimization: Added SUBSTRING function to prevent truncation of raw remarks longer than 4000 characters
 cursor.execute("""
     ;WITH Scanned AS (
         SELECT EntityGUID, Remark,
@@ -535,12 +536,13 @@ cursor.execute("""
         FROM EntityRemark
     )
     INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT EntityGUID, Remark
+    SELECT EntityGUID, SUBSTRING(Remark, 1, 4000)
     FROM Scanned
     WHERE cnt = 1
 """)
 conn.commit()
 
+# Optimization: Added SUBSTRING function to prevent truncation of raw remarks longer than 4000 characters
 cursor.execute("""
     ;WITH Scanned AS (
         SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated,
@@ -548,7 +550,7 @@ cursor.execute("""
         FROM EntityRemark
     )
     INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
-    SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated
+    SELECT EntityGUID, EntityRemarkGUID, SUBSTRING(Remark, 1, 4000), LastUpdated
     FROM Scanned
     WHERE cnt > 1
 """)
@@ -605,5 +607,6 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
 
 
