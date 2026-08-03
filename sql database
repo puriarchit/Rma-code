@@ -334,3 +334,10 @@ GO
 -- 2. Log file ko shrink karke 10 MB par le aayein aur storage khali karein (2 = log file ID)
 DBCC SHRINKFILE (2, 10);
 GO
+
+
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging 
+MODIFY FILE (NAME = LexisNexis_Staging_log, MAXSIZE = UNLIMITED, FILEGROWTH = 512MB);
+GO
