@@ -561,34 +561,54 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-# Optimization: Avoid heavy SELECT Remark inside window partitioned COUNT by using pre-aggregated GROUP BY CTE
+# Optimization: High-Performance Temp Table strategy for massive heap joins
+print("Calculating unique and duplicate profiles using temp tables...")
+
+# Step 1: Find unique EntityGUIDs instantly using only the index
+cursor.execute("IF OBJECT_ID('tempdb..#UniqueGUIDs') IS NOT NULL DROP TABLE #UniqueGUIDs")
 cursor.execute("""
-    ;WITH RemarkCounts AS (
-        SELECT EntityGUID, COUNT(*) as cnt
-        FROM EntityRemark
-        GROUP BY EntityGUID
-    )
+    SELECT EntityGUID
+    INTO #UniqueGUIDs
+    FROM EntityRemark
+    GROUP BY EntityGUID
+    HAVING COUNT(*) = 1
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_Temp_UniqueGUIDs ON #UniqueGUIDs(EntityGUID)")
+conn.commit()
+
+# Step 2: Insert unique remarks fast using the clustered index on temp table
+cursor.execute("""
     INSERT INTO EntityRemark_New (EntityGUID, Remark)
     SELECT r.EntityGUID, SUBSTRING(r.Remark, 1, 4000)
     FROM EntityRemark r
-    INNER JOIN RemarkCounts rc ON r.EntityGUID = rc.EntityGUID
-    WHERE rc.cnt = 1
+    INNER JOIN #UniqueGUIDs u ON r.EntityGUID = u.EntityGUID
 """)
 conn.commit()
 
-# Optimization: Avoid heavy SELECT Remark inside window partitioned COUNT by using pre-aggregated GROUP BY CTE
+# Step 3: Find duplicate EntityGUIDs instantly using only the index
+cursor.execute("IF OBJECT_ID('tempdb..#DuplicateGUIDs') IS NOT NULL DROP TABLE #DuplicateGUIDs")
 cursor.execute("""
-    ;WITH RemarkCounts AS (
-        SELECT EntityGUID, COUNT(*) as cnt
-        FROM EntityRemark
-        GROUP BY EntityGUID
-    )
+    SELECT EntityGUID
+    INTO #DuplicateGUIDs
+    FROM EntityRemark
+    GROUP BY EntityGUID
+    HAVING COUNT(*) > 1
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_Temp_DupGUIDs ON #DuplicateGUIDs(EntityGUID)")
+conn.commit()
+
+# Step 4: Insert duplicate remarks fast using the clustered index on temp table
+cursor.execute("""
     INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
     SELECT r.EntityGUID, r.EntityRemarkGUID, SUBSTRING(r.Remark, 1, 4000), r.LastUpdated
     FROM EntityRemark r
-    INNER JOIN RemarkCounts rc ON r.EntityGUID = rc.EntityGUID
-    WHERE rc.cnt > 1
+    INNER JOIN #DuplicateGUIDs d ON r.EntityGUID = d.EntityGUID
 """)
+conn.commit()
+
+# Step 5: Clean up temp tables
+cursor.execute("DROP TABLE IF EXISTS #UniqueGUIDs")
+cursor.execute("DROP TABLE IF EXISTS #DuplicateGUIDs")
 conn.commit()
 
 cursor.execute("""
@@ -600,6 +620,7 @@ cursor.execute("""
 current_guid = None
 current_remarks = []
 batch_remark = []
+batch_size = 50000
 
 while True:
     rows = cursor.fetchmany(batch_size)
@@ -650,6 +671,7 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
 
 
 
