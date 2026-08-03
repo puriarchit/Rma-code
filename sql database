@@ -480,3 +480,9 @@ SELECT
 FROM sys.database_files;
 
 EXEC xp_fixeddrives;
+
+
+USE LexisNexis_Staging; GO
+CHECKPOINT;
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
