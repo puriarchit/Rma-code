@@ -1,24 +1,46 @@
-import xml.etree.ElementTree as ET
+import json
 import os
+import pyodbc
 
-package_path = r"C:\Users\LENOVO\OneDrive\Desktop\RMA Project 1\Packages_Set2\Packages_Set2\EntityAddress.dtsx"
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+with open(config_path, "r") as f:
+    config = json.load(f)
+db = config["database"]
 
-if os.path.exists(package_path):
-    print("Parsing EntityAddress.dtsx connection managers...")
-    with open(package_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    # Let's search for ConnectionString or DB name inside the DTSX XML
-    import re
-    connections = re.findall(r'ConnectionString="([^"]+)"', content, re.IGNORECASE)
-    print("Found Connection Strings:")
-    for c in connections:
-        print("  ", c)
-        
-    # Search for any lookup database catalog names
-    catalogs = re.findall(r'Initial Catalog=([^;"]+)', content, re.IGNORECASE)
-    print("\nFound Initial Catalogs (databases):")
-    print(set(catalogs))
-else:
-    print("EntityAddress.dtsx not found.")
+trusted = "yes" if db["trusted_connection"] else "no"
+conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
+conn = pyodbc.connect(conn_str)
+cursor = conn.cursor()
 
+cursor.execute("SELECT name FROM sys.databases WHERE state_desc = 'ONLINE' ORDER BY name")
+databases = [row[0] for row in cursor.fetchall()]
+
+print("\nScanning databases for 'Country' table...")
+print("==========================================")
+
+found = False
+for db_name in databases:
+    if db_name.lower() in ["master", "tempdb", "model", "msdb"]:
+        continue
+    try:
+        query = f"SELECT TABLE_SCHEMA, TABLE_NAME FROM [{db_name}].INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE '%Country%' OR TABLE_NAME LIKE '%Nation%'"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        if rows:
+            for schema, table in rows:
+                print(f"  [FOUND in metadata] Database: {db_name} -> Table: {schema}.{table}")
+                found = True
+    except:
+        pass
+
+    try:
+        cursor.execute(f"SELECT TOP 1 * FROM [{db_name}].dbo.Country")
+        print(f"  [READ SUCCESS] Database: {db_name} -> Table: dbo.Country exists and is READABLE!")
+        found = True
+    except:
+        pass
+
+if not found:
+    print("  No 'Country' table found or accessible in any database.")
+print("==========================================\n")
+conn.close()
