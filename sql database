@@ -364,3 +364,11 @@ ADD LOG FILE (
     FILEGROWTH = 256MB
 );
 GO
+
+SELECT 
+    db_name(database_id) AS DatabaseName,
+    name AS LogicalName,
+    physical_name AS PhysicalPath,
+    size * 8 / 1024.0 AS SizeMB
+FROM sys.master_files
+ORDER BY SizeMB DESC;
