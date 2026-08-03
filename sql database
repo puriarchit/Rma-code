@@ -481,6 +481,31 @@ FROM sys.database_files;
 
 EXEC xp_fixeddrives;
 
+USE master;
+GO
+-- 1. Purani script ke stuck session (53) ko force-kill karein
+KILL 53;
+GO
+
+-- 2. D Drive par temporary log link karein taaki database ko space mil sake
+ALTER DATABASE LexisNexis_Staging 
+ADD LOG FILE (
+    NAME = LexisNexis_Staging_log2,
+    FILENAME = 'D:\LexisNexis_Staging_log2.ldf',
+    SIZE = 256MB,
+    MAXSIZE = UNLIMITED,
+    FILEGROWTH = 128MB
+);
+GO
+
+USE LexisNexis_Staging;
+GO
+-- 3. Ab checkpoint generate karke C Drive ke logs ko clean shrink karein
+CHECKPOINT;
+GO
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
+
 
 USE LexisNexis_Staging; GO
 CHECKPOINT;
