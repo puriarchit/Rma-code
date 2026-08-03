@@ -545,6 +545,15 @@ print(f"Identification cards pivoting completed. Time taken: {time.time() - star
 print("Running remarks merge...")
 start_time = time.time()
 
+# Optimization: Check if helper index on source EntityRemark already exists, if not create it to speed up partitioned count!
+cursor.execute("""
+    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityRemark_EntityGUID' AND object_id = OBJECT_ID('EntityRemark'))
+    BEGIN
+        CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID) INCLUDE (Remark, EntityRemarkGUID, LastUpdated)
+    END
+""")
+conn.commit()
+
 cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
 # Created with NOT NULL for primary key constraint indexing
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
@@ -569,7 +578,6 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Optimization: Fixed syntax error in column names list (removed SUBSTRING from column mapping structure)
 cursor.execute("""
     ;WITH Scanned AS (
         SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated,
@@ -629,6 +637,10 @@ if batch_remark:
 cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
 conn.commit()
 
+# Clean up helper index on source EntityRemark after completion
+cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
+conn.commit()
+
 print(f"Remarks merge completed. Time taken: {time.time() - start_time:.2f} seconds")
 
 conn_insert.close()
@@ -638,5 +650,4 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
-
 
