@@ -540,3 +540,18 @@ GO
 
 DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
 GO
+
+
+USE master;
+GO
+-- 1. Stuck transaction session (53) ko kill karein
+KILL 53;
+GO
+
+USE LexisNexis_Staging;
+GO
+-- 2. Checkpoint run karke C Drive ke logs ko clean shrink karein
+CHECKPOINT;
+GO
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
