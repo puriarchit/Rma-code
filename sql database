@@ -430,3 +430,12 @@ DROP TABLE IF EXISTS EntityRemark_DUP_Final;
 DROP TABLE IF EXISTS EntityAddress_Dup;
 DROP TABLE IF EXISTS Entity_Citizenship_Duplicate;
 GO
+
+USE LexisNexis_Staging;
+GO
+-- 1. Purani empty/unwanted table ko drop karein
+DROP TABLE IF EXISTS EntityRemark_New;
+GO
+-- 2. Hamari loaded output table ko rename karke wapas original name 'EntityRemark_New' kar dein
+EXEC sp_rename 'EntityRemark_New_Final', 'EntityRemark_New';
+GO
