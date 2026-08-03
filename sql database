@@ -458,3 +458,14 @@ WHERE t.name IN (
     'EntityRemark_New'
 ) AND p.index_id IN (0, 1)
 ORDER BY TableName;
+
+
+
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging 
+MODIFY FILE (
+    NAME = LexisNexis_Staging, 
+    FILEGROWTH = 512MB
+);
+GO
