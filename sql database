@@ -574,3 +574,27 @@ USE tempdb;
 GO
 DBCC SHRINKFILE (templog, 10);
 GO
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    'CREATE TABLE [dbo].[' + t.name + '] (' + 
+    STRING_AGG('[' + c.name + '] [' + tp.name + ']' + 
+        CASE 
+            WHEN tp.name IN ('nvarchar', 'nchar') THEN '(' + CASE WHEN c.max_length = -1 THEN 'MAX' ELSE CAST(c.max_length/2 AS VARCHAR) END + ')'
+            WHEN tp.name IN ('varchar', 'char') THEN '(' + CASE WHEN c.max_length = -1 THEN 'MAX' ELSE CAST(c.max_length AS VARCHAR) END + ')'
+            ELSE ''
+        END + ' NULL', ', ') + ');' AS CreateScript
+FROM sys.tables t WITH (NOLOCK)
+INNER JOIN sys.columns c WITH (NOLOCK) ON t.object_id = c.object_id
+INNER JOIN sys.types tp WITH (NOLOCK) ON c.user_type_id = tp.user_type_id
+WHERE t.name IN (
+    'AssociatedEntity', 'ConsolidatedSanction', 'Entity', 'EntityAddress', 
+    'EntityAdverseMedia', 'EntityAdverseMediaSubCategory', 'EntityAlias', 
+    'EntityCountryAssociation', 'EntityDeletes', 'EntityDOB', 'EntityEnforcement', 
+    'EntityEnforcementSubCategory', 'EntityIdentification', 'EntityRemark', 
+    'EntitySanction', 'EntitySourceItem'
+)
+GROUP BY t.name;
