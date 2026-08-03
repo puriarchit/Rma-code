@@ -555,3 +555,22 @@ CHECKPOINT;
 GO
 DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
 GO
+
+
+USE master;
+GO
+-- 1. Dusre database ko SIMPLE recovery model par switch karein
+ALTER DATABASE TNP_FocusStagingDB SET RECOVERY SIMPLE;
+GO
+
+-- 2. Us database ki 14.8 GB log file ko shrink karke 14.7 GB free space recover karein
+USE TNP_FocusStagingDB;
+GO
+DBCC SHRINKFILE (TNP_FocusStagingDB_log, 10);
+GO
+
+-- 3. Tempdb database ke log files ko bhi shrink karein
+USE tempdb;
+GO
+DBCC SHRINKFILE (templog, 10);
+GO
