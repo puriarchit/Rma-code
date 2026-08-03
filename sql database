@@ -511,3 +511,32 @@ USE LexisNexis_Staging; GO
 CHECKPOINT;
 DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
 GO
+
+
+USE master;
+GO
+
+-- 1. Stuck active session ko kill karein
+KILL 53;
+GO
+
+-- 2. D Drive par temporary log file link karein (syntax check optimized)
+ALTER DATABASE LexisNexis_Staging 
+ADD LOG FILE (
+    NAME = LexisNexis_Staging_log2,
+    FILENAME = 'D:\LexisNexis_Staging_log2.ldf',
+    SIZE = 256MB,
+    MAXSIZE = UNLIMITED,
+    FILEGROWTH = 128MB
+);
+GO
+
+-- 3. Database change karke checkpoint aur shrink execute karein
+USE LexisNexis_Staging;
+GO
+
+CHECKPOINT;
+GO
+
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
