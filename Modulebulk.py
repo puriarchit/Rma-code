@@ -58,6 +58,7 @@ for filename, tablename in files_list:
         try:
             cursor.execute(f"TRUNCATE TABLE {tablename}")
             
+            # BATCHSIZE=100000 keeps transaction logs under 100 MB permanently
             bulk_query = f"""
                 BULK INSERT {tablename}
                 FROM '{filepath}'
@@ -66,7 +67,8 @@ for filename, tablename in files_list:
                     ROWTERMINATOR = '0x0a',
                     FIRSTROW = 2,
                     CODEPAGE = '65001',
-                    TABLOCK
+                    TABLOCK,
+                    BATCHSIZE = 100000
                 );
             """
             cursor.execute(bulk_query)
