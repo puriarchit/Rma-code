@@ -598,3 +598,14 @@ WHERE t.name IN (
     'EntitySanction', 'EntitySourceItem'
 )
 GROUP BY t.name;
+
+
+USE master;
+GO
+-- 1. Database ko force-close karke drop karein (rollback instantly terminate!)
+ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+DROP DATABASE LexisNexis_Staging;
+GO
+-- 2. Fresh database banayein
+CREATE DATABASE LexisNexis_Staging;
+GO
