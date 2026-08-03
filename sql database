@@ -275,6 +275,11 @@ ALTER DATABASE LexisNexis_Staging SET OFFLINE WITH ROLLBACK IMMEDIATE;
 ALTER DATABASE LexisNexis_Staging SET ONLINE;
 
 
+
+SELECT * INTO LexisNexis_Staging.dbo.Country FROM LexisNexis_Data.dbo.Country
+SELECT * INTO LexisNexis_Staging.dbo.CountryCode FROM LexisNexis_Data.dbo.CountryCode
+
+
 SELECT 
     request_session_id AS SessionID,
     resource_type AS ResourceType,
