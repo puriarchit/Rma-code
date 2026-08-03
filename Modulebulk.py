@@ -13,6 +13,7 @@ paths = config["paths"]
 trusted = "yes" if db["trusted_connection"] else "no"
 conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
 conn = pyodbc.connect(conn_str)
+conn.autocommit = True
 cursor = conn.cursor()
 
 try:
@@ -21,7 +22,6 @@ try:
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    conn.commit()
     print("Database optimized, set to SIMPLE, and log file shrunk successfully!")
 except Exception as e:
     print("Database maintenance warning:", e)
@@ -58,7 +58,6 @@ for filename, tablename in files_list:
         try:
             cursor.execute(f"TRUNCATE TABLE {tablename}")
             
-            # BATCHSIZE=100000 keeps transaction logs under 100 MB permanently
             bulk_query = f"""
                 BULK INSERT {tablename}
                 FROM '{filepath}'
@@ -72,7 +71,6 @@ for filename, tablename in files_list:
                 );
             """
             cursor.execute(bulk_query)
-            conn.commit()
             
             cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
             row_count = cursor.fetchone()[0]
@@ -83,7 +81,6 @@ for filename, tablename in files_list:
             
         except Exception as ex:
             print(f"❌ Error loading {filename}: {ex}\n")
-            conn.rollback()
     else:
         print(f"⚠️ File not found, skipping: {filename}\n")
 
