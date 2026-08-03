@@ -341,3 +341,14 @@ GO
 ALTER DATABASE LexisNexis_Staging 
 MODIFY FILE (NAME = LexisNexis_Staging_log, MAXSIZE = UNLIMITED, FILEGROWTH = 512MB);
 GO
+
+
+
+SELECT 
+    name, 
+    physical_name, 
+    size * 8 / 1024.0 AS size_mb, 
+    max_size * 8 / 1024.0 AS max_size_mb 
+FROM sys.database_files;
+
+EXEC xp_fixeddrives;
