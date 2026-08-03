@@ -2,43 +2,35 @@ import json
 import os
 import pyodbc
 
-# Load configuration from VM path
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 with open(config_path, "r") as f:
     config = json.load(f)
 db = config["database"]
 
 trusted = "yes" if db["trusted_connection"] else "no"
-conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
-conn = pyodbc.connect(conn_str)
-cursor = conn.cursor()
 
-print("\n==========================================")
-print("1. Checking available Databases on Server:")
-print("==========================================")
+# Attempt 1: Connect directly to LexisNexis_Staging and query LexisNexis_Data with dbo
+print("Testing direct select from LexisNexis_Staging connection:")
 try:
-    cursor.execute("SELECT name FROM sys.databases ORDER BY name")
-    for row in cursor.fetchall():
-        print("  -", row[0])
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
+    cursor.execute("SELECT TOP 5 * FROM LexisNexis_Data.dbo.Country")
+    print("  Success! First country:", cursor.fetchone())
+    conn.close()
 except Exception as e:
-    print("Error listing databases:", e)
+    print("  Direct select failed:", e)
 
-print("\n==========================================")
-print("2. Checking tables in LexisNexis_Data database:")
-print("==========================================")
+# Attempt 2: Connect directly to LexisNexis_Data database catalog
+print("\nTesting connection directly to LexisNexis_Data catalog:")
 try:
-    # Query tables directly in LexisNexis_Data
-    cursor.execute("SELECT TABLE_NAME FROM LexisNexis_Data.INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME")
+    conn_str_data = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};"
+    conn = pyodbc.connect(conn_str_data)
+    cursor = conn.cursor()
+    print("  Connection to LexisNexis_Data succeeded!")
+    cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'")
     tables = [row[0] for row in cursor.fetchall()]
-    for t in tables:
-        print("  -", t)
-        
-    print("\nSearching for 'Country' matching tables:")
-    for t in tables:
-        if "country" in t.lower() or "iso" in t.lower():
-            print("  * Match found:", t)
+    print("  Tables in LexisNexis_Data:", tables)
+    conn.close()
 except Exception as e:
-    print("Error checking LexisNexis_Data tables:", e)
-
-conn.close()
-
+    print("  Connection directly to LexisNexis_Data failed:", e)
