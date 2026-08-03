@@ -372,3 +372,14 @@ SELECT
     size * 8 / 1024.0 AS SizeMB
 FROM sys.master_files
 ORDER BY SizeMB DESC;
+
+
+USE LexisNexis_Staging;
+GO
+CHECKPOINT;
+-- 1. Main log file (C Drive) ko shrink karke khali karein
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
+-- 2. Secondary log file (D Drive) ko shrink karke khali karein
+DBCC SHRINKFILE (LexisNexis_Staging_log2, 10);
+GO
