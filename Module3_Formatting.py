@@ -41,28 +41,34 @@ cursor.execute("IF OBJECT_ID('EntityAddress3', 'U') IS NOT NULL DROP TABLE Entit
 cursor.execute("CREATE TABLE [dbo].[EntityAddress3]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL, [rn] [bigint] NULL)")
 conn.commit()
 
+# Optimization: Single-scan partition count instead of slow NOT IN subquery
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, Address1, Address2, City, ISOStandard,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityAddress
+        WHERE AddressTypeDesc != 'Place Of Birth'
+    )
     INSERT INTO EntityAddress1 (EntityGUID, AddressLine1, AddressLine2, City, CountryCode)
-    SELECT EntityGUID, Address1, Address2, City, ISOStandard 
-    FROM EntityAddress  
-    WHERE AddressTypeDesc != 'Place Of Birth' 
-      AND EntityGUID NOT IN (
-          SELECT EntityGUID 
-          FROM EntityAddress 
-          WHERE AddressTypeDesc != 'Place Of Birth' 
-          GROUP BY EntityGUID 
-          HAVING COUNT(*) > 1
-      )
+    SELECT EntityGUID, Address1, Address2, City, ISOStandard
+    FROM Scanned
+    WHERE cnt = 1
 """)
 conn.commit()
 
+# Optimization: Reused window partition to isolate duplicate groups instantly
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, Address1, Address2, City, ISOStandard,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityAddress
+        WHERE AddressTypeDesc != 'Place Of Birth'
+    )
     INSERT INTO EntityAddress_Dup (EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength)
     SELECT EntityGUID, Address1, Address2, City, ISOStandard,
            ISNULL(LEN(Address1),0) + ISNULL(LEN(Address2),0) + ISNULL(LEN(City),0) + ISNULL(LEN(ISOStandard),0)
-    FROM EntityAddress  
-    WHERE AddressTypeDesc != 'Place Of Birth' 
-      AND EntityGUID NOT IN (SELECT EntityGUID FROM EntityAddress1)
+    FROM Scanned
+    WHERE cnt > 1
 """)
 conn.commit()
 
@@ -74,33 +80,35 @@ cursor.execute("""
 """)
 conn.commit()
 
+# Optimization: Used partition counts on Rank=1 to identify length ties instantly
 cursor.execute("""
+    ;WITH RankCounts AS (
+        SELECT *, COUNT(*) OVER (PARTITION BY EntityGUID) as rank_count
+        FROM EntityAddress2
+        WHERE Rank = 1
+    )
     INSERT INTO EntityAddress3 (EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength, rn)
-    SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength, rn
-    FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY AddressLength DESC) AS rn
-        FROM EntityAddress2 
-        WHERE Rank = 1 
-          AND EntityGUID IN (
-              SELECT EntityGUID 
-              FROM EntityAddress2 
-              WHERE Rank = 1 
-              GROUP BY EntityGUID 
-              HAVING COUNT(*) > 1
-          )
-    ) A
-    WHERE rn = 1
+    SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength,
+           ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY AddressLength DESC) as rn
+    FROM RankCounts
+    WHERE rank_count > 1
 """)
 conn.commit()
 
+# Optimization: Used NOT EXISTS instead of slow NOT IN for clean anti-semi join
 cursor.execute("""
     ;WITH AllAddresses AS (
         SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode
         FROM EntityAddress1
         UNION ALL
         SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode
-        FROM EntityAddress2
-        WHERE Rank = 1 AND EntityGUID NOT IN (SELECT DISTINCT EntityGUID FROM EntityAddress3)
+        FROM EntityAddress2 e
+        WHERE Rank = 1 
+          AND NOT EXISTS (
+              SELECT 1 
+              FROM EntityAddress3 a 
+              WHERE a.EntityGUID = e.EntityGUID
+          )
         UNION ALL
         SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode
         FROM EntityAddress3
@@ -142,35 +150,35 @@ cursor.execute("IF OBJECT_ID('Entity_Citizenship_New', 'U') IS NOT NULL DROP TAB
 cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_New]([EntityGUID] [nvarchar](50) NULL, [ISOStandard] [nvarchar](50) NULL, [Citizenship] [nvarchar](100) NULL)")
 conn.commit()
 
+# Optimization: Used partition scan count to isolate unique citizenship records
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, ISOStandard,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityCountryAssociation
+        WHERE AssociationTypeDesc = 'Citizenship'
+    )
     INSERT INTO Entity_Citizenship_New (EntityGUID, ISOStandard, Citizenship)
-    SELECT ec.EntityGUID, ec.ISOStandard, c.tCountry
-    FROM EntityCountryAssociation ec
-    LEFT JOIN Country c ON ec.ISOStandard = c.tISO
-    WHERE ec.AssociationTypeDesc = 'Citizenship'
-      AND ec.EntityGUID NOT IN (
-          SELECT EntityGUID 
-          FROM EntityCountryAssociation 
-          WHERE AssociationTypeDesc = 'Citizenship' 
-          GROUP BY EntityGUID 
-          HAVING COUNT(*) > 1
-      )
+    SELECT s.EntityGUID, s.ISOStandard, c.tCountry
+    FROM Scanned s
+    LEFT JOIN Country c ON s.ISOStandard = c.tISO
+    WHERE s.cnt = 1
 """)
 conn.commit()
 
+# Optimization: Used partition scan count to isolate duplicate citizenship records
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, ISOStandard, AdministrativeUnitName,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityCountryAssociation
+        WHERE AssociationTypeDesc = 'Citizenship'
+    )
     INSERT INTO Entity_Citizenship_Duplicate (EntityGUID, ISOStandard, AdministrativeUnitName, Rank)
     SELECT EntityGUID, ISOStandard, AdministrativeUnitName,
            RANK() OVER(PARTITION BY EntityGUID ORDER BY AdministrativeUnitName DESC)
-    FROM EntityCountryAssociation
-    WHERE AssociationTypeDesc = 'Citizenship'
-      AND EntityGUID IN (
-          SELECT EntityGUID
-          FROM EntityCountryAssociation
-          WHERE AssociationTypeDesc = 'Citizenship'
-          GROUP BY EntityGUID
-          HAVING COUNT(*) > 1
-      )
+    FROM Scanned
+    WHERE cnt > 1
 """)
 conn.commit()
 
@@ -194,32 +202,32 @@ cursor.execute("IF OBJECT_ID('EntityCountryAssociation_New', 'U') IS NOT NULL DR
 cursor.execute("CREATE TABLE [dbo].[EntityCountryAssociation_New]([EntityGUID] [nvarchar](50) NULL, [Nationality] [nvarchar](4000) NULL)")
 conn.commit()
 
+# Optimization: Used partition counts instead of slow subquery
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, AdministrativeUnitName,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityCountryAssociation
+        WHERE AssociationTypeDesc = 'Nationality'
+    )
     INSERT INTO EntityCountryAssociation_New (EntityGUID, Nationality)
     SELECT EntityGUID, AdministrativeUnitName
-    FROM EntityCountryAssociation
-    WHERE AssociationTypeDesc = 'Nationality'
-      AND EntityGUID NOT IN (
-          SELECT EntityGUID
-          FROM EntityCountryAssociation
-          WHERE AssociationTypeDesc = 'Nationality'
-          GROUP BY EntityGUID
-          HAVING COUNT(*) > 1
-      )
+    FROM Scanned
+    WHERE cnt = 1
 """)
 conn.commit()
 
+# Optimization: Fetched duplicate nationality groups efficiently using partition count
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, AdministrativeUnitName,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityCountryAssociation
+        WHERE AssociationTypeDesc = 'Nationality'
+    )
     SELECT EntityGUID, AdministrativeUnitName
-    FROM EntityCountryAssociation
-    WHERE AssociationTypeDesc = 'Nationality'
-      AND EntityGUID IN (
-          SELECT EntityGUID
-          FROM EntityCountryAssociation
-          WHERE AssociationTypeDesc = 'Nationality'
-          GROUP BY EntityGUID
-          HAVING COUNT(*) > 1
-      )
+    FROM Scanned
+    WHERE cnt > 1
     ORDER BY EntityGUID
 """)
 
@@ -318,32 +326,32 @@ cursor.execute("IF OBJECT_ID('EntityIdentification_Test', 'U') IS NOT NULL DROP 
 cursor.execute("CREATE TABLE [dbo].[EntityIdentification_Test]([EntityGUID] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL, [row_rank] [bigint] NULL)")
 conn.commit()
 
+# Optimization: Used partition scan count to isolate unique national IDs
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityIdentification
+        WHERE IdentificationTypeDesc LIKE 'National Id%'
+    )
     INSERT INTO EntityIdentification_National (EntityGUID, IdentificationTypeDesc, IdentificationNumber)
     SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber
-    FROM EntityIdentification
-    WHERE IdentificationTypeDesc LIKE 'National Id%'
-      AND EntityGUID NOT IN (
-          SELECT EntityGUID
-          FROM EntityIdentification
-          WHERE IdentificationTypeDesc LIKE 'National Id%'
-          GROUP BY EntityGUID
-          HAVING COUNT(*) > 1
-      )
+    FROM Scanned
+    WHERE cnt = 1
 """)
 conn.commit()
 
+# Optimization: Used partition scan count to isolate duplicate national IDs
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityIdentification
+        WHERE IdentificationTypeDesc LIKE 'National Id%'
+    )
     SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber
-    FROM EntityIdentification
-    WHERE IdentificationTypeDesc LIKE 'National Id%'
-      AND EntityGUID IN (
-          SELECT EntityGUID
-          FROM EntityIdentification
-          WHERE IdentificationTypeDesc LIKE 'National Id%'
-          GROUP BY EntityGUID
-          HAVING COUNT(*) > 1
-      )
+    FROM Scanned
+    WHERE cnt > 1
     ORDER BY EntityGUID
 """)
 
@@ -412,6 +420,7 @@ cursor.execute("""
 """)
 conn.commit()
 
+# Optimization: Used NOT EXISTS instead of slow subquery
 cursor.execute("""
     INSERT INTO EntityIdentification_Test (EntityGUID, IdentificationTypeDesc, IdentificationNumber, row_rank)
     SELECT P.EntityGUID, P.IdentificationTypeDesc, P.IdentificationNumber,
@@ -420,8 +429,12 @@ cursor.execute("""
         SELECT EntityGUID, 
                CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
                CASE WHEN LEN(IdentificationNumber) < 50 THEN IdentificationNumber ELSE SUBSTRING(IdentificationNumber, 1, 50) END AS IdentificationNumber
-        FROM EntityIdentification
-        WHERE EntityGUID NOT IN (SELECT DISTINCT EntityGUID FROM EntityIdentification_National_New)
+        FROM EntityIdentification e
+        WHERE NOT EXISTS (
+            SELECT 1 
+            FROM EntityIdentification_National_New n 
+            WHERE n.EntityGUID = e.EntityGUID
+        )
     ) P
 """)
 conn.commit()
@@ -452,29 +465,31 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
+# Optimization: Used partition scan count to isolate unique remarks
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, Remark,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityRemark
+    )
     INSERT INTO EntityRemark_New (EntityGUID, Remark)
     SELECT EntityGUID, Remark
-    FROM EntityRemark
-    WHERE EntityGUID NOT IN (
-        SELECT EntityGUID
-        FROM EntityRemark
-        GROUP BY EntityGUID
-        HAVING COUNT(*) > 1
-    )
+    FROM Scanned
+    WHERE cnt = 1
 """)
 conn.commit()
 
+# Optimization: Used partition scan count to isolate duplicate remarks
 cursor.execute("""
+    ;WITH Scanned AS (
+        SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated,
+               COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
+        FROM EntityRemark
+    )
     INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
     SELECT EntityGUID, EntityRemarkGUID, Remark, LastUpdated
-    FROM EntityRemark
-    WHERE EntityGUID IN (
-        SELECT EntityGUID
-        FROM EntityRemark
-        GROUP BY EntityGUID
-        HAVING COUNT(*) > 1
-    )
+    FROM Scanned
+    WHERE cnt > 1
 """)
 conn.commit()
 
@@ -529,3 +544,4 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
