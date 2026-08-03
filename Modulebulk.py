@@ -16,6 +16,16 @@ trusted = "yes" if db["trusted_connection"] else "no"
 conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
 conn = pyodbc.connect(conn_str)
 cursor = conn.cursor()
+# Self-healing database space maintenance block
+try:
+    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
+    cursor.execute("USE LexisNexis_Staging")
+    cursor.execute("CHECKPOINT")
+    cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
+    conn.commit()
+    print("Database auto-growth optimized and log file shrunk successfully!")
+except Exception as e:
+    print("Database maintenance warning:", e)
 
 files_list = [
     ("AssociatedEntity.txt", "AssociatedEntity"),
