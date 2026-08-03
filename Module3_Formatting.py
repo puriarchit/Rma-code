@@ -545,13 +545,9 @@ print(f"Identification cards pivoting completed. Time taken: {time.time() - star
 print("Running remarks merge...")
 start_time = time.time()
 
-# Optimization: Check if helper index on source EntityRemark already exists, if not create it to speed up partitioned count!
-cursor.execute("""
-    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityRemark_EntityGUID' AND object_id = OBJECT_ID('EntityRemark'))
-    BEGIN
-        CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID) INCLUDE (Remark, EntityRemarkGUID, LastUpdated)
-    END
-""")
+# Optimization: Drop index if exists and recreate it to speed up partitioned count!
+cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
+cursor.execute("CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID) INCLUDE (Remark, EntityRemarkGUID, LastUpdated)")
 conn.commit()
 
 cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
@@ -650,4 +646,5 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
 
