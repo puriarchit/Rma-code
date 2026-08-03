@@ -352,3 +352,15 @@ SELECT
 FROM sys.database_files;
 
 EXEC xp_fixeddrives;
+
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging 
+ADD LOG FILE (
+    NAME = LexisNexis_Staging_log2,
+    FILENAME = 'D:\LexisNexis_Staging_log2.ldf',
+    SIZE = 1024MB,
+    MAXSIZE = UNLIMITED,
+    FILEGROWTH = 256MB
+);
+GO
