@@ -550,15 +550,16 @@ cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark"
 cursor.execute("CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID)")
 conn.commit()
 
-cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
+# Bypassing locks by using brand-new tables: EntityRemark_DUP_Final and EntityRemark_New_Final
+cursor.execute("IF OBJECT_ID('EntityRemark_DUP_Final', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP_Final")
 # Created with NOT NULL for primary key constraint indexing
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
-# Optimization: Create clustered index on EntityRemark_DUP for instant sorting
-cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP(EntityGUID)")
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP_Final]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
+# Optimization: Create clustered index on EntityRemark_DUP_Final for instant sorting
+cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP_Final(EntityGUID)")
 conn.commit()
 
-cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE EntityRemark_New")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
+cursor.execute("IF OBJECT_ID('EntityRemark_New_Final', 'U') IS NOT NULL DROP TABLE EntityRemark_New_Final")
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_New_Final]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
 # Optimization: High-Performance Temp Table strategy for massive heap joins
@@ -578,7 +579,7 @@ conn.commit()
 
 # Step 2: Insert unique remarks fast using the clustered index on temp table
 cursor.execute("""
-    INSERT INTO EntityRemark_New (EntityGUID, Remark)
+    INSERT INTO EntityRemark_New_Final (EntityGUID, Remark)
     SELECT r.EntityGUID, SUBSTRING(r.Remark, 1, 4000)
     FROM EntityRemark r
     INNER JOIN #UniqueGUIDs u ON r.EntityGUID = u.EntityGUID
@@ -599,7 +600,7 @@ conn.commit()
 
 # Step 4: Insert duplicate remarks fast using the clustered index on temp table
 cursor.execute("""
-    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
+    INSERT INTO EntityRemark_DUP_Final (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
     SELECT r.EntityGUID, r.EntityRemarkGUID, SUBSTRING(r.Remark, 1, 4000), r.LastUpdated
     FROM EntityRemark r
     INNER JOIN #DuplicateGUIDs d ON r.EntityGUID = d.EntityGUID
@@ -613,7 +614,7 @@ conn.commit()
 
 cursor.execute("""
     SELECT EntityGUID, Remark
-    FROM EntityRemark_DUP
+    FROM EntityRemark_DUP_Final
     ORDER BY EntityGUID
 """)
 
@@ -635,7 +636,7 @@ while True:
                 
                 if len(batch_remark) >= batch_size:
                     insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-                    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
+                    insert_cursor.executemany("INSERT INTO EntityRemark_New_Final (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
                     conn_insert.commit()
                     batch_remark = []
             current_guid = guid
@@ -651,11 +652,11 @@ if current_guid is not None:
 
 if batch_remark:
     insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
+    insert_cursor.executemany("INSERT INTO EntityRemark_New_Final (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
     conn_insert.commit()
 
 # Optimization: Immediately drop temporary tables to free up DB storage space
-cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
+cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP_Final")
 conn.commit()
 
 # Clean up helper index on source EntityRemark after completion
@@ -671,7 +672,6 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
-
 
 
 
