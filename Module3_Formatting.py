@@ -13,13 +13,24 @@ trusted = "yes" if db["trusted_connection"] else "no"
 conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
 
 conn = pyodbc.connect(conn_str)
+conn.autocommit = True
 cursor = conn.cursor()
 
 conn_insert = pyodbc.connect(conn_str)
+conn_insert.autocommit = True
 insert_cursor = conn_insert.cursor()
 insert_cursor.fast_executemany = True
 
-# Standard ISO Country list (240+ countries) mapping
+try:
+    cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
+    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
+    cursor.execute("USE LexisNexis_Staging")
+    cursor.execute("CHECKPOINT")
+    cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
+    print("Database optimized, set to SIMPLE, and log file shrunk successfully!")
+except Exception as e:
+    print("Database maintenance warning:", e)
+
 cursor.execute("IF OBJECT_ID('Country', 'U') IS NULL BEGIN CREATE TABLE Country (tISO nvarchar(10) NULL, tCountry nvarchar(100) NULL) END")
 conn.commit()
 
@@ -209,7 +220,6 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Optimization: Immediately drop temporary tables to free up DB storage space
 cursor.execute("DROP TABLE IF EXISTS EntityAddress1")
 cursor.execute("DROP TABLE IF EXISTS EntityAddress2")
 cursor.execute("DROP TABLE IF EXISTS EntityAddress3")
@@ -270,7 +280,6 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Optimization: Immediately drop temporary tables to free up DB storage space
 cursor.execute("DROP TABLE IF EXISTS Entity_Citizenship_Duplicate")
 conn.commit()
 
@@ -388,7 +397,6 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Optimization: Immediately drop temporary tables to free up DB storage space
 cursor.execute("DROP TABLE IF EXISTS EntityDOB_Test")
 conn.commit()
 
@@ -535,7 +543,6 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Optimization: Immediately drop temporary tables to free up DB storage space
 cursor.execute("DROP TABLE IF EXISTS EntityIdentification_National")
 cursor.execute("DROP TABLE IF EXISTS EntityIdentification_Test")
 conn.commit()
@@ -545,27 +552,21 @@ print(f"Identification cards pivoting completed. Time taken: {time.time() - star
 print("Running remarks merge...")
 start_time = time.time()
 
-# Optimization: Drop index if exists and recreate it to speed up partitioned count!
 cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
 cursor.execute("CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID)")
 conn.commit()
 
-# Bypassing locks by using brand-new tables: EntityRemark_DUP_Final and EntityRemark_New_Final
-cursor.execute("IF OBJECT_ID('EntityRemark_DUP_Final', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP_Final")
-# Created with NOT NULL for primary key constraint indexing
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP_Final]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
-# Optimization: Create clustered index on EntityRemark_DUP_Final for instant sorting
-cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP_Final(EntityGUID)")
+cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
+cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP(EntityGUID)")
 conn.commit()
 
-cursor.execute("IF OBJECT_ID('EntityRemark_New_Final', 'U') IS NOT NULL DROP TABLE EntityRemark_New_Final")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_New_Final]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
+cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE EntityRemark_New")
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-# Optimization: High-Performance Temp Table strategy for massive heap joins
 print("Calculating unique and duplicate profiles using temp tables...")
 
-# Step 1: Find unique EntityGUIDs instantly using only the index
 cursor.execute("IF OBJECT_ID('tempdb..#UniqueGUIDs') IS NOT NULL DROP TABLE #UniqueGUIDs")
 cursor.execute("""
     SELECT EntityGUID
@@ -577,16 +578,14 @@ cursor.execute("""
 cursor.execute("CREATE CLUSTERED INDEX IX_Temp_UniqueGUIDs ON #UniqueGUIDs(EntityGUID)")
 conn.commit()
 
-# Step 2: Insert unique remarks fast using the clustered index on temp table
 cursor.execute("""
-    INSERT INTO EntityRemark_New_Final (EntityGUID, Remark)
+    INSERT INTO EntityRemark_New (EntityGUID, Remark)
     SELECT r.EntityGUID, SUBSTRING(r.Remark, 1, 4000)
     FROM EntityRemark r
     INNER JOIN #UniqueGUIDs u ON r.EntityGUID = u.EntityGUID
 """)
 conn.commit()
 
-# Step 3: Find duplicate EntityGUIDs instantly using only the index
 cursor.execute("IF OBJECT_ID('tempdb..#DuplicateGUIDs') IS NOT NULL DROP TABLE #DuplicateGUIDs")
 cursor.execute("""
     SELECT EntityGUID
@@ -598,23 +597,21 @@ cursor.execute("""
 cursor.execute("CREATE CLUSTERED INDEX IX_Temp_DupGUIDs ON #DuplicateGUIDs(EntityGUID)")
 conn.commit()
 
-# Step 4: Insert duplicate remarks fast using the clustered index on temp table
 cursor.execute("""
-    INSERT INTO EntityRemark_DUP_Final (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
+    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
     SELECT r.EntityGUID, r.EntityRemarkGUID, SUBSTRING(r.Remark, 1, 4000), r.LastUpdated
     FROM EntityRemark r
     INNER JOIN #DuplicateGUIDs d ON r.EntityGUID = d.EntityGUID
 """)
 conn.commit()
 
-# Step 5: Clean up temp tables
 cursor.execute("DROP TABLE IF EXISTS #UniqueGUIDs")
 cursor.execute("DROP TABLE IF EXISTS #DuplicateGUIDs")
 conn.commit()
 
 cursor.execute("""
     SELECT EntityGUID, Remark
-    FROM EntityRemark_DUP_Final
+    FROM EntityRemark_DUP
     ORDER BY EntityGUID
 """)
 
@@ -636,7 +633,7 @@ while True:
                 
                 if len(batch_remark) >= batch_size:
                     insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-                    insert_cursor.executemany("INSERT INTO EntityRemark_New_Final (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
+                    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
                     conn_insert.commit()
                     batch_remark = []
             current_guid = guid
@@ -652,14 +649,12 @@ if current_guid is not None:
 
 if batch_remark:
     insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-    insert_cursor.executemany("INSERT INTO EntityRemark_New_Final (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
+    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
     conn_insert.commit()
 
-# Optimization: Immediately drop temporary tables to free up DB storage space
-cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP_Final")
+cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
 conn.commit()
 
-# Clean up helper index on source EntityRemark after completion
 cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
 conn.commit()
 
@@ -672,6 +667,7 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
 
 
 
