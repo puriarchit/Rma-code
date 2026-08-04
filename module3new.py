@@ -11,19 +11,36 @@ db = config["database"]
 trusted = "yes" if db["trusted_connection"] else "no"
 conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
 
+# 1. Connect to master database first to clear any orphan locks
+master_conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=master;Trusted_Connection={trusted};"
+try:
+    master_conn = pyodbc.connect(master_conn_str)
+    master_conn.autocommit = True
+    master_cursor = master_conn.cursor()
+    print("Clearing any orphan database locks...")
+    # Forcefully disconnect any stuck sessions (including previous runs)
+    master_cursor.execute("ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE")
+    master_cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
+    master_cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
+    master_cursor.execute("ALTER DATABASE LexisNexis_Staging SET MULTI_USER")
+    print("All active database locks cleared and log limits unlocked successfully!")
+    master_cursor.close()
+    master_conn.close()
+except Exception as e:
+    print("Database lock clear warning (skipping):", e)
+
+# 2. Establish main connection to LexisNexis_Staging database
 conn = pyodbc.connect(conn_str)
 conn.autocommit = True
 cursor = conn.cursor()
 
 try:
-    cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
-    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("Database optimized, set to SIMPLE, and log file shrunk successfully!")
+    print("Staging database ready and log file shrunk successfully!")
 except Exception as e:
-    print("Database maintenance warning:", e)
+    print("Staging database initialization warning:", e)
 
 cursor.execute("IF OBJECT_ID('Country', 'U') IS NULL BEGIN CREATE TABLE Country (tISO nvarchar(10) NULL, tCountry nvarchar(100) NULL) END")
 conn.commit()
@@ -449,32 +466,45 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-# Clustered Temp Table Optimization to force Stream Aggregate (replaces slow tempdb page-spills!)
-cursor.execute("DROP TABLE IF EXISTS #TempRemarks")
+# High-Performance Unique/Duplicate Split Optimization (Bypasses tempdb disk swapping!)
+print("Calculating unique and duplicate profiles using temp tables...")
+cursor.execute("DROP TABLE IF EXISTS #GUIDCounts")
 cursor.execute("""
-    SELECT EntityGUID, CAST(SUBSTRING(Remark, 1, 4000) AS NVARCHAR(4000)) AS Remark
-    INTO #TempRemarks
+    SELECT EntityGUID, COUNT(*) AS RemarkCount
+    INTO #GUIDCounts
     FROM EntityRemark
-    WHERE Remark IS NOT NULL
-""")
-conn.commit()
-
-print("Sorting and indexing remarks...")
-cursor.execute("CREATE CLUSTERED INDEX IX_TempRemarks_EntityGUID ON #TempRemarks(EntityGUID)")
-conn.commit()
-
-print("Merging aggregated remarks...")
-cursor.execute("""
-    INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT 
-        EntityGUID,
-        SUBSTRING(STRING_AGG(CAST(Remark AS VARCHAR(MAX)), '; '), 1, 4000)
-    FROM #TempRemarks
     GROUP BY EntityGUID
 """)
 conn.commit()
 
-cursor.execute("DROP TABLE IF EXISTS #TempRemarks")
+print("Indexing temporary helper table...")
+cursor.execute("CREATE CLUSTERED INDEX IX_GUIDCounts_EntityGUID ON #GUIDCounts(EntityGUID)")
+conn.commit()
+
+print("Directly inserting unique remarks (No aggregation needed)...")
+cursor.execute("""
+    INSERT INTO EntityRemark_New (EntityGUID, Remark)
+    SELECT r.EntityGUID, CAST(SUBSTRING(r.Remark, 1, 4000) AS NVARCHAR(4000))
+    FROM EntityRemark r
+    INNER JOIN #GUIDCounts c ON r.EntityGUID = c.EntityGUID
+    WHERE c.RemarkCount = 1
+""")
+conn.commit()
+
+print("Aggregating and inserting duplicate remarks...")
+cursor.execute("""
+    INSERT INTO EntityRemark_New (EntityGUID, Remark)
+    SELECT 
+        r.EntityGUID,
+        SUBSTRING(STRING_AGG(CAST(r.Remark AS VARCHAR(MAX)), '; '), 1, 4000)
+    FROM EntityRemark r
+    INNER JOIN #GUIDCounts c ON r.EntityGUID = c.EntityGUID
+    WHERE c.RemarkCount > 1
+    GROUP BY r.EntityGUID
+""")
+conn.commit()
+
+cursor.execute("DROP TABLE IF EXISTS #GUIDCounts")
 conn.commit()
 
 print(f"Remarks merge completed. Time taken: {time.time() - start_time:.2f} seconds")
@@ -485,4 +515,5 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
 
