@@ -719,6 +719,22 @@ FROM
 SET STATISTICS IO ON;
 SET STATISTICS TIME ON;
 
+
+SELECT
+    wait_type,
+    wait_time_ms,
+    blocking_session_id,
+    cpu_time,
+    reads,
+    writes,
+    logical_reads
+FROM sys.dm_exec_requests
+WHERE session_id = 53;
 SELECT
 COUNT(*)
 FROM EntityRemark;
+
+
+SELECT *
+FROM sys.dm_os_waiting_tasks
+WHERE session_id = 53;
