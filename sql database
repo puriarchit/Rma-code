@@ -624,3 +624,19 @@ WHERE i.indid < 2 AND t.name IN (
     'EntitySanction', 'EntitySourceItem'
 )
 ORDER BY t.name;
+
+
+
+SELECT t.name AS TableName, SUM(p.rows) AS TotalRows
+FROM sys.tables t
+INNER JOIN sys.partitions p ON t.object_id = p.object_id
+WHERE p.index_id IN (0, 1)
+  AND t.name IN (
+      'AssociatedEntity', 'ConsolidatedSanction', 'Entity', 'EntityAddress', 
+      'EntityAdverseMedia', 'EntityAdverseMediaSubCategory', 'EntityAlias', 
+      'EntityCountryAssociation', 'EntityDeletes', 'EntityDOB', 'EntityEnforcement', 
+      'EntityEnforcementSubCategory', 'EntityIdentification', 'EntityRemark', 
+      'EntitySanction', 'EntitySourceItem'
+  )
+GROUP BY t.name
+ORDER BY t.name;
