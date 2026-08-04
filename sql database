@@ -661,3 +661,15 @@ SELECT
     CAST((row_count * 100.0 / NULLIF(estimate_row_count, 0)) AS DECIMAL(5,2)) AS PercentComplete
 FROM sys.dm_exec_query_profiles
 WHERE session_id = 54;
+
+SELECT
+SUM(row_count)
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID('EntityRemark')
+AND index_id IN (0,1)
+
+
+
+SELECT
+AVG(DATALENGTH(Remark))
+FROM EntityRemark
