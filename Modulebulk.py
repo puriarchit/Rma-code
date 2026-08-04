@@ -17,12 +17,17 @@ conn.autocommit = True
 cursor = conn.cursor()
 
 try:
+    # 1. Set Recovery Model to SIMPLE
     cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
+    # 2. Unlock Data File Growth limits
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
+    # 3. UNLOCK LOG FILE Auto-Growth and MAXSIZE constraints permanently (replaces manual SSMS queries!)
+    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
+    # 4. Shrink log file to clean residual database spaces
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("Database optimized, set to SIMPLE, and log file shrunk successfully!")
+    print("Database optimized, set to SIMPLE, log growth unlocked, and shrunk successfully!")
 except Exception as e:
     print("Database maintenance warning:", e)
 
@@ -80,7 +85,9 @@ for filename, tablename in files_list:
             print(f"✅ {tablename} loaded! ({row_count} rows) - Time taken: {time_taken:.2f} seconds\n")
             
         except Exception as ex:
+            # Re-raise the exception to stop pipeline in orchestrator if any bulk insert fails!
             print(f"❌ Error loading {filename}: {ex}\n")
+            raise ex
     else:
         print(f"⚠️ File not found, skipping: {filename}\n")
 
