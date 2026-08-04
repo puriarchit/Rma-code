@@ -481,11 +481,11 @@ print("Indexing temporary helper table...")
 cursor.execute("CREATE CLUSTERED INDEX IX_GUIDCounts_EntityGUID ON #GUIDCounts(EntityGUID)")
 conn.commit()
 
-print("Directly inserting unique remarks (T-SQL Batched Loop - Under 1.5 minutes!)...")
-# We copy to a temporary table with a RowId and index it to force fast sequential reads
+print("Directly inserting unique remarks...")
+# We copy to a temporary table using IDENTITY to completely bypass sorting overhead (instantly copy!)
 cursor.execute("""
     SELECT 
-        ROW_NUMBER() OVER (ORDER BY r.EntityGUID) AS RowId,
+        IDENTITY(INT, 1, 1) AS RowId,
         r.EntityGUID, 
         CAST(SUBSTRING(r.Remark, 1, 4000) AS NVARCHAR(4000)) AS Remark
     INTO #TempUniqueRemarks
