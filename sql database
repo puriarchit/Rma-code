@@ -609,3 +609,6 @@ GO
 -- 2. Fresh database banayein
 CREATE DATABASE LexisNexis_Staging;
 GO
+
+
+SELECT COUNT(*) AS DeletedCount FROM LexisNexis_Staging.dbo.EntityDeletes;
