@@ -771,3 +771,14 @@ GO
 DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
 DBCC SHRINKFILE (LexisNexis_Staging, 10);
 GO
+
+
+
+SELECT 
+    session_id,
+    command,
+    status,
+    percent_complete,
+    CAST((estimated_completion_time / 1000.0 / 60.0) AS DECIMAL(5,2)) AS EstimatedMinutesLeft
+FROM sys.dm_exec_requests
+WHERE command LIKE '%ROLLBACK%' OR command LIKE '%ALTER%';
