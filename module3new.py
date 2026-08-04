@@ -466,72 +466,96 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-# High-Performance Unique/Duplicate Split Optimization (Bypasses tempdb disk swapping!)
-print("Calculating unique and duplicate profiles using temp tables...")
+# Step 1 : Create GUID Count Table
+print("Creating GUID Count Table...")
 cursor.execute("DROP TABLE IF EXISTS #GUIDCounts")
 cursor.execute("""
-    SELECT EntityGUID, COUNT(*) AS RemarkCount
+    SELECT
+        EntityGUID,
+        COUNT(*) AS RemarkCount
     INTO #GUIDCounts
     FROM EntityRemark
     GROUP BY EntityGUID
 """)
 conn.commit()
 
-print("Indexing temporary helper table...")
 cursor.execute("CREATE CLUSTERED INDEX IX_GUIDCounts_EntityGUID ON #GUIDCounts(EntityGUID)")
 conn.commit()
 
-print("Directly inserting unique remarks...")
-# We copy to a temporary table using IDENTITY to completely bypass sorting overhead (instantly copy!)
+# Step 2 : Create Target Table
+print("Recreating EntityRemark_New...")
+cursor.execute("IF OBJECT_ID('dbo.EntityRemark_New','U') IS NOT NULL DROP TABLE dbo.EntityRemark_New")
 cursor.execute("""
-    SELECT 
-        IDENTITY(INT, 1, 1) AS RowId,
-        r.EntityGUID, 
-        CAST(SUBSTRING(r.Remark, 1, 4000) AS NVARCHAR(4000)) AS Remark
-    INTO #TempUniqueRemarks
-    FROM EntityRemark r
-    INNER JOIN #GUIDCounts c ON r.EntityGUID = c.EntityGUID
-    WHERE c.RemarkCount = 1
+    CREATE TABLE dbo.EntityRemark_New
+    (
+        EntityGUID NVARCHAR(50),
+        Remark NVARCHAR(4000)
+    )
 """)
 conn.commit()
 
-cursor.execute("CREATE CLUSTERED INDEX IX_TempUniqueRemarks_RowId ON #TempUniqueRemarks(RowId)")
-conn.commit()
-
-# Execute T-SQL loop directly in SQL Server to bypass Python roundtrips and avoid log saturation
+# Step 3 : Insert Unique Remarks Directly
+print("Loading Unique Remarks (Minimally Logged via TABLOCK)...")
 cursor.execute("""
-    DECLARE @BatchSize INT = 200000;
-    DECLARE @MinId INT = 1;
-    DECLARE @MaxId INT = (SELECT ISNULL(MAX(RowId), 0) FROM #TempUniqueRemarks);
-
-    WHILE @MinId <= @MaxId
-    BEGIN
-        INSERT INTO EntityRemark_New (EntityGUID, Remark)
-        SELECT EntityGUID, Remark
-        FROM #TempUniqueRemarks
-        WHERE RowId >= @MinId AND RowId < @MinId + @BatchSize;
-        
-        SET @MinId = @MinId + @BatchSize;
-    END
-""")
-conn.commit()
-
-cursor.execute("DROP TABLE IF EXISTS #TempUniqueRemarks")
-conn.commit()
-
-print("Aggregating and inserting duplicate remarks...")
-cursor.execute("""
-    INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT 
+    INSERT INTO dbo.EntityRemark_New WITH (TABLOCK)
+    (
+        EntityGUID,
+        Remark
+    )
+    SELECT
         r.EntityGUID,
-        SUBSTRING(STRING_AGG(CAST(r.Remark AS VARCHAR(MAX)), '; '), 1, 4000)
+        CAST(SUBSTRING(r.Remark,1,4000) AS NVARCHAR(4000))
     FROM EntityRemark r
-    INNER JOIN #GUIDCounts c ON r.EntityGUID = c.EntityGUID
-    WHERE c.RemarkCount > 1
-    GROUP BY r.EntityGUID
+    INNER HASH JOIN #GUIDCounts g
+        ON r.EntityGUID = g.EntityGUID
+    WHERE g.RemarkCount = 1
+    OPTION
+    (
+        HASH JOIN,
+        MAXDOP 4
+    )
 """)
 conn.commit()
 
+# Step 4 : Merge Duplicate Remarks
+print("Loading Duplicate Remarks...")
+cursor.execute("""
+    INSERT INTO dbo.EntityRemark_New WITH (TABLOCK)
+    (
+        EntityGUID,
+        Remark
+    )
+    SELECT
+        r.EntityGUID,
+        CAST
+        (
+            SUBSTRING
+            (
+                STRING_AGG
+                (
+                    CAST(r.Remark AS NVARCHAR(MAX)),
+                    '; '
+                ),
+                1,
+                4000
+            )
+            AS NVARCHAR(4000)
+        )
+    FROM EntityRemark r
+    INNER HASH JOIN #GUIDCounts g
+        ON r.EntityGUID = g.EntityGUID
+    WHERE g.RemarkCount > 1
+    GROUP BY
+        r.EntityGUID
+    OPTION
+    (
+        HASH JOIN,
+        MAXDOP 4
+    )
+""")
+conn.commit()
+
+# Step 5 : Cleanup
 cursor.execute("DROP TABLE IF EXISTS #GUIDCounts")
 conn.commit()
 
