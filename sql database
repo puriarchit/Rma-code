@@ -640,3 +640,7 @@ WHERE p.index_id IN (0, 1)
   )
 GROUP BY t.name
 ORDER BY t.name;
+
+
+SELECT COUNT(DISTINCT EntityGUID) AS UniqueProfilesWithLinks 
+FROM LexisNexis_Staging.dbo.EntitySourceItem;
