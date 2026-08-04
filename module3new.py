@@ -449,20 +449,32 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-# Single-pass high-performance remarks aggregation (replaces the slow python loop and clustered temp tables!)
+# Clustered Temp Table Optimization to force Stream Aggregate (replaces slow tempdb page-spills!)
+cursor.execute("DROP TABLE IF EXISTS #TempRemarks")
 cursor.execute("""
-    ;WITH DistinctRemarks AS (
-        SELECT DISTINCT EntityGUID, SUBSTRING(Remark, 1, 4000) AS Remark
-        FROM EntityRemark
-        WHERE Remark IS NOT NULL
-    )
+    SELECT EntityGUID, CAST(SUBSTRING(Remark, 1, 4000) AS NVARCHAR(4000)) AS Remark
+    INTO #TempRemarks
+    FROM EntityRemark
+    WHERE Remark IS NOT NULL
+""")
+conn.commit()
+
+print("Sorting and indexing remarks...")
+cursor.execute("CREATE CLUSTERED INDEX IX_TempRemarks_EntityGUID ON #TempRemarks(EntityGUID)")
+conn.commit()
+
+print("Merging aggregated remarks...")
+cursor.execute("""
     INSERT INTO EntityRemark_New (EntityGUID, Remark)
     SELECT 
         EntityGUID,
         SUBSTRING(STRING_AGG(CAST(Remark AS VARCHAR(MAX)), '; '), 1, 4000)
-    FROM DistinctRemarks
+    FROM #TempRemarks
     GROUP BY EntityGUID
 """)
+conn.commit()
+
+cursor.execute("DROP TABLE IF EXISTS #TempRemarks")
 conn.commit()
 
 print(f"Remarks merge completed. Time taken: {time.time() - start_time:.2f} seconds")
@@ -473,3 +485,4 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
