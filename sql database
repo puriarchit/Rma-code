@@ -738,3 +738,36 @@ FROM EntityRemark;
 SELECT *
 FROM sys.dm_os_waiting_tasks
 WHERE session_id = 53;
+
+
+USE master;
+GO
+
+-- 1. Kisi bhi temporary ghost connection ko force-close karein
+ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+
+-- 2. Recovery model ko SIMPLE par set karein (log bloat rokne ke liye)
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+GO
+
+-- 3. File auto-growth size ko set karein (taaki disk writes stable rahein)
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB);
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 256MB);
+GO
+
+-- 4. Database ko normal mode me wapas laayein
+ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
+GO
+
+USE LexisNexis_Staging;
+GO
+
+-- 5. Memory buffers ko hard disk par flush karein
+CHECKPOINT;
+GO
+
+-- 6. Log file aur data files ko shrink karke fragmentation wipeout karein
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+DBCC SHRINKFILE (LexisNexis_Staging, 10);
+GO
