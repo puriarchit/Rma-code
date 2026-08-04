@@ -644,3 +644,10 @@ ORDER BY t.name;
 
 SELECT COUNT(DISTINCT EntityGUID) AS UniqueProfilesWithLinks 
 FROM LexisNexis_Staging.dbo.EntitySourceItem;
+
+
+
+SELECT SUM(rows) AS LiveRowCount
+FROM LexisNexis_Staging.sys.partitions
+WHERE object_id = OBJECT_ID('LexisNexis_Staging.dbo.EntityRemark_New')
+  AND index_id IN (0, 1);
