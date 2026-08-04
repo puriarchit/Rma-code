@@ -695,3 +695,22 @@ FROM
     GROUP BY EntityGUID
     HAVING COUNT(*) = 1
 ) A;
+
+
+
+
+SELECT recovery_model_desc
+FROM sys.databases
+WHERE name = 'LexisNexis_Staging';
+
+
+
+SELECT
+SUM(Cnt) AS DuplicateRows
+FROM
+(
+    SELECT COUNT(*) AS Cnt
+    FROM EntityRemark
+    GROUP BY EntityGUID
+    HAVING COUNT(*) > 1
+) A;
