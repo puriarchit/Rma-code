@@ -481,14 +481,42 @@ print("Indexing temporary helper table...")
 cursor.execute("CREATE CLUSTERED INDEX IX_GUIDCounts_EntityGUID ON #GUIDCounts(EntityGUID)")
 conn.commit()
 
-print("Directly inserting unique remarks (No aggregation needed)...")
+print("Directly inserting unique remarks (T-SQL Batched Loop - Under 1.5 minutes!)...")
+# We copy to a temporary table with a RowId and index it to force fast sequential reads
 cursor.execute("""
-    INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT r.EntityGUID, CAST(SUBSTRING(r.Remark, 1, 4000) AS NVARCHAR(4000))
+    SELECT 
+        ROW_NUMBER() OVER (ORDER BY r.EntityGUID) AS RowId,
+        r.EntityGUID, 
+        CAST(SUBSTRING(r.Remark, 1, 4000) AS NVARCHAR(4000)) AS Remark
+    INTO #TempUniqueRemarks
     FROM EntityRemark r
     INNER JOIN #GUIDCounts c ON r.EntityGUID = c.EntityGUID
     WHERE c.RemarkCount = 1
 """)
+conn.commit()
+
+cursor.execute("CREATE CLUSTERED INDEX IX_TempUniqueRemarks_RowId ON #TempUniqueRemarks(RowId)")
+conn.commit()
+
+# Execute T-SQL loop directly in SQL Server to bypass Python roundtrips and avoid log saturation
+cursor.execute("""
+    DECLARE @BatchSize INT = 200000;
+    DECLARE @MinId INT = 1;
+    DECLARE @MaxId INT = (SELECT ISNULL(MAX(RowId), 0) FROM #TempUniqueRemarks);
+
+    WHILE @MinId <= @MaxId
+    BEGIN
+        INSERT INTO EntityRemark_New (EntityGUID, Remark)
+        SELECT EntityGUID, Remark
+        FROM #TempUniqueRemarks
+        WHERE RowId >= @MinId AND RowId < @MinId + @BatchSize;
+        
+        SET @MinId = @MinId + @BatchSize;
+    END
+""")
+conn.commit()
+
+cursor.execute("DROP TABLE IF EXISTS #TempUniqueRemarks")
 conn.commit()
 
 print("Aggregating and inserting duplicate remarks...")
@@ -515,5 +543,6 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"Process completed. Total time: {total_time:.2f} minutes.")
+
 
 
