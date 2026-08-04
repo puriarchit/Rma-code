@@ -612,3 +612,15 @@ GO
 
 
 SELECT COUNT(*) AS DeletedCount FROM LexisNexis_Staging.dbo.EntityDeletes;
+
+SELECT t.name AS TableName, i.rows AS RowCount
+FROM sys.tables t WITH (NOLOCK)
+INNER JOIN sys.sysindexes i WITH (NOLOCK) ON t.object_id = i.id
+WHERE i.indid < 2 AND t.name IN (
+    'AssociatedEntity', 'ConsolidatedSanction', 'Entity', 'EntityAddress', 
+    'EntityAdverseMedia', 'EntityAdverseMediaSubCategory', 'EntityAlias', 
+    'EntityCountryAssociation', 'EntityDeletes', 'EntityDOB', 'EntityEnforcement', 
+    'EntityEnforcementSubCategory', 'EntityIdentification', 'EntityRemark', 
+    'EntitySanction', 'EntitySourceItem'
+)
+ORDER BY t.name;
