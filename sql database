@@ -651,3 +651,13 @@ SELECT SUM(rows) AS LiveRowCount
 FROM LexisNexis_Staging.sys.partitions
 WHERE object_id = OBJECT_ID('LexisNexis_Staging.dbo.EntityRemark_New')
   AND index_id IN (0, 1);
+
+
+SELECT 
+    session_id,
+    physical_operator_name,
+    row_count,
+    estimate_row_count,
+    CAST((row_count * 100.0 / NULLIF(estimate_row_count, 0)) AS DECIMAL(5,2)) AS PercentComplete
+FROM sys.dm_exec_query_profiles
+WHERE session_id = 54;
