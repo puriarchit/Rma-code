@@ -552,113 +552,112 @@ print(f"Identification cards pivoting completed. Time taken: {time.time() - star
 print("Running remarks merge...")
 start_time = time.time()
 
-cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
-cursor.execute("CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID)")
-conn.commit()
-
-cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
-cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP(EntityGUID)")
-conn.commit()
-
-cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE EntityRemark_New")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
-conn.commit()
-
-print("Calculating unique and duplicate profiles using temp tables...")
-
-cursor.execute("IF OBJECT_ID('tempdb..#UniqueGUIDs') IS NOT NULL DROP TABLE #UniqueGUIDs")
 cursor.execute("""
-    SELECT EntityGUID
-    INTO #UniqueGUIDs
-    FROM EntityRemark
-    GROUP BY EntityGUID
-    HAVING COUNT(*) = 1
+IF OBJECT_ID('EntityRemark_New','U') IS NOT NULL
+DROP TABLE EntityRemark_New
 """)
-cursor.execute("CREATE CLUSTERED INDEX IX_Temp_UniqueGUIDs ON #UniqueGUIDs(EntityGUID)")
-conn.commit()
 
 cursor.execute("""
-    INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT r.EntityGUID, SUBSTRING(r.Remark, 1, 4000)
-    FROM EntityRemark r
-    INNER JOIN #UniqueGUIDs u ON r.EntityGUID = u.EntityGUID
+CREATE TABLE EntityRemark_New
+(
+    EntityGUID NVARCHAR(50),
+    Remark NVARCHAR(4000)
+)
 """)
 conn.commit()
 
-cursor.execute("IF OBJECT_ID('tempdb..#DuplicateGUIDs') IS NOT NULL DROP TABLE #DuplicateGUIDs")
-cursor.execute("""
-    SELECT EntityGUID
-    INTO #DuplicateGUIDs
-    FROM EntityRemark
-    GROUP BY EntityGUID
-    HAVING COUNT(*) > 1
-""")
-cursor.execute("CREATE CLUSTERED INDEX IX_Temp_DupGUIDs ON #DuplicateGUIDs(EntityGUID)")
-conn.commit()
+print("Building GUID counts...")
 
 cursor.execute("""
-    INSERT INTO EntityRemark_DUP (EntityGUID, EntityRemarkGUID, Remark, LastUpdated)
-    SELECT r.EntityGUID, r.EntityRemarkGUID, SUBSTRING(r.Remark, 1, 4000), r.LastUpdated
-    FROM EntityRemark r
-    INNER JOIN #DuplicateGUIDs d ON r.EntityGUID = d.EntityGUID
+IF OBJECT_ID('tempdb..#GUIDCounts') IS NOT NULL
+DROP TABLE #GUIDCounts
 """)
-conn.commit()
-
-cursor.execute("DROP TABLE IF EXISTS #UniqueGUIDs")
-cursor.execute("DROP TABLE IF EXISTS #DuplicateGUIDs")
-conn.commit()
 
 cursor.execute("""
-    SELECT EntityGUID, Remark
-    FROM EntityRemark_DUP
-    ORDER BY EntityGUID
+SELECT
+    EntityGUID,
+    COUNT(*) AS RemarkCount
+INTO #GUIDCounts
+FROM EntityRemark
+GROUP BY EntityGUID
 """)
 
-current_guid = None
-current_remarks = []
-batch_remark = []
-batch_size = 50000
+cursor.execute("""
+CREATE CLUSTERED INDEX IX_GUID
+ON #GUIDCounts(EntityGUID)
+""")
 
-while True:
-    rows = cursor.fetchmany(batch_size)
-    if not rows:
-        break
-    for guid, remark in rows:
-        if guid != current_guid:
-            if current_guid is not None:
-                unique_remarks = list(dict.fromkeys(current_remarks))
-                merged_remarks = "; ".join(unique_remarks)[:4000]
-                batch_remark.append((current_guid, merged_remarks))
-                
-                if len(batch_remark) >= batch_size:
-                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-                    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
-                    conn_insert.commit()
-                    batch_remark = []
-            current_guid = guid
-            current_remarks = [remark] if remark else [""]
-        else:
-            if remark:
-                current_remarks.append(remark)
-
-if current_guid is not None:
-    unique_remarks = list(dict.fromkeys(current_remarks))
-    merged_remarks = "; ".join(unique_remarks)[:4000]
-    batch_remark.append((current_guid, merged_remarks))
-
-if batch_remark:
-    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
-    conn_insert.commit()
-
-cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
 conn.commit()
 
-cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
+print("Loading Unique Remarks...")
+
+cursor.execute("""
+
+INSERT INTO EntityRemark_New WITH(TABLOCK)
+
+SELECT
+    r.EntityGUID,
+    CAST(LEFT(r.Remark,4000) AS NVARCHAR(4000))
+
+FROM EntityRemark r
+
+INNER HASH JOIN #GUIDCounts c
+ON r.EntityGUID=c.EntityGUID
+
+WHERE c.RemarkCount=1
+
+OPTION(HASH JOIN)
+
+""")
+
 conn.commit()
 
-print(f"Remarks merge completed. Time taken: {time.time() - start_time:.2f} seconds")
+print("Loading Duplicate Remarks...")
+
+cursor.execute("""
+
+INSERT INTO EntityRemark_New WITH(TABLOCK)
+
+SELECT
+
+r.EntityGUID,
+
+CAST(
+
+LEFT(
+
+STRING_AGG(
+CAST(r.Remark AS NVARCHAR(MAX)),
+'; '
+
+),
+
+4000
+
+)
+
+AS NVARCHAR(4000))
+
+FROM EntityRemark r
+
+INNER HASH JOIN #GUIDCounts c
+
+ON r.EntityGUID=c.EntityGUID
+
+WHERE c.RemarkCount>1
+
+GROUP BY r.EntityGUID
+
+OPTION(HASH JOIN)
+
+""")
+
+conn.commit()
+
+cursor.execute("DROP TABLE #GUIDCounts")
+conn.commit()
+
+print(f"Remarks merge completed. Time taken: {time.time()-start_time:.2f} seconds")
 
 conn_insert.close()
 conn.close()
