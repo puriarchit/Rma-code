@@ -673,3 +673,25 @@ AND index_id IN (0,1)
 SELECT
 AVG(DATALENGTH(Remark))
 FROM EntityRemark
+
+
+SELECT COUNT(*)
+FROM
+(
+    SELECT EntityGUID
+    FROM EntityRemark
+    GROUP BY EntityGUID
+    HAVING COUNT(*) > 1
+) A;
+
+
+
+SELECT
+COUNT(*) AS UniqueGUIDs
+FROM
+(
+    SELECT EntityGUID
+    FROM EntityRemark
+    GROUP BY EntityGUID
+    HAVING COUNT(*) = 1
+) A;
