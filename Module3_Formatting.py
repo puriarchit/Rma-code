@@ -27,9 +27,9 @@ try:
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("Database optimized, set to SIMPLE, and log file shrunk successfully!")
+    print("database optimized and log file shrunk.")
 except Exception as e:
-    print("Database maintenance warning:", e)
+    print("db maintenance alert:", e)
 
 cursor.execute("IF OBJECT_ID('Country', 'U') IS NULL BEGIN CREATE TABLE Country (tISO nvarchar(10) NULL, tCountry nvarchar(100) NULL) END")
 conn.commit()
@@ -104,10 +104,10 @@ if cursor.fetchone()[0] == 0:
     insert_cursor.executemany("INSERT INTO Country (tISO, tCountry) VALUES (?, ?)", countries)
     conn_insert.commit()
 
-print("Starting Module 3 processing...")
+print("starting module 3...")
 global_start = time.time()
 
-print("Running address formatting...")
+print("formatting address details...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityAddress_Dup', 'U') IS NOT NULL DROP TABLE EntityAddress_Dup")
@@ -226,9 +226,9 @@ cursor.execute("DROP TABLE IF EXISTS EntityAddress3")
 cursor.execute("DROP TABLE IF EXISTS EntityAddress_Dup")
 conn.commit()
 
-print(f"Address formatting completed. Time taken: {time.time() - start_time:.2f} seconds")
+print(f"address formatting done, took {time.time() - start_time:.2f} seconds.")
 
-print("Running citizenship mapping...")
+print("mapping citizenship...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('Entity_Citizenship_Duplicate', 'U') IS NOT NULL DROP TABLE Entity_Citizenship_Duplicate")
@@ -283,9 +283,9 @@ conn.commit()
 cursor.execute("DROP TABLE IF EXISTS Entity_Citizenship_Duplicate")
 conn.commit()
 
-print(f"Citizenship mapping completed. Time taken: {time.time() - start_time:.2f} seconds")
+print(f"citizenship mapping done, took {time.time() - start_time:.2f} seconds.")
 
-print("Running nationalities merge...")
+print("merging nationalities...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityCountryAssociation_New', 'U') IS NOT NULL DROP TABLE EntityCountryAssociation_New")
@@ -356,9 +356,9 @@ if batch_to_insert:
     insert_cursor.executemany("INSERT INTO EntityCountryAssociation_New (EntityGUID, Nationality) VALUES (?, ?)", batch_to_insert)
     conn_insert.commit()
 
-print(f"Nationalities merge completed. Time taken: {time.time() - start_time:.2f} seconds")
+print(f"nationalities merge done, took {time.time() - start_time:.2f} seconds.")
 
-print("Running DOB pivoting...")
+print("pivoting dob details...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityDOB_Test', 'U') IS NOT NULL DROP TABLE EntityDOB_Test")
@@ -400,9 +400,9 @@ conn.commit()
 cursor.execute("DROP TABLE IF EXISTS EntityDOB_Test")
 conn.commit()
 
-print(f"DOB pivoting completed. Time taken: {time.time() - start_time:.2f} seconds")
+print(f"dob pivoting done, took {time.time() - start_time:.2f} seconds.")
 
-print("Running identification cards pivoting...")
+print("pivoting identification cards...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityIdentification_National', 'U') IS NOT NULL DROP TABLE EntityIdentification_National")
@@ -547,9 +547,9 @@ cursor.execute("DROP TABLE IF EXISTS EntityIdentification_National")
 cursor.execute("DROP TABLE IF EXISTS EntityIdentification_Test")
 conn.commit()
 
-print(f"Identification cards pivoting completed. Time taken: {time.time() - start_time:.2f} seconds")
+print(f"identification pivoting done, took {time.time() - start_time:.2f} seconds.")
 
-print("Running remarks merge...")
+print("merging remarks...")
 start_time = time.time()
 
 cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
@@ -565,7 +565,7 @@ cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE Ent
 cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
-print("Calculating unique and duplicate profiles using temp tables...")
+print("calculating uniques and duplicates...")
 
 cursor.execute("IF OBJECT_ID('tempdb..#UniqueGUIDs') IS NOT NULL DROP TABLE #UniqueGUIDs")
 cursor.execute("""
@@ -658,7 +658,7 @@ conn.commit()
 cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
 conn.commit()
 
-print(f"Remarks merge completed. Time taken: {time.time() - start_time:.2f} seconds")
+print(f"remarks merge done, took {time.time() - start_time:.2f} seconds.")
 
 conn_insert.close()
 conn.close()
@@ -666,8 +666,4 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 
-print(f"Process completed. Total time: {total_time:.2f} minutes.")
-
-
-
-
+print(f"module 3 completed in {total_time:.2f} minutes.")
