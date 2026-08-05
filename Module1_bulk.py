@@ -92,3 +92,4 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"bulk load completed in {total_time:.2f} minutes.")
+
