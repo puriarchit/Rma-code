@@ -10,3 +10,13 @@ WHERE session_id IN (
     FROM sys.dm_exec_requests 
     WHERE command = 'INSERT' OR command = 'SELECT'
 );
+
+
+SELECT 
+    blocking_session_id AS BlockingSession,
+    session_id AS BlockedSession,
+    wait_type,
+    wait_time / 1000 AS WaitSeconds,
+    wait_resource
+FROM sys.dm_exec_requests
+WHERE blocking_session_id <> 0;
