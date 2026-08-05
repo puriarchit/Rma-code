@@ -122,3 +122,56 @@ GO
 DBCC SHRINKFILE(tempdev, 10);
 DBCC SHRINKFILE(templog, 10);
 GO
+
+
+USE LexisNexis_Staging;
+GO
+
+-- 1. Drop all formatted tables created in Modules 2, 3, and 4
+DROP TABLE IF EXISTS EntityDOB_New;
+DROP TABLE IF EXISTS EntityAddress_New;
+DROP TABLE IF EXISTS EntityRemark_New;
+DROP TABLE IF EXISTS EntitySourceItem_New;
+DROP TABLE IF EXISTS EntityIdentification_New;
+DROP TABLE IF EXISTS EntityIdentification_National_New;
+DROP TABLE IF EXISTS Entity_Citizenship_New;
+DROP TABLE IF EXISTS NegativeList_New;
+DROP TABLE IF EXISTS NegativeList_New1;
+
+-- 2. Truncate all raw staging tables loaded in Module 1
+TRUNCATE TABLE AssociatedEntity;
+TRUNCATE TABLE ConsolidatedSanction;
+TRUNCATE TABLE Entity;
+TRUNCATE TABLE EntityAddress;
+TRUNCATE TABLE EntityAdverseMedia;
+TRUNCATE TABLE EntityAdverseMediaSubCategory;
+TRUNCATE TABLE EntityAlias;
+TRUNCATE TABLE EntityCountryAssociation;
+TRUNCATE TABLE EntityDeletes;
+TRUNCATE TABLE EntityDOB;
+TRUNCATE TABLE EntityEnforcement;
+TRUNCATE TABLE EntityEnforcementSubCategory;
+TRUNCATE TABLE EntityIdentification;
+TRUNCATE TABLE EntityRemark;
+TRUNCATE TABLE EntitySanction;
+TRUNCATE TABLE EntitySourceItem;
+
+-- 3. Clear execution buffers and shrink database/logs
+CHECKPOINT;
+DBCC FREEPROCCACHE WITH NO_INFOMSGS;
+DBCC DROPCLEANBUFFERS WITH NO_INFOMSGS;
+DBCC SHRINKDATABASE (LexisNexis_Staging, 10);
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
+
+-- 4. Shrink tempdb fully
+USE tempdb;
+GO
+CHECKPOINT;
+DBCC FREEPROCCACHE;
+DBCC DROPCLEANBUFFERS;
+DBCC FREESYSTEMCACHE ('ALL');
+DBCC SHRINKDATABASE (tempdb, 10);
+DBCC SHRINKFILE (tempdev, 10);
+DBCC SHRINKFILE (templog, 10);
+GO
