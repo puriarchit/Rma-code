@@ -85,6 +85,55 @@ SELECT
     row_count AS [Processed Rows],
     estimate_row_count AS [Estimated Rows],
     CAST(row_count * 100.0 / NULLIF(estimate_row_count, 0) AS DECIMAL(5,2)) AS [Progress %]
+
+
+
+Parallelism	138105	8268452	1.67
+Table Insert	0	0	NULL
+Hash Match	0	0	NULL
+Parallelism	0	0	NULL
+Table Scan	0	0	NULL
+Hash Match	0	0	NULL
+Parallelism	0	0	NULL
+Clustered Index Scan	0	0	NULL
+Table Insert	39837	2067113	1.93
+Parallelism	0	0	NULL
+Hash Match	39837	2067113	1.93
+Table Scan	0	0	NULL
+Parallelism	1573174	1574730	99.90
+Table Scan	1587544	1574730	100.81
+Hash Match	101964	2055309	4.96
+Parallelism	2026378	2028589	99.89
+Clustered Index Scan	2069709	2028589	102.03
+Parallelism	563584	1809750	31.14
+Table Scan	565112	1809750	31.23
+Table Insert	28594	2067113	1.38
+Hash Match	28594	2067113	1.38
+Parallelism	1574674	1574730	100.00
+Table Scan	1579173	1574730	100.28
+Hash Match	102720	2055307	5.00
+Parallelism	2028726	2028586	100.01
+Clustered Index Scan	1950052	2028586	96.13
+Parallelism	565087	1809750	31.22
+Table Scan	544029	1809750	30.06
+Table Insert	46259	2067113	2.24
+Hash Match	46259	2067113	2.24
+Parallelism	1575330	1574730	100.04
+Table Scan	1554271	1574730	98.70
+Hash Match	101709	2055307	4.95
+Parallelism	2029527	2028586	100.05
+Clustered Index Scan	2105233	2028586	103.78
+Parallelism	564667	1809750	31.20
+Table Scan	568319	1809750	31.40
+Table Insert	26395	2067113	1.28
+Hash Match	26395	2067113	1.28
+Parallelism	1575742	1574730	100.06
+Table Scan	1577932	1574730	100.20
+Hash Match	102326	2055307	4.98
+Parallelism	2029715	2028586	100.06
+Clustered Index Scan	1989352	2028586	98.07
+Parallelism	565035	1809750	31.22
+Table Scan	580913	1809750	32.10
 FROM sys.dm_exec_query_profiles
 WHERE session_id = 52;
 
