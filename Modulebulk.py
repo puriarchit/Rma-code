@@ -17,19 +17,15 @@ conn.autocommit = True
 cursor = conn.cursor()
 
 try:
-    # 1. Set Recovery Model to SIMPLE
     cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
-    # 2. Unlock Data File Growth limits
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
-    # 3. UNLOCK LOG FILE Auto-Growth and MAXSIZE constraints permanently (replaces manual SSMS queries!)
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
-    # 4. Shrink log file to clean residual database spaces
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("Database optimized, set to SIMPLE, log growth unlocked, and shrunk successfully!")
+    print("database optimized and log file shrunk.")
 except Exception as e:
-    print("Database maintenance warning:", e)
+    print("db maintenance alert:", e)
 
 files_list = [
     ("AssociatedEntity.txt", "AssociatedEntity"),
@@ -50,14 +46,14 @@ files_list = [
     ("EntitySourceItem.txt", "EntitySourceItem")
 ]
 
-print("Starting native SQL Server BULK INSERT Loader (Config Driven)...\n")
+print("starting bulk load...")
 global_start = time.time()
 
 for filename, tablename in files_list:
     filepath = os.path.join(paths["unzipped_folder"], filename)
     
     if os.path.exists(filepath):
-        print(f"Bulk Ingesting: {filename} ...")
+        print(f"ingesting {filename}...")
         file_start = time.time()
         
         try:
@@ -82,18 +78,18 @@ for filename, tablename in files_list:
             
             file_end = time.time()
             time_taken = file_end - file_start
-            print(f"✅ {tablename} loaded! ({row_count} rows) - Time taken: {time_taken:.2f} seconds\n")
+            print(f"loaded {tablename} ({row_count} rows) in {time_taken:.2f} seconds.\n")
             
         except Exception as ex:
-            # Re-raise the exception to stop pipeline in orchestrator if any bulk insert fails!
-            print(f"❌ Error loading {filename}: {ex}\n")
+            print(f"failed to load {filename}: {ex}")
             raise ex
     else:
-        print(f"⚠️ File not found, skipping: {filename}\n")
+        print(f"skipping {filename}, file not found\n")
 
 cursor.close()
 conn.close()
 
 global_end = time.time()
 total_time = (global_end - global_start) / 60
-print(f"All files loaded successfully! Total time taken: {total_time:.2f} minutes")
+print(f"bulk load completed in {total_time:.2f} minutes.")
+
