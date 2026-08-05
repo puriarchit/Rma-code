@@ -24,9 +24,8 @@ try:
     cursor.execute("CHECKPOINT")
     cursor.execute("DBCC FREEPROCCACHE WITH NO_INFOMSGS")
     cursor.execute("DBCC DROPCLEANBUFFERS WITH NO_INFOMSGS")
-    cursor.execute("DBCC SHRINKDATABASE(LexisNexis_Staging, 10)")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("database optimized, caches cleared, and database/log files shrunk.")
+    print("database optimized, caches cleared, and log file shrunk.")
 except Exception as e:
     print("db maintenance alert:", e)
 
