@@ -22,8 +22,11 @@ try:
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
+    cursor.execute("DBCC FREEPROCCACHE WITH NO_INFOMSGS")
+    cursor.execute("DBCC DROPCLEANBUFFERS WITH NO_INFOMSGS")
+    cursor.execute("DBCC SHRINKDATABASE(LexisNexis_Staging, 10)")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("database optimized and log file shrunk.")
+    print("database optimized, caches cleared, and database/log files shrunk.")
 except Exception as e:
     print("db maintenance alert:", e)
 
