@@ -186,3 +186,13 @@ DBCC DROPCLEANBUFFERS WITH NO_INFOMSGS;
 DBCC SHRINKDATABASE (LexisNexis_Staging, 10);
 DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
 GO
+
+
+SELECT 
+    session_id,
+    status,
+    command,
+    wait_type,
+    wait_time / 1000 AS wait_seconds
+FROM sys.dm_exec_requests
+WHERE session_id <> @@SPID;
