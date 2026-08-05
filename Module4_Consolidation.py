@@ -285,5 +285,3 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
 
-
-
