@@ -139,13 +139,6 @@ cursor.execute("DROP TABLE IF EXISTS #TempGroup1")
 cursor.execute("""
     SELECT 
         A.EntityGUID,
-        CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
-        CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
-        CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-        CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-        CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
-        CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
-        CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
         B.DOB,
         B.ALTDOB1,
         B.ALTDOB2,
@@ -156,7 +149,7 @@ cursor.execute("""
         C.Country,
         C.POB
     INTO #TempGroup1
-    FROM Entity A WITH (NOLOCK)
+    FROM (SELECT EntityGUID FROM Entity WITH (NOLOCK)) A
     LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
     LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
     OPTION (HASH JOIN)
@@ -206,18 +199,26 @@ cursor.execute("""
         Nationality, Citizenship
     )
     SELECT 
-        A.EntityGUID, A.ReferenceID, A.EntityType, A.Gender, A.FirstName, A.LastName, A.SecondName, A.Title,
-        A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, A.AddressLine1, A.AddressLine2, A.City, A.Country, A.POB,
-        A.WLType, A.OriginalSource, A.Remark,
+        A.EntityGUID,
+        CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
+        CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
+        CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
+        CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+        CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
+        CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
+        CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
+        T.DOB, T.ALTDOB1, T.ALTDOB2, T.ALTDOB3, T.AddressLine1, T.AddressLine2, T.City, T.Country, T.POB,
+        T.WLType, T.OriginalSource, T.Remark,
         H.IdentificationTypeDesc as NationalIDInfo,
         H.IdentificationNumber as NationalIDNo,
         I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
         J.Nationality,
-        A.Citizenship
-    FROM #TempGroup3 A
-    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
-    LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
+        T.Citizenship
+    FROM #TempGroup3 T
+    INNER JOIN Entity A WITH (NOLOCK) ON T.EntityGUID = A.EntityGUID
+    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON T.EntityGUID = H.EntityGUID
+    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON T.EntityGUID = I.EntityGUID
+    LEFT JOIN #TempNationalities J ON T.EntityGUID = J.EntityGUID
     OPTION (HASH JOIN)
 """)
 cursor.execute("DROP TABLE #TempGroup3")
@@ -282,5 +283,4 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
-
 
