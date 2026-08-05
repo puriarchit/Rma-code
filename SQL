@@ -51,3 +51,7 @@ SELECT SUM(rows) AS [Live Rows Written in Target Table]
 FROM sys.partitions 
 WHERE object_id = OBJECT_ID('LexisNexis_Staging.dbo.NegativeList_New') 
   AND index_id IN (0, 1);
+
+SELECT name, size * 8 / 1024 AS [Database File Size (MB)]
+FROM sys.master_files 
+WHERE database_id = DB_ID('LexisNexis_Staging');
