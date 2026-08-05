@@ -200,3 +200,13 @@ CREATE TABLE EntitySourceItem (
     LastUpdated DATETIME
 );
 GO
+
+
+USE LexisNexis_Staging;
+GO
+
+-- 1. Entity table me data row count check (Should be 0)
+SELECT COUNT(*) AS EntityRowCount FROM Entity WITH (NOLOCK);
+
+-- 2. Total tables list (Should show exactly 16 raw tables)
+SELECT name AS TableName FROM sys.tables ORDER BY name;
