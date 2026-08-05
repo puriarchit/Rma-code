@@ -118,7 +118,7 @@ cursor.execute("""
     FROM EntityCountryAssociation A WITH (NOLOCK)
     INNER HASH JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
     WHERE A.AssociationTypeDesc = 'Nationality'
-    OPTION (HASH JOIN)
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_TempNationalities_EntityGUID ON #TempNationalities(EntityGUID)")
 
@@ -132,47 +132,7 @@ cursor.execute("""
 cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 conn.commit()
 
-print("indexing Entity table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Entity_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_Entity_EntityGUID_Temp ON Entity(EntityGUID)")
-conn.commit()
-
-print("indexing DOB table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityDOB_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityDOB_New_EntityGUID_Temp ON EntityDOB_New(EntityGUID)")
-conn.commit()
-
-print("indexing Address table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityAddress_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityAddress_New_EntityGUID_Temp ON EntityAddress_New(EntityGUID)")
-conn.commit()
-
-print("indexing Remarks table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityRemark_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityRemark_New_EntityGUID_Temp ON EntityRemark_New(EntityGUID)")
-conn.commit()
-
-print("indexing Web Links table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntitySourceItem_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntitySourceItem_New_EntityGUID_Temp ON EntitySourceItem_New(EntityGUID)")
-conn.commit()
-
-print("indexing Enforcement table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityEnforcement_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityEnforcement_EntityGUID_Temp ON EntityEnforcement(EntityGUID)")
-conn.commit()
-
-print("indexing Sanction table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntitySanction_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntitySanction_EntityGUID_Temp ON EntitySanction(EntityGUID)")
-conn.commit()
-
-print("indexing National ID table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityIdentification_National_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityIdentification_National_New_EntityGUID_Temp ON EntityIdentification_National_New(EntityGUID)")
-conn.commit()
-
-print("indexing Secondary ID table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityIdentification_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityIdentification_New_EntityGUID_Temp ON EntityIdentification_New(EntityGUID)")
-conn.commit()
-
-print("indexing Citizenship table...")
-cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Entity_Citizenship_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_Entity_Citizenship_New_EntityGUID_Temp ON Entity_Citizenship_New(EntityGUID)")
-conn.commit()
-
-print("assembling master profile details...")
+print("assembling master profile details (memory-optimized)...")
 start_time = time.time()
 cursor.execute("""
     INSERT INTO NegativeList_New WITH (TABLOCK) (
@@ -228,7 +188,7 @@ cursor.execute("""
     LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
     LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
     LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-    OPTION (MERGE JOIN)
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 25)
 """)
 conn.commit()
 print(f"done assembling profiles, took {time.time() - start_time:.2f} seconds.")
@@ -243,7 +203,7 @@ cursor.execute("""
     FROM NegativeList_New n WITH (NOLOCK)
     LEFT JOIN #PEP_GUIDs p ON n.EntityGUID = p.EntityGUID
     WHERE n.WLType IS NULL AND p.EntityGUID IS NULL
-    OPTION (MERGE JOIN)
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 conn.commit()
 
@@ -253,7 +213,7 @@ cursor.execute("""
     SELECT * 
     FROM NegativeList_New WITH (NOLOCK)
     WHERE WLType IS NOT NULL
-    OPTION (MERGE JOIN)
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 conn.commit()
 
@@ -274,21 +234,8 @@ cursor.execute("""
         n.Nationality, n.Citizenship
     FROM NegativeList_New n WITH (NOLOCK)
     INNER JOIN #PEP_GUIDs p ON n.EntityGUID = p.EntityGUID
-    OPTION (MERGE JOIN)
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
-conn.commit()
-
-print("cleaning up temporary indexes...")
-cursor.execute("DROP INDEX IF EXISTS IX_Entity_EntityGUID_Temp ON Entity")
-cursor.execute("DROP INDEX IF EXISTS IX_EntityDOB_New_EntityGUID_Temp ON EntityDOB_New")
-cursor.execute("DROP INDEX IF EXISTS IX_EntityAddress_New_EntityGUID_Temp ON EntityAddress_New")
-cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_New_EntityGUID_Temp ON EntityRemark_New")
-cursor.execute("DROP INDEX IF EXISTS IX_EntitySourceItem_New_EntityGUID_Temp ON EntitySourceItem_New")
-cursor.execute("DROP INDEX IF EXISTS IX_EntityEnforcement_EntityGUID_Temp ON EntityEnforcement")
-cursor.execute("DROP INDEX IF EXISTS IX_EntitySanction_EntityGUID_Temp ON EntitySanction")
-cursor.execute("DROP INDEX IF EXISTS IX_EntityIdentification_National_New_EntityGUID_Temp ON EntityIdentification_National_New")
-cursor.execute("DROP INDEX IF EXISTS IX_EntityIdentification_New_EntityGUID_Temp ON EntityIdentification_New")
-cursor.execute("DROP INDEX IF EXISTS IX_Entity_Citizenship_New_EntityGUID_Temp ON Entity_Citizenship_New")
 conn.commit()
 
 cursor.execute("DROP TABLE IF EXISTS NegativeList_New")
