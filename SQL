@@ -34,3 +34,15 @@ SELECT
 FROM sys.dm_exec_requests req
 WHERE req.session_id <> @@SPID 
   AND req.database_id = DB_ID('LexisNexis_Staging');
+
+
+SELECT 
+    session_id,
+    status AS [Query Status],
+    command AS [Command],
+    wait_type AS [Wait Reason],
+    wait_time / 1000 AS [Wait Time (Seconds)],
+    granted_query_memory * 8 / 1024 AS [Memory Allocated (MB)]
+FROM sys.dm_exec_requests
+WHERE session_id <> @@SPID 
+  AND database_id = DB_ID('LexisNexis_Staging');
