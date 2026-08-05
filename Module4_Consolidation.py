@@ -115,8 +115,8 @@ cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
 cursor.execute("""
     SELECT A.EntityGUID, B.tCountry AS Nationality
     INTO #TempNationalities
-    FROM EntityCountryAssociation A
-    INNER HASH JOIN Country B ON A.ISOStandard = B.tISO
+    FROM EntityCountryAssociation A WITH (NOLOCK)
+    INNER HASH JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
     WHERE A.AssociationTypeDesc = 'Nationality'
     OPTION (HASH JOIN)
 """)
@@ -126,7 +126,7 @@ cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 cursor.execute("""
     SELECT DISTINCT EntityGUID
     INTO #PEP_GUIDs
-    FROM EntityCountryAssociation
+    FROM EntityCountryAssociation WITH (NOLOCK)
     WHERE AssociationTypeDesc = 'PEP'
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
@@ -144,13 +144,13 @@ cursor.execute("""
     )
     SELECT 
         A.EntityGUID,
-        A.EntityID as ReferenceID,
-        A.EntityTypeDesc as EntityType,
-        A.Gender,
-        ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,'') as FirstName,
-        A.LastName,
-        A.Name as SecondName,
-        A.Title,
+        CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
+        CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
+        CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
+        CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+        CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
+        CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
+        CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
         B.DOB,
         B.ALTDOB1,
         B.ALTDOB2,
@@ -160,7 +160,7 @@ cursor.execute("""
         C.City,
         C.Country,
         C.POB,
-        isnull(F.SourceName, G.SourceName) as WLType,
+        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
         E.SourceURI as OriginalSource,
         D.Remark,
         H.IdentificationTypeDesc as NationalIDInfo,
@@ -177,18 +177,18 @@ cursor.execute("""
         I.IdNo5,
         J.Nationality,
         K.Citizenship
-    FROM Entity A
-    LEFT JOIN EntityDOB_New B ON A.EntityGUID = B.EntityGUID
-    LEFT JOIN EntityAddress_New C ON A.EntityGUID = C.EntityGUID
-    LEFT JOIN EntityRemark_New D ON A.EntityGUID = D.EntityGUID
-    LEFT JOIN EntitySourceItem_New E ON A.EntityGUID = E.EntityGUID
-    LEFT JOIN EntityEnforcement F ON A.EntityGUID = F.EntityGUID
-    LEFT JOIN EntitySanction G ON A.EntityGUID = G.EntityGUID
-    LEFT JOIN EntityIdentification_National_New H ON A.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I ON A.EntityGUID = I.EntityGUID
+    FROM Entity A WITH (NOLOCK)
+    LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+    LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+    LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
+    LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+    LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
+    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
     LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
-    LEFT JOIN Entity_Citizenship_New K ON A.EntityGUID = K.EntityGUID
-    OPTION (HASH JOIN, MAXDOP 4)
+    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
+    OPTION (HASH JOIN)
 """)
 conn.commit()
 print(f"done assembling profiles, took {time.time() - start_time:.2f} seconds.")
@@ -200,10 +200,10 @@ print("loading non-pep profiles...")
 cursor.execute("""
     INSERT INTO NegativeList_New1 WITH (TABLOCK)
     SELECT n.* 
-    FROM NegativeList_New n
+    FROM NegativeList_New n WITH (NOLOCK)
     LEFT JOIN #PEP_GUIDs p ON n.EntityGUID = p.EntityGUID
     WHERE n.WLType IS NULL AND p.EntityGUID IS NULL
-    OPTION (HASH JOIN, MAXDOP 4)
+    OPTION (HASH JOIN)
 """)
 conn.commit()
 
@@ -211,9 +211,9 @@ print("loading sanctions and enforcements...")
 cursor.execute("""
     INSERT INTO NegativeList_New1 WITH (TABLOCK)
     SELECT * 
-    FROM NegativeList_New 
+    FROM NegativeList_New WITH (NOLOCK)
     WHERE WLType IS NOT NULL
-    OPTION (HASH JOIN, MAXDOP 4)
+    OPTION (HASH JOIN)
 """)
 conn.commit()
 
@@ -232,9 +232,9 @@ cursor.execute("""
         'PEP' AS WLType, n.OriginalSource, n.Remark, n.NationalIDInfo, n.NationalIDNo,
         n.IdOtherInfo1, n.IdNo1, n.IdOtherInfo2, n.IdNo2, n.IdOtherInfo3, n.IdNo3, n.IdOtherInfo4, n.IdNo4, n.IdOtherInfo5, n.IdNo5,
         n.Nationality, n.Citizenship
-    FROM NegativeList_New n
+    FROM NegativeList_New n WITH (NOLOCK)
     INNER JOIN #PEP_GUIDs p ON n.EntityGUID = p.EntityGUID
-    OPTION (HASH JOIN, MAXDOP 4)
+    OPTION (HASH JOIN)
 """)
 conn.commit()
 
@@ -251,3 +251,4 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
+
