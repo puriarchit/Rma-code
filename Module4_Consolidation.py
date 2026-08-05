@@ -132,64 +132,48 @@ cursor.execute("""
 cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 conn.commit()
 
+print("indexing Entity table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Entity_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_Entity_EntityGUID_Temp ON Entity(EntityGUID)")
+conn.commit()
+
+print("indexing DOB table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityDOB_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityDOB_New_EntityGUID_Temp ON EntityDOB_New(EntityGUID)")
+conn.commit()
+
+print("indexing Address table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityAddress_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityAddress_New_EntityGUID_Temp ON EntityAddress_New(EntityGUID)")
+conn.commit()
+
+print("indexing Remarks table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityRemark_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityRemark_New_EntityGUID_Temp ON EntityRemark_New(EntityGUID)")
+conn.commit()
+
+print("indexing Web Links table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntitySourceItem_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntitySourceItem_New_EntityGUID_Temp ON EntitySourceItem_New(EntityGUID)")
+conn.commit()
+
+print("indexing Enforcement table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityEnforcement_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityEnforcement_EntityGUID_Temp ON EntityEnforcement(EntityGUID)")
+conn.commit()
+
+print("indexing Sanction table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntitySanction_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntitySanction_EntityGUID_Temp ON EntitySanction(EntityGUID)")
+conn.commit()
+
+print("indexing National ID table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityIdentification_National_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityIdentification_National_New_EntityGUID_Temp ON EntityIdentification_National_New(EntityGUID)")
+conn.commit()
+
+print("indexing Secondary ID table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_EntityIdentification_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_EntityIdentification_New_EntityGUID_Temp ON EntityIdentification_New(EntityGUID)")
+conn.commit()
+
+print("indexing Citizenship table...")
+cursor.execute("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Entity_Citizenship_New_EntityGUID_Temp') CREATE CLUSTERED INDEX IX_Entity_Citizenship_New_EntityGUID_Temp ON Entity_Citizenship_New(EntityGUID)")
+conn.commit()
+
 print("assembling master profile details...")
 start_time = time.time()
-
-cursor.execute("DROP TABLE IF EXISTS #TempGroup1")
-cursor.execute("""
-    SELECT 
-        A.EntityGUID,
-        B.DOB,
-        B.ALTDOB1,
-        B.ALTDOB2,
-        B.ALTDOB3,
-        C.AddressLine1,
-        C.AddressLine2,
-        C.City,
-        C.Country,
-        C.POB
-    INTO #TempGroup1
-    FROM (SELECT EntityGUID FROM Entity WITH (NOLOCK)) A
-    LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-    LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
-    OPTION (HASH JOIN)
-""")
-cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup1_EntityGUID ON #TempGroup1(EntityGUID)")
-conn.commit()
-
-cursor.execute("DROP TABLE IF EXISTS #TempGroup2")
-cursor.execute("""
-    SELECT 
-        A.*,
-        E.SourceURI as OriginalSource,
-        D.Remark
-    INTO #TempGroup2
-    FROM #TempGroup1 A
-    LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
-    LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
-    OPTION (HASH JOIN)
-""")
-cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup2_EntityGUID ON #TempGroup2(EntityGUID)")
-cursor.execute("DROP TABLE #TempGroup1")
-conn.commit()
-
-cursor.execute("DROP TABLE IF EXISTS #TempGroup3")
-cursor.execute("""
-    SELECT 
-        A.*,
-        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
-        K.Citizenship
-    INTO #TempGroup3
-    FROM #TempGroup2 A
-    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
-    LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-    OPTION (HASH JOIN)
-""")
-cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup3_EntityGUID ON #TempGroup3(EntityGUID)")
-cursor.execute("DROP TABLE #TempGroup2")
-conn.commit()
-
 cursor.execute("""
     INSERT INTO NegativeList_New WITH (TABLOCK) (
         EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -207,21 +191,45 @@ cursor.execute("""
         CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
         CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
         CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
-        T.DOB, T.ALTDOB1, T.ALTDOB2, T.ALTDOB3, T.AddressLine1, T.AddressLine2, T.City, T.Country, T.POB,
-        T.WLType, T.OriginalSource, T.Remark,
+        B.DOB,
+        B.ALTDOB1,
+        B.ALTDOB2,
+        B.ALTDOB3,
+        C.AddressLine1,
+        C.AddressLine2,
+        C.City,
+        C.Country,
+        C.POB,
+        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
+        E.SourceURI as OriginalSource,
+        D.Remark,
         H.IdentificationTypeDesc as NationalIDInfo,
         H.IdentificationNumber as NationalIDNo,
-        I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+        I.IdOtherInfo1,
+        I.IdNo1,
+        I.IdOtherInfo2,
+        I.IdNo2,
+        I.IdOtherInfo3,
+        I.IdNo3,
+        I.IdOtherInfo4,
+        I.IdNo4,
+        I.IdOtherInfo5,
+        I.IdNo5,
         J.Nationality,
-        T.Citizenship
-    FROM #TempGroup3 T
-    INNER JOIN Entity A WITH (NOLOCK) ON T.EntityGUID = A.EntityGUID
-    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON T.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON T.EntityGUID = I.EntityGUID
-    LEFT JOIN #TempNationalities J ON T.EntityGUID = J.EntityGUID
-    OPTION (HASH JOIN)
+        K.Citizenship
+    FROM Entity A WITH (NOLOCK)
+    LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+    LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+    LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
+    LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+    LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
+    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
+    LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
+    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
+    OPTION (MERGE JOIN)
 """)
-cursor.execute("DROP TABLE #TempGroup3")
 conn.commit()
 print(f"done assembling profiles, took {time.time() - start_time:.2f} seconds.")
 
@@ -235,7 +243,7 @@ cursor.execute("""
     FROM NegativeList_New n WITH (NOLOCK)
     LEFT JOIN #PEP_GUIDs p ON n.EntityGUID = p.EntityGUID
     WHERE n.WLType IS NULL AND p.EntityGUID IS NULL
-    OPTION (HASH JOIN)
+    OPTION (MERGE JOIN)
 """)
 conn.commit()
 
@@ -245,7 +253,7 @@ cursor.execute("""
     SELECT * 
     FROM NegativeList_New WITH (NOLOCK)
     WHERE WLType IS NOT NULL
-    OPTION (HASH JOIN)
+    OPTION (MERGE JOIN)
 """)
 conn.commit()
 
@@ -266,8 +274,21 @@ cursor.execute("""
         n.Nationality, n.Citizenship
     FROM NegativeList_New n WITH (NOLOCK)
     INNER JOIN #PEP_GUIDs p ON n.EntityGUID = p.EntityGUID
-    OPTION (HASH JOIN)
+    OPTION (MERGE JOIN)
 """)
+conn.commit()
+
+print("cleaning up temporary indexes...")
+cursor.execute("DROP INDEX IF EXISTS IX_Entity_EntityGUID_Temp ON Entity")
+cursor.execute("DROP INDEX IF EXISTS IX_EntityDOB_New_EntityGUID_Temp ON EntityDOB_New")
+cursor.execute("DROP INDEX IF EXISTS IX_EntityAddress_New_EntityGUID_Temp ON EntityAddress_New")
+cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_New_EntityGUID_Temp ON EntityRemark_New")
+cursor.execute("DROP INDEX IF EXISTS IX_EntitySourceItem_New_EntityGUID_Temp ON EntitySourceItem_New")
+cursor.execute("DROP INDEX IF EXISTS IX_EntityEnforcement_EntityGUID_Temp ON EntityEnforcement")
+cursor.execute("DROP INDEX IF EXISTS IX_EntitySanction_EntityGUID_Temp ON EntitySanction")
+cursor.execute("DROP INDEX IF EXISTS IX_EntityIdentification_National_New_EntityGUID_Temp ON EntityIdentification_National_New")
+cursor.execute("DROP INDEX IF EXISTS IX_EntityIdentification_New_EntityGUID_Temp ON EntityIdentification_New")
+cursor.execute("DROP INDEX IF EXISTS IX_Entity_Citizenship_New_EntityGUID_Temp ON Entity_Citizenship_New")
 conn.commit()
 
 cursor.execute("DROP TABLE IF EXISTS NegativeList_New")
@@ -283,4 +304,5 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
+
 
