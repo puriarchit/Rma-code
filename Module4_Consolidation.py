@@ -119,7 +119,7 @@ cursor.execute("""
     FROM EntityCountryAssociation A WITH (NOLOCK)
     INNER HASH JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
     WHERE A.AssociationTypeDesc = 'Nationality'
-    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 15)
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_TempNationalities_EntityGUID ON #TempNationalities(EntityGUID)")
 
@@ -135,7 +135,80 @@ conn.commit()
 print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
 
 print("assembling master profile details...")
-step_start = time.time()
+master_total_time = 0.0
+
+# Step 1: Join DOB + Address (Narrow intermediate)
+print("step 1 processed (DOB & Address details joined)...")
+t0 = time.time()
+cursor.execute("DROP TABLE IF EXISTS #TempGroup1")
+cursor.execute("""
+    SELECT 
+        A.EntityGUID,
+        B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
+        C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB
+    INTO #TempGroup1
+    FROM (SELECT EntityGUID FROM Entity WITH (NOLOCK)) A
+    LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+    LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 20)
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup1_EntityGUID ON #TempGroup1(EntityGUID)")
+cursor.execute("SELECT COUNT(*) FROM #TempGroup1")
+g1_count = cursor.fetchone()[0]
+dt = time.time() - t0
+master_total_time += dt
+print(f"step 1 completed ({g1_count} rows), took {dt:.2f} seconds.")
+
+# Step 2: Join Remarks + Web Links (Narrow intermediate)
+print("step 2 processed (Remarks & Web Links joined)...")
+t0 = time.time()
+cursor.execute("DROP TABLE IF EXISTS #TempGroup2")
+cursor.execute("""
+    SELECT 
+        A.*,
+        D.Remark,
+        E.SourceURI as OriginalSource
+    INTO #TempGroup2
+    FROM #TempGroup1 A
+    LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
+    LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 20)
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup2_EntityGUID ON #TempGroup2(EntityGUID)")
+cursor.execute("DROP TABLE #TempGroup1")
+cursor.execute("SELECT COUNT(*) FROM #TempGroup2")
+g2_count = cursor.fetchone()[0]
+dt = time.time() - t0
+master_total_time += dt
+print(f"step 2 completed ({g2_count} rows), took {dt:.2f} seconds.")
+
+# Step 3: Join Enforcements + Sanctions + Citizenships (Narrow intermediate)
+print("step 3 processed (Enforcements, Sanctions & Citizenships joined)...")
+t0 = time.time()
+cursor.execute("DROP TABLE IF EXISTS #TempGroup3")
+cursor.execute("""
+    SELECT 
+        A.*,
+        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
+        K.Citizenship
+    INTO #TempGroup3
+    FROM #TempGroup2 A
+    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+    LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 20)
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup3_EntityGUID ON #TempGroup3(EntityGUID)")
+cursor.execute("DROP TABLE #TempGroup2")
+cursor.execute("SELECT COUNT(*) FROM #TempGroup3")
+g3_count = cursor.fetchone()[0]
+dt = time.time() - t0
+master_total_time += dt
+print(f"step 3 completed ({g3_count} rows), took {dt:.2f} seconds.")
+
+# Step 4: Final insertion into NegativeList_New
+print("step 4 processed (final master profile compilation and insert)...")
+t0 = time.time()
 cursor.execute("""
     INSERT INTO NegativeList_New WITH (TABLOCK) (
         EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -153,52 +226,36 @@ cursor.execute("""
         CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
         CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
         CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
-        B.DOB,
-        B.ALTDOB1,
-        B.ALTDOB2,
-        B.ALTDOB3,
-        C.AddressLine1,
-        C.AddressLine2,
-        C.City,
-        C.Country,
-        C.POB,
-        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
-        E.SourceURI as OriginalSource,
-        D.Remark,
+        T.DOB, T.ALTDOB1, T.ALTDOB2, T.ALTDOB3,
+        T.AddressLine1, T.AddressLine2, T.City, T.Country, T.POB,
+        T.WLType, T.OriginalSource, T.Remark,
         H.IdentificationTypeDesc as NationalIDInfo,
         H.IdentificationNumber as NationalIDNo,
-        I.IdOtherInfo1,
-        I.IdNo1,
-        I.IdOtherInfo2,
-        I.IdNo2,
-        I.IdOtherInfo3,
-        I.IdNo3,
-        I.IdOtherInfo4,
-        I.IdNo4,
-        I.IdOtherInfo5,
-        I.IdNo5,
+        I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
         J.Nationality,
-        K.Citizenship
-    FROM Entity A WITH (NOLOCK)
-    LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-    LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
-    LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
-    LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
-    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
-    LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
-    LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
-    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 25)
+        T.Citizenship
+    FROM #TempGroup3 T
+    INNER JOIN Entity A WITH (NOLOCK) ON T.EntityGUID = A.EntityGUID
+    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON T.EntityGUID = H.EntityGUID
+    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON T.EntityGUID = I.EntityGUID
+    LEFT JOIN #TempNationalities J ON T.EntityGUID = J.EntityGUID
+    OPTION (HASH JOIN, MIN_GRANT_PERCENT = 20)
 """)
 conn.commit()
-rows_master = cursor.execute("SELECT COUNT(*) FROM NegativeList_New WITH (NOLOCK)").fetchone()[0]
-print(f"master profiles consolidated ({rows_master} rows), took {time.time() - step_start:.2f} seconds.")
+cursor.execute("DROP TABLE IF EXISTS #TempGroup3")
+cursor.execute("SELECT COUNT(*) FROM NegativeList_New WITH (NOLOCK)")
+rows_master = cursor.fetchone()[0]
+dt = time.time() - t0
+master_total_time += dt
+print(f"master profiles consolidated ({rows_master} rows), took {dt:.2f} seconds.")
 
 print("splitting profiles into watchlist categories...")
-step_start = time.time()
+split_total_rows = 0
+split_total_time = 0.0
 
+# 1. Non-PEP Split
+print("loading non-pep profiles...")
+t0 = time.time()
 cursor.execute("""
     INSERT INTO NegativeList_New1 WITH (TABLOCK)
     SELECT n.* 
@@ -208,16 +265,38 @@ cursor.execute("""
     OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 conn.commit()
+rows_nonpep = cursor.rowcount
+if rows_nonpep <= 0:
+    cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK) WHERE WLType IS NULL")
+    rows_nonpep = cursor.fetchone()[0]
+dt = time.time() - t0
+split_total_rows += rows_nonpep
+split_total_time += dt
+print(f"non-pep watchlist split complete ({rows_nonpep} rows) in {dt:.2f} seconds.")
 
+# 2. Sanctions/Enforcements Split
+print("loading sanctions and enforcements...")
+t0 = time.time()
 cursor.execute("""
     INSERT INTO NegativeList_New1 WITH (TABLOCK)
     SELECT * 
     FROM NegativeList_New WITH (NOLOCK)
-    WHERE WLType IS NOT NULL
+    WHERE WLType IS NOT NULL AND WLType <> 'PEP'
     OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 conn.commit()
+rows_sanc = cursor.rowcount
+if rows_sanc <= 0:
+    cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK) WHERE WLType IS NOT NULL AND WLType <> 'PEP'")
+    rows_sanc = cursor.fetchone()[0]
+dt = time.time() - t0
+split_total_rows += rows_sanc
+split_total_time += dt
+print(f"sanctions split complete ({rows_sanc} rows) in {dt:.2f} seconds.")
 
+# 3. PEP Split
+print("loading pep profiles...")
+t0 = time.time()
 cursor.execute("""
     INSERT INTO NegativeList_New1 WITH (TABLOCK) (
         EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -237,14 +316,22 @@ cursor.execute("""
     OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 conn.commit()
+rows_pep = cursor.rowcount
+if rows_pep <= 0:
+    cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK) WHERE WLType = 'PEP'")
+    rows_pep = cursor.fetchone()[0]
+dt = time.time() - t0
+split_total_rows += rows_pep
+split_total_time += dt
+print(f"pep watchlist split complete ({rows_pep} rows) in {dt:.2f} seconds.")
 
+# Cleanup temporary tables
 cursor.execute("DROP TABLE IF EXISTS NegativeList_New")
 cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
 cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 conn.commit()
 
-rows_split = cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK)").fetchone()[0]
-print(f"watchlist splits categorized ({rows_split} rows), took {time.time() - step_start:.2f} seconds.")
+print(f"watchlist splits categorized ({split_total_rows} rows), took {split_total_time:.2f} seconds.")
 
 cursor.close()
 conn.close()
