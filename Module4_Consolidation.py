@@ -134,14 +134,9 @@ conn.commit()
 
 print("assembling master profile details...")
 start_time = time.time()
+
+cursor.execute("DROP TABLE IF EXISTS #TempGroup1")
 cursor.execute("""
-    INSERT INTO NegativeList_New WITH (TABLOCK) (
-        EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-        DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
-        WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-        IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-        Nationality, Citizenship
-    )
     SELECT 
         A.EntityGUID,
         CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
@@ -159,37 +154,73 @@ cursor.execute("""
         C.AddressLine2,
         C.City,
         C.Country,
-        C.POB,
-        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
-        E.SourceURI as OriginalSource,
-        D.Remark,
-        H.IdentificationTypeDesc as NationalIDInfo,
-        H.IdentificationNumber as NationalIDNo,
-        I.IdOtherInfo1,
-        I.IdNo1,
-        I.IdOtherInfo2,
-        I.IdNo2,
-        I.IdOtherInfo3,
-        I.IdNo3,
-        I.IdOtherInfo4,
-        I.IdNo4,
-        I.IdOtherInfo5,
-        I.IdNo5,
-        J.Nationality,
-        K.Citizenship
+        C.POB
+    INTO #TempGroup1
     FROM Entity A WITH (NOLOCK)
     LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
     LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+    OPTION (HASH JOIN)
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup1_EntityGUID ON #TempGroup1(EntityGUID)")
+conn.commit()
+
+cursor.execute("DROP TABLE IF EXISTS #TempGroup2")
+cursor.execute("""
+    SELECT 
+        A.*,
+        E.SourceURI as OriginalSource,
+        D.Remark
+    INTO #TempGroup2
+    FROM #TempGroup1 A
     LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
     LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+    OPTION (HASH JOIN)
+""")
+cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup2_EntityGUID ON #TempGroup2(EntityGUID)")
+cursor.execute("DROP TABLE #TempGroup1")
+conn.commit()
+
+cursor.execute("DROP TABLE IF EXISTS #TempGroup3")
+cursor.execute("""
+    SELECT 
+        A.*,
+        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
+        K.Citizenship
+    INTO #TempGroup3
+    FROM #TempGroup2 A
     LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
     LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
-    LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
     LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
     OPTION (HASH JOIN)
 """)
+cursor.execute("CREATE CLUSTERED INDEX IX_TempGroup3_EntityGUID ON #TempGroup3(EntityGUID)")
+cursor.execute("DROP TABLE #TempGroup2")
+conn.commit()
+
+cursor.execute("""
+    INSERT INTO NegativeList_New WITH (TABLOCK) (
+        EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+        DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
+        WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+        IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+        Nationality, Citizenship
+    )
+    SELECT 
+        A.EntityGUID, A.ReferenceID, A.EntityType, A.Gender, A.FirstName, A.LastName, A.SecondName, A.Title,
+        A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, A.AddressLine1, A.AddressLine2, A.City, A.Country, A.POB,
+        A.WLType, A.OriginalSource, A.Remark,
+        H.IdentificationTypeDesc as NationalIDInfo,
+        H.IdentificationNumber as NationalIDNo,
+        I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+        J.Nationality,
+        A.Citizenship
+    FROM #TempGroup3 A
+    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
+    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
+    LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
+    OPTION (HASH JOIN)
+""")
+cursor.execute("DROP TABLE #TempGroup3")
 conn.commit()
 print(f"done assembling profiles, took {time.time() - start_time:.2f} seconds.")
 
@@ -251,4 +282,5 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
+
 
