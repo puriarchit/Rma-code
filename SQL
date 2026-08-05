@@ -1,16 +1,8 @@
 SELECT 
-    session_id,
-    status,
-    command,
-    blocking_session_id,
+    blocking_session_id AS BlockingSession,
+    session_id AS BlockedSession,
     wait_type,
-    wait_time / 1000 AS wait_seconds,
-    DB_NAME(database_id) as database_name,
-    (SELECT SUBSTRING(text, statement_start_offset/2 + 1,
-        (CASE WHEN statement_end_offset = -1 
-            THEN LEN(CONVERT(nvarchar(max), text)) * 2 
-            ELSE statement_end_offset 
-        END - statement_start_offset)/2)
-     FROM sys.dm_exec_sql_text(sql_handle)) AS query_text
+    wait_time / 1000 AS WaitSeconds,
+    wait_resource
 FROM sys.dm_exec_requests
-WHERE session_id <> @@SPID;
+WHERE blocking_session_id <> 0;
