@@ -46,3 +46,8 @@ SELECT
 FROM sys.dm_exec_requests
 WHERE session_id <> @@SPID 
   AND database_id = DB_ID('LexisNexis_Staging');
+
+SELECT SUM(rows) AS [Live Rows Written in Target Table]
+FROM sys.partitions 
+WHERE object_id = OBJECT_ID('LexisNexis_Staging.dbo.NegativeList_New') 
+  AND index_id IN (0, 1);
