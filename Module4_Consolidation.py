@@ -19,9 +19,24 @@ try:
     cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
     cursor.execute("USE LexisNexis_Staging")
+    
+    # Reclaim space inside database file by truncating obsolete raw tables
+    print("reclaiming database file pages from obsolete raw tables...")
+    obsolete_tables = [
+        "AssociatedEntity", "ConsolidatedSanction", "EntityAddress", 
+        "EntityAdverseMedia", "EntityAdverseMediaSubCategory", 
+        "EntityDeletes", "EntityDOB", "EntityEnforcementSubCategory", 
+        "EntityIdentification", "EntityRemark", "EntitySourceItem"
+    ]
+    for tbl in obsolete_tables:
+        try:
+            cursor.execute(f"TRUNCATE TABLE {tbl}")
+        except Exception as truncate_ex:
+            print(f"  note: could not truncate {tbl}: {truncate_ex}")
+            
     cursor.execute("CHECKPOINT")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("database optimized and log file shrunk.")
+    print("database optimized, log file shrunk, and obsolete staging tables truncated.")
 except Exception as e:
     print("db maintenance alert:", e)
 
@@ -164,6 +179,11 @@ cursor.execute("""
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 conn.commit()
+try:
+    cursor.execute("TRUNCATE TABLE EntityCountryAssociation")
+    cursor.execute("CHECKPOINT")
+except Exception as e:
+    print("  note: could not truncate EntityCountryAssociation:", e)
 print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
 
 print("assembling master profile details...")
