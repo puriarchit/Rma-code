@@ -80,4 +80,13 @@ WHERE session_id = 54;
 
 
 
+SELECT 
+    physical_operator_name AS [Database Operator],
+    row_count AS [Processed Rows],
+    estimate_row_count AS [Estimated Rows],
+    CAST(row_count * 100.0 / NULLIF(estimate_row_count, 0) AS DECIMAL(5,2)) AS [Progress %]
+FROM sys.dm_exec_query_profiles
+WHERE session_id = 52;
+
+
 
