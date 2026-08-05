@@ -792,3 +792,165 @@ SELECT
     last_wait_type
 FROM sys.dm_exec_requests
 WHERE session_id IN (51, 59);
+session_id	physical_operator_name	row_count	estimate_row_count	PercentComplete
+52	Hash Match	0	2101417	0.00
+52	Hash Match	0	2080861	0.00
+52	Parallelism	0	12035338	0.00
+52	Parallelism	0	1809750	0.00
+52	Parallelism	605996	605386	100.10
+52	Table Insert	0	0	NULL
+52	Table Scan	603916	605386	99.76
+52	Hash Match	0	2051889	0.00
+52	Hash Match	0	0	NULL
+52	Hash Match	0	2093799	0.00
+52	Parallelism	0	1123390	0.00
+52	Parallelism	0	0	NULL
+52	Parallelism	108606	108109	100.46
+52	Table Scan	0	0	NULL
+52	Table Scan	106411	108109	98.43
+52	Hash Match	0	2014215	0.00
+52	Hash Match	0	2093730	0.00
+52	Parallelism	0	764330	0.00
+52	Hash Match	0	0	NULL
+52	Table Insert	0	3008837	0.00
+52	Parallelism	67491	67570	99.88
+52	Parallelism	0	0	NULL
+52	Table Scan	69488	67570	102.84
+52	Clustered Index Scan	0	0	NULL
+52	Hash Match	0	3008837	0.00
+52	Hash Match	0	2093673	0.00
+52	Parallelism	0	2013742	0.00
+52	Hash Match	0	0	NULL
+52	Parallelism	378675	379157	99.87
+52	Parallelism	733117	1574730	46.56
+52	Parallelism	0	0	NULL
+52	Table Scan	752770	1574730	47.80
+52	Table Scan	395328	379157	104.26
+52	Table Scan	0	0	NULL
+52	Hash Match	0	2080861	0.00
+52	Hash Match	0	0	NULL
+52	Hash Match	0	2985243	0.00
+52	Parallelism	0	1809750	0.00
+52	Parallelism	0	0	NULL
+52	Parallelism	0	1	0.00
+52	Table Scan	0	0	NULL
+52	Hash Match	0	2051889	0.00
+52	Hash Match	0	2985243	0.00
+52	Parallelism	0	1123390	0.00
+52	Hash Match	0	0	NULL
+52	Parallelism	834746	834238	100.06
+52	Parallelism	0	0	NULL
+52	Table Scan	832932	834238	99.84
+52	Hash Match	0	2014215	0.00
+52	Table Scan	0	0	NULL
+52	Hash Match	0	2101420	0.00
+52	Parallelism	0	764330	0.00
+52	Hash Match	0	0	NULL
+52	Table Insert	0	3008834	0.00
+52	Parallelism	604939	605390	99.93
+52	Parallelism	0	0	NULL
+52	Table Scan	607360	605390	100.33
+52	Table Scan	0	0	NULL
+52	Hash Match	0	3008834	0.00
+52	Parallelism	0	2013742	0.00
+52	Hash Match	0	0	NULL
+52	Hash Match	0	2093801	0.00
+52	Parallelism	378856	379153	99.92
+52	Parallelism	0	0	NULL
+52	Table Scan	367488	379153	96.92
+52	Parallelism	107787	108113	99.70
+52	Table Scan	0	0	NULL
+52	Table Scan	109756	108113	101.52
+52	Hash Match	0	0	NULL
+52	Hash Match	0	2985239	0.00
+52	Hash Match	0	2093730	0.00
+52	Parallelism	0	0	NULL
+52	Parallelism	67698	67572	100.19
+52	Parallelism	0	1	0.00
+52	Table Scan	0	0	NULL
+52	Table Scan	69567	67572	102.95
+52	Hash Match	0	0	NULL
+52	Hash Match	0	2985239	0.00
+52	Hash Match	0	2093675	0.00
+52	Parallelism	0	0	NULL
+52	Parallelism	730838	1574730	46.41
+52	Parallelism	833821	834236	99.95
+52	Table Scan	0	0	NULL
+52	Table Scan	708811	1574730	45.01
+52	Table Scan	836633	834236	100.29
+52	Hash Match	0	0	NULL
+52	Hash Match	0	2101417	0.00
+52	Hash Match	0	2080861	0.00
+52	Parallelism	0	0	NULL
+52	Table Insert	0	3008834	0.00
+52	Parallelism	0	1809750	0.00
+52	Parallelism	604898	605386	99.92
+52	Table Scan	0	0	NULL
+52	Table Scan	606687	605386	100.21
+52	Hash Match	0	3008834	0.00
+52	Hash Match	0	2051892	0.00
+52	Parallelism	0	0	NULL
+52	Hash Match	0	2093799	0.00
+52	Parallelism	0	1123394	0.00
+52	Parallelism	379649	379153	100.13
+52	Table Scan	0	0	NULL
+52	Table Scan	369607	379153	97.48
+52	Parallelism	107929	108109	99.83
+52	Table Scan	112937	108109	104.47
+52	Hash Match	0	2014217	0.00
+52	Hash Match	0	2985239	0.00
+52	Hash Match	0	2093730	0.00
+52	Parallelism	0	764332	0.00
+52	Parallelism	67667	67570	100.14
+52	Parallelism	0	1	0.00
+52	Table Scan	68442	67570	101.29
+52	Hash Match	0	2985239	0.00
+52	Hash Match	0	2093673	0.00
+52	Parallelism	0	2013745	0.00
+52	Parallelism	731897	1574730	46.48
+52	Parallelism	833546	834236	99.92
+52	Table Scan	750537	1574730	47.66
+52	Table Scan	833562	834236	99.92
+52	Hash Match	0	2101417	0.00
+52	Hash Match	0	2080861	0.00
+52	Table Insert	0	3008834	0.00
+52	Parallelism	0	1809750	0.00
+52	Parallelism	605714	605386	100.05
+52	Table Scan	603584	605386	99.70
+52	Hash Match	0	3008834	0.00
+52	Hash Match	0	2051889	0.00
+52	Hash Match	0	2093799	0.00
+52	Parallelism	0	1123390	0.00
+52	Parallelism	379435	379153	100.07
+52	Table Scan	384192	379153	101.33
+52	Parallelism	108117	108109	100.01
+52	Table Scan	103335	108109	95.58
+52	Hash Match	0	2014215	0.00
+52	Hash Match	0	2985239	0.00
+52	Hash Match	0	2093730	0.00
+52	Parallelism	0	764330	0.00
+52	Parallelism	0	1	0.00
+52	Parallelism	67425	67570	99.79
+52	Table Scan	62784	67570	92.92
+52	Clustered Index Scan	0	1	0.00
+52	Hash Match	0	2985239	0.00
+52	Hash Match	0	2093673	0.00
+52	Parallelism	0	2013742	0.00
+52	Parallelism	732161	1574730	46.49
+52	Parallelism	834832	834236	100.07
+52	Table Scan	716020	1574730	45.47
+52	Table Scan	833818	834236	99.95
+56	Nested Loops	147	98	150.00
+56	Sort	2	3	66.67
+56	Filter	3	9	33.33
+56	Table-valued function	32	45	71.11
+56	Table-valued function	147	300	49.00
+58	Nested Loops	0	25	0.00
+58	Nested Loops	1	25	4.00
+58	Filter	1	30	3.33
+58	Nested Loops	25	49	51.02
+58	Index Scan	25	49	51.02
+58	Clustered Index Seek	25	49	51.02
+58	Row Count Spool	1	30	3.33
+58	Clustered Index Seek	1	8	12.50
+58	Table-valued function	0	25	0.00
