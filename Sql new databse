@@ -1,0 +1,202 @@
+USE master;
+GO
+
+-- 1. Drop existing database if it exists (force close all connections)
+IF EXISTS (SELECT name FROM sys.databases WHERE name = N'LexisNexis_Staging')
+BEGIN
+    ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE LexisNexis_Staging;
+END
+GO
+
+-- 2. Create fresh brand-new database
+CREATE DATABASE LexisNexis_Staging;
+GO
+
+-- 3. Set recovery model to SIMPLE to prevent log files from growing
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+GO
+
+-- 4. Switch to new database to create tables
+USE LexisNexis_Staging;
+GO
+
+-- AssociatedEntity
+CREATE TABLE AssociatedEntity (
+    EntityGUID NVARCHAR(50),
+    AssociatedEntityGUID NVARCHAR(50),
+    SubCategoryLabel NVARCHAR(100),
+    LastUpdated DATETIME,
+    SourceName NVARCHAR(500)
+);
+
+-- ConsolidatedSanction
+CREATE TABLE ConsolidatedSanction (
+    ConsolidatedSanctionGUID NVARCHAR(50),
+    EntityGUID NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- Entity
+CREATE TABLE Entity (
+    EntityGUID NVARCHAR(50),
+    EntityTypeDesc NVARCHAR(50),
+    Gender NVARCHAR(50),
+    Name NVARCHAR(500),
+    FirstName NVARCHAR(200),
+    MiddleName NVARCHAR(200),
+    LastName NVARCHAR(500),
+    Prefix NVARCHAR(100),
+    Suffix NVARCHAR(50),
+    Title NVARCHAR(500),
+    IsDeceased NVARCHAR(10),
+    DeceasedYear NVARCHAR(10),
+    DeceasedMonth NVARCHAR(10),
+    DeceasedDay NVARCHAR(10),
+    IsRelatedEntity NVARCHAR(10),
+    EntityID NVARCHAR(50),
+    LookupID NVARCHAR(50),
+    LastUpdated DATETIME,
+    AssociatedPhoto NVARCHAR(10)
+);
+
+-- EntityAddress
+CREATE TABLE EntityAddress (
+    EntityGUID NVARCHAR(50),
+    EntityAddressGUID NVARCHAR(50),
+    AddressTypeDesc NVARCHAR(100),
+    Address1 NVARCHAR(500),
+    Address2 NVARCHAR(500),
+    City NVARCHAR(200),
+    StateProvinceRegion NVARCHAR(200),
+    PostalCode NVARCHAR(50),
+    Country NVARCHAR(200),
+    ISOStandard NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- EntityAdverseMedia
+CREATE TABLE EntityAdverseMedia (
+    EntityGUID NVARCHAR(50),
+    EntityAdverseMediaGUID NVARCHAR(50),
+    AdverseMediaDesc NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- EntityAdverseMediaSubCategory
+CREATE TABLE EntityAdverseMediaSubCategory (
+    EntityAdverseMediaGUID NVARCHAR(50),
+    EntityAdverseMediaSubCategoryGUID NVARCHAR(50),
+    SubCategoryLabel NVARCHAR(100),
+    LastUpdated DATETIME
+);
+
+-- EntityAlias
+CREATE TABLE EntityAlias (
+    EntityGUID NVARCHAR(50),
+    EntityAliasGUID NVARCHAR(50),
+    AliasTypeDesc NVARCHAR(100),
+    EnglishDescription NVARCHAR(100),
+    Name NVARCHAR(500),
+    FirstName NVARCHAR(200),
+    MiddleName NVARCHAR(200),
+    LastName NVARCHAR(500),
+    Prefix NVARCHAR(100),
+    Suffix NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- EntityCountryAssociation
+CREATE TABLE EntityCountryAssociation (
+    EntityGUID NVARCHAR(50),
+    EntityCountryAssociationGUID NVARCHAR(50),
+    AssociationTypeDesc NVARCHAR(100),
+    AdministrativeUnitName NVARCHAR(200),
+    ISOStandard NVARCHAR(50),
+    OwnershipPercentageCalc NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- EntityDeletes
+CREATE TABLE EntityDeletes (
+    EntityGUID NVARCHAR(50),
+    DateDeleted DATETIME
+);
+
+-- EntityDOB
+CREATE TABLE EntityDOB (
+    EntityGUID NVARCHAR(50),
+    EntityDOBGUID NVARCHAR(50),
+    BirthYear NVARCHAR(10),
+    BirthMonth NVARCHAR(10),
+    BirthDay NVARCHAR(10),
+    LastUpdated DATETIME
+);
+
+-- EntityEnforcement
+CREATE TABLE EntityEnforcement (
+    EntityGUID NVARCHAR(50),
+    EntityEnforcementGUID NVARCHAR(50),
+    EnforcementDesc NVARCHAR(50),
+    SourceName NVARCHAR(500),
+    SourceNameAbbrev NVARCHAR(50),
+    AdministrativeUnitName NVARCHAR(200),
+    ISOStandard NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- EntityEnforcementSubCategory
+CREATE TABLE EntityEnforcementSubCategory (
+    EntityEnforcementGUID NVARCHAR(50),
+    EntityEnforcementSubCategoryGUID NVARCHAR(50),
+    SubCategoryLabel NVARCHAR(100),
+    LastUpdated DATETIME
+);
+
+-- EntityIdentification
+CREATE TABLE EntityIdentification (
+    EntityGUID NVARCHAR(50),
+    EntityIdentificationGUID NVARCHAR(50),
+    AdministrativeUnitName NVARCHAR(200),
+    ISOStandard NVARCHAR(50),
+    IdentificationIssuer NVARCHAR(500),
+    IdentificationTypeDesc NVARCHAR(200),
+    IdentificationNumber NVARCHAR(200),
+    IssueYear NVARCHAR(10),
+    IssueMonth NVARCHAR(10),
+    IssueDay NVARCHAR(10),
+    ExpirationYear NVARCHAR(10),
+    ExpirationMonth NVARCHAR(10),
+    ExpirationDay NVARCHAR(10),
+    LastUpdated DATETIME
+);
+
+-- EntityRemark
+CREATE TABLE EntityRemark (
+    EntityGUID NVARCHAR(50),
+    EntityRemarkGUID NVARCHAR(50),
+    Remark NVARCHAR(MAX),
+    LastUpdated DATETIME
+);
+
+-- EntitySanction
+CREATE TABLE EntitySanction (
+    EntityGUID NVARCHAR(50),
+    EntitySanctionGUID NVARCHAR(50),
+    SubCategoryLabel NVARCHAR(100),
+    ConsolidatedSanctionGUID NVARCHAR(50),
+    SourceName NVARCHAR(500),
+    SourceNameAbbrev NVARCHAR(50),
+    AdministrativeUnitName NVARCHAR(200),
+    ISOStandard NVARCHAR(50),
+    LastUpdated DATETIME
+);
+
+-- EntitySourceItem
+CREATE TABLE EntitySourceItem (
+    EntityGUID NVARCHAR(50),
+    EntitySourceItemGUID NVARCHAR(50),
+    SourceURI NVARCHAR(MAX),
+    LastUpdated DATETIME
+);
+GO
