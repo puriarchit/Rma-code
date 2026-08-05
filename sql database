@@ -774,31 +774,13 @@ GO
 
 
 
-SELECT 
-    session_id,
-    command,
-    status,
-    percent_complete,
-    CAST((estimated_completion_time / 1000.0 / 60.0) AS DECIMAL(5,2)) AS EstimatedMinutesLeft
-FROM sys.dm_exec_requests
-WHERE command LIKE '%ROLLBACK%' OR command LIKE '%ALTER%';
-
-
-SELECT 
-    session_id, 
-    blocking_session_id, 
-    wait_type, 
-    wait_time / 1000 AS WaitSeconds, 
-    last_wait_type
-FROM sys.dm_exec_requests
-WHERE session_id IN (51, 59);
-session_id	physical_operator_name	row_count	estimate_row_count	PercentComplete
 52	Hash Match	0	2101417	0.00
 52	Hash Match	0	2080861	0.00
 52	Parallelism	0	12035338	0.00
-52	Parallelism	0	1809750	0.00
+52	Parallelism	1220018	1809750	67.41
 52	Parallelism	605996	605386	100.10
 52	Table Insert	0	0	NULL
+52	Table Scan	1232103	1809750	68.08
 52	Table Scan	603916	605386	99.76
 52	Hash Match	0	2051889	0.00
 52	Hash Match	0	0	NULL
@@ -822,16 +804,17 @@ session_id	physical_operator_name	row_count	estimate_row_count	PercentComplete
 52	Parallelism	0	2013742	0.00
 52	Hash Match	0	0	NULL
 52	Parallelism	378675	379157	99.87
-52	Parallelism	733117	1574730	46.56
+52	Parallelism	1575742	1574730	100.06
 52	Parallelism	0	0	NULL
-52	Table Scan	752770	1574730	47.80
+52	Table Scan	1591171	1574730	101.04
 52	Table Scan	395328	379157	104.26
 52	Table Scan	0	0	NULL
 52	Hash Match	0	2080861	0.00
 52	Hash Match	0	0	NULL
 52	Hash Match	0	2985243	0.00
-52	Parallelism	0	1809750	0.00
+52	Parallelism	1219777	1809750	67.40
 52	Parallelism	0	0	NULL
+52	Table Scan	1221160	1809750	67.48
 52	Parallelism	0	1	0.00
 52	Table Scan	0	0	NULL
 52	Hash Match	0	2051889	0.00
@@ -873,19 +856,20 @@ session_id	physical_operator_name	row_count	estimate_row_count	PercentComplete
 52	Hash Match	0	2985239	0.00
 52	Hash Match	0	2093675	0.00
 52	Parallelism	0	0	NULL
-52	Parallelism	730838	1574730	46.41
+52	Parallelism	1573174	1574730	99.90
 52	Parallelism	833821	834236	99.95
 52	Table Scan	0	0	NULL
-52	Table Scan	708811	1574730	45.01
+52	Table Scan	1542299	1574730	97.94
 52	Table Scan	836633	834236	100.29
 52	Hash Match	0	0	NULL
 52	Hash Match	0	2101417	0.00
 52	Hash Match	0	2080861	0.00
 52	Parallelism	0	0	NULL
 52	Table Insert	0	3008834	0.00
-52	Parallelism	0	1809750	0.00
+52	Parallelism	1218213	1809750	67.31
 52	Parallelism	604898	605386	99.92
 52	Table Scan	0	0	NULL
+52	Table Scan	1210807	1809750	66.90
 52	Table Scan	606687	605386	100.21
 52	Hash Match	0	3008834	0.00
 52	Hash Match	0	2051892	0.00
@@ -907,15 +891,16 @@ session_id	physical_operator_name	row_count	estimate_row_count	PercentComplete
 52	Hash Match	0	2985239	0.00
 52	Hash Match	0	2093673	0.00
 52	Parallelism	0	2013745	0.00
-52	Parallelism	731897	1574730	46.48
+52	Parallelism	1574674	1574730	100.00
 52	Parallelism	833546	834236	99.92
-52	Table Scan	750537	1574730	47.66
+52	Table Scan	1605855	1574730	101.98
 52	Table Scan	833562	834236	99.92
 52	Hash Match	0	2101417	0.00
 52	Hash Match	0	2080861	0.00
 52	Table Insert	0	3008834	0.00
-52	Parallelism	0	1809750	0.00
+52	Parallelism	1219700	1809750	67.40
 52	Parallelism	605714	605386	100.05
+52	Table Scan	1213638	1809750	67.06
 52	Table Scan	603584	605386	99.70
 52	Hash Match	0	3008834	0.00
 52	Hash Match	0	2051889	0.00
@@ -936,21 +921,12 @@ session_id	physical_operator_name	row_count	estimate_row_count	PercentComplete
 52	Hash Match	0	2985239	0.00
 52	Hash Match	0	2093673	0.00
 52	Parallelism	0	2013742	0.00
-52	Parallelism	732161	1574730	46.49
+52	Parallelism	1575330	1574730	100.04
 52	Parallelism	834832	834236	100.07
-52	Table Scan	716020	1574730	45.47
+52	Table Scan	1559595	1574730	99.04
 52	Table Scan	833818	834236	99.95
-56	Nested Loops	147	98	150.00
+56	Nested Loops	151	100	151.00
 56	Sort	2	3	66.67
-56	Filter	3	9	33.33
-56	Table-valued function	32	45	71.11
-56	Table-valued function	147	300	49.00
-58	Nested Loops	0	25	0.00
-58	Nested Loops	1	25	4.00
-58	Filter	1	30	3.33
-58	Nested Loops	25	49	51.02
-58	Index Scan	25	49	51.02
-58	Clustered Index Seek	25	49	51.02
-58	Row Count Spool	1	30	3.33
-58	Clustered Index Seek	1	8	12.50
-58	Table-valued function	0	25	0.00
+56	Filter	2	10	20.00
+56	Table-valued function	39	49	79.59
+56	Table-valued function	151	300	50.33
