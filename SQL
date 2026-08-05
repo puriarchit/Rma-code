@@ -103,3 +103,22 @@ ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 GO
 ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
 GO
+
+-- 1. Main database ko shrink karke space free kijiye
+USE LexisNexis_Staging;
+GO
+CHECKPOINT;
+GO
+DBCC SHRINKDATABASE(LexisNexis_Staging, 10);
+GO
+
+-- 2. TempDB database aur log files ko shrink kijiye
+USE tempdb;
+GO
+CHECKPOINT;
+GO
+DBCC SHRINKDATABASE(tempdb, 10);
+GO
+DBCC SHRINKFILE(tempdev, 10);
+DBCC SHRINKFILE(templog, 10);
+GO
