@@ -55,3 +55,16 @@ WHERE object_id = OBJECT_ID('LexisNexis_Staging.dbo.NegativeList_New')
 SELECT name, size * 8 / 1024 AS [Database File Size (MB)]
 FROM sys.master_files 
 WHERE database_id = DB_ID('LexisNexis_Staging');
+
+
+
+SELECT 
+    session_id,
+    blocking_session_id,
+    status,
+    command,
+    wait_type,
+    wait_time / 1000 AS wait_seconds,
+    granted_query_memory * 8 / 1024 AS memory_mb
+FROM sys.dm_exec_requests
+WHERE session_id <> @@SPID;
