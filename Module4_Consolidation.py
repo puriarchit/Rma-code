@@ -35,8 +35,6 @@ index_start = time.time()
 index_queries = [
     ("IX_EntityDOB_New_EntityGUID", "EntityDOB_New", "EntityGUID"),
     ("IX_EntityAddress_New_EntityGUID", "EntityAddress_New", "EntityGUID"),
-    ("IX_EntityRemark_New_EntityGUID", "EntityRemark_New", "EntityGUID"),
-    ("IX_EntitySourceItem_New_EntityGUID", "EntitySourceItem_New", "EntityGUID"),
     ("IX_EntityIdentification_New_EntityGUID", "EntityIdentification_New", "EntityGUID"),
     ("IX_EntityIdentification_National_New_EntityGUID", "EntityIdentification_National_New", "EntityGUID"),
     ("IX_Entity_Citizenship_New_EntityGUID", "Entity_Citizenship_New", "EntityGUID")
@@ -44,15 +42,19 @@ index_queries = [
 
 for idx_name, tbl_name, col_name in index_queries:
     try:
-        # Check if index already exists
+        # Dynamically check if any clustered index (type = 1) exists and drop it
         cursor.execute(f"""
-            SELECT 1 FROM sys.indexes 
-            WHERE name = '{idx_name}' AND object_id = OBJECT_ID('{tbl_name}')
+            SELECT name FROM sys.indexes 
+            WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1
         """)
-        if not cursor.fetchone():
-            print(f"  creating clustered index on {tbl_name}...")
-            cursor.execute(f"CREATE CLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
+        row = cursor.fetchone()
+        if row:
+            cursor.execute(f"DROP INDEX {row[0]} ON {tbl_name}")
             conn.commit()
+            
+        print(f"  creating clustered index on {tbl_name}...")
+        cursor.execute(f"CREATE CLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
+        conn.commit()
     except Exception as ex:
         print(f"  index alert on {tbl_name}: {ex}")
 
@@ -282,5 +284,6 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
+
 
 
