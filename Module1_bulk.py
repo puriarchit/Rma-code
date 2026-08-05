@@ -22,10 +22,8 @@ try:
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
     cursor.execute("USE LexisNexis_Staging")
     cursor.execute("CHECKPOINT")
-    cursor.execute("DBCC FREEPROCCACHE WITH NO_INFOMSGS")
-    cursor.execute("DBCC DROPCLEANBUFFERS WITH NO_INFOMSGS")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("database optimized, caches cleared, and log file shrunk.")
+    print("database optimized and log file shrunk.")
 except Exception as e:
     print("db maintenance alert:", e)
 
@@ -94,4 +92,3 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"bulk load completed in {total_time:.2f} minutes.")
-
