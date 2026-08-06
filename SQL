@@ -348,3 +348,22 @@ WHERE command = 'DbccFilesCompat';
 SELECT session_id, status, command, wait_type 
 FROM sys.dm_exec_requests 
 WHERE session_id > 50;
+
+
+
+EXEC sp_helpindex 'Entity';
+
+
+
+
+SELECT
+    session_id,
+    status,
+    command,
+    wait_type,
+    cpu_time,
+    logical_reads,
+    reads,
+    writes
+FROM sys.dm_exec_requests
+WHERE session_id > 50 AND command IN ('INSERT', 'SELECT', 'SELECT INTO');
