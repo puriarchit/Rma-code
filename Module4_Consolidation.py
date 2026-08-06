@@ -35,8 +35,14 @@ try:
             print(f"  note: could not truncate {tbl}: {truncate_ex}")
             
     cursor.execute("CHECKPOINT")
+    print("  shrinking database transaction log file...")
     cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("database optimized, log file shrunk, and obsolete staging tables truncated.")
+    print("  shrinking database primary data file (reclaiming OS disk space)...")
+    try:
+        cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging, 10)")
+    except Exception as shrink_ex:
+        print(f"  note: could not shrink data file: {shrink_ex}")
+    print("database optimized, logs and data files shrunk, and obsolete staging tables truncated.")
 except Exception as e:
     print("db maintenance alert:", e)
 
@@ -303,3 +309,4 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
+
