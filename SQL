@@ -319,3 +319,13 @@ GO
 SELECT name, log_reuse_wait, log_reuse_wait_desc 
 FROM sys.databases 
 WHERE name = 'LexisNexis_Staging';
+
+SELECT 
+    session_id, 
+    status, 
+    command, 
+    percent_complete, 
+    estimated_completion_time / 1000 / 60 AS estimated_minutes_left,
+    wait_type
+FROM sys.dm_exec_requests
+WHERE command = 'DbccFilesCompat';
