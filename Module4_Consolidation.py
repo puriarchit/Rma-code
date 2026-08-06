@@ -63,6 +63,10 @@ raw_index_queries = [
 ]
 for idx_name, tbl_name, col_name in raw_index_queries:
     try:
+        cursor.execute(f"SELECT 1 FROM sys.indexes WHERE name = '{idx_name}'")
+        if cursor.fetchone():
+            print(f"  index {idx_name} on raw table {tbl_name} already exists, skipping...")
+            continue
         cursor.execute(f"IF EXISTS (SELECT * FROM sys.indexes WHERE name = '{idx_name}') DROP INDEX {idx_name} ON {tbl_name}")
         if tbl_name == "Entity":
             print(f"  creating clustered index on raw table {tbl_name}...")
@@ -86,6 +90,10 @@ index_queries = [
 
 for idx_name, tbl_name, col_name in index_queries:
     try:
+        cursor.execute(f"SELECT 1 FROM sys.indexes WHERE name = '{idx_name}'")
+        if cursor.fetchone():
+            print(f"  index {idx_name} on {tbl_name} already exists, skipping...")
+            continue
         # Dynamically check if any clustered index (type = 1) exists and drop it
         cursor.execute(f"""
             SELECT name FROM sys.indexes 
@@ -300,7 +308,7 @@ while True:
         LEFT JOIN #TempNationalities J ON B.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON B.EntityGUID = K.EntityGUID
         WHERE p.EntityGUID IS NULL OR (isnull(F.SourceName, G.SourceName) IS NOT NULL AND isnull(F.SourceName, G.SourceName) <> 'PEP')
-        OPTION (RECOMPILE, MAXDOP 4)
+        OPTION (MERGE JOIN, RECOMPILE, MAXDOP 4)
     """)
     conn.commit()
     print(f"    Stage 3 non-PEP completed in {time.time() - stage3_nonpep_start:.2f} seconds.")
@@ -338,7 +346,7 @@ while True:
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON B.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON B.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON B.EntityGUID = K.EntityGUID
-        OPTION (RECOMPILE, MAXDOP 4)
+        OPTION (MERGE JOIN, RECOMPILE, MAXDOP 4)
     """)
     conn.commit()
     print(f"    Stage 3 PEP completed in {time.time() - stage3_pep_start:.2f} seconds.")
