@@ -389,3 +389,14 @@ SELECT
     cpu_time
 FROM sys.dm_exec_requests
 WHERE session_id = 56;
+
+
+SELECT
+    session_id,
+    command,
+    status,
+    wait_type,
+    reads,
+    writes
+FROM sys.dm_exec_requests
+WHERE command = 'INSERT';
