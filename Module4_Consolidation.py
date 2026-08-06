@@ -173,7 +173,7 @@ print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
 print("assembling master profile details...")
 step_start = time.time()
 
-# Pre-create Stage 1 and Stage 2 temporary tables with clustered indexes once outside the loop
+# Pre-create Stage 1 temporary table with clustered index once outside the loop
 print("  pre-creating optimized temp staging tables and indexes...")
 cursor.execute("DROP TABLE IF EXISTS #Base1")
 cursor.execute("""
@@ -198,32 +198,6 @@ cursor.execute("""
     )
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_Base1_EntityGUID ON #Base1(EntityGUID)")
-
-cursor.execute("DROP TABLE IF EXISTS #Base2")
-cursor.execute("""
-    CREATE TABLE #Base2 (
-        EntityGUID NVARCHAR(50) NOT NULL,
-        ReferenceID NVARCHAR(50) NULL,
-        EntityType NVARCHAR(50) NULL,
-        Gender NVARCHAR(50) NULL,
-        FirstName NVARCHAR(4000) NULL,
-        LastName NVARCHAR(250) NULL,
-        SecondName NVARCHAR(500) NULL,
-        Title NVARCHAR(250) NULL,
-        DOB NVARCHAR(92) NULL,
-        ALTDOB1 DATETIME NULL,
-        ALTDOB2 DATETIME NULL,
-        ALTDOB3 DATETIME NULL,
-        AddressLine1 NVARCHAR(255) NULL,
-        AddressLine2 NVARCHAR(255) NULL,
-        City NVARCHAR(50) NULL,
-        Country NVARCHAR(100) NULL,
-        POB NVARCHAR(50) NULL,
-        Remark NVARCHAR(4000) NULL,
-        OriginalSource NVARCHAR(MAX) NULL
-    )
-""")
-cursor.execute("CREATE CLUSTERED INDEX IX_Base2_EntityGUID ON #Base2(EntityGUID)")
 conn.commit()
 
 # Keyset range batching loop on EntityGUID index
@@ -254,7 +228,6 @@ while True:
     print("    cleaning staging temp tables...")
     sys.stdout.flush()
     cursor.execute("TRUNCATE TABLE #Base1")
-    cursor.execute("TRUNCATE TABLE #Base2")
     conn.commit()
     
     # Stage 1: Demographics for current batch range -> #Base1
@@ -287,31 +260,7 @@ while True:
     print(f"    Stage 1 completed in {time.time() - stage1_start:.2f} seconds.")
     sys.stdout.flush()
     
-    # Stage 2: Profile compilation for current batch range -> #Base2
-    print("    executing Stage 2: compiling remarks and sources...")
-    sys.stdout.flush()
-    stage2_start = time.time()
-    cursor.execute("""
-        INSERT INTO #Base2 (
-            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
-            Remark, OriginalSource
-        )
-        SELECT 
-            B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
-            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
-            D.Remark,
-            E.SourceURI as OriginalSource
-        FROM #Base1 B
-        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON B.EntityGUID = D.EntityGUID
-        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON B.EntityGUID = E.EntityGUID
-        OPTION (RECOMPILE, MAXDOP 4)
-    """)
-    conn.commit()
-    print(f"    Stage 2 completed in {time.time() - stage2_start:.2f} seconds.")
-    sys.stdout.flush()
-    
-    # Stage 3: Load final target NegativeList_New1 (non-PEPs and PEPs splits)
+    # Stage 3: Load final target NegativeList_New1 directly by joining #Base1 with Remarks and Sources
     print("    executing Stage 3: loading non-PEP profiles...")
     sys.stdout.flush()
     stage3_nonpep_start = time.time()
@@ -327,15 +276,17 @@ while True:
             B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
             CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
-            B.OriginalSource,
-            B.Remark,
+            E.SourceURI as OriginalSource,
+            D.Remark,
             H.IdentificationTypeDesc as NationalIDInfo,
             H.IdentificationNumber as NationalIDNo,
             I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
             J.Nationality,
             K.Citizenship
-        FROM #Base2 B
+        FROM #Base1 B
         LEFT JOIN #PEP_GUIDs p ON B.EntityGUID = p.EntityGUID
+        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON B.EntityGUID = D.EntityGUID
+        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON B.EntityGUID = E.EntityGUID
         LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON B.EntityGUID = F.EntityGUID
         LEFT JOIN EntitySanction G WITH (NOLOCK) ON B.EntityGUID = G.EntityGUID
         LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON B.EntityGUID = H.EntityGUID
@@ -364,15 +315,17 @@ while True:
             B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
             'PEP' AS WLType,
-            B.OriginalSource,
-            B.Remark,
+            E.SourceURI as OriginalSource,
+            D.Remark,
             H.IdentificationTypeDesc as NationalIDInfo,
             H.IdentificationNumber as NationalIDNo,
             I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
             J.Nationality,
             K.Citizenship
-        FROM #Base2 B
+        FROM #Base1 B
         INNER JOIN #PEP_GUIDs p ON B.EntityGUID = p.EntityGUID
+        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON B.EntityGUID = D.EntityGUID
+        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON B.EntityGUID = E.EntityGUID
         LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON B.EntityGUID = F.EntityGUID
         LEFT JOIN EntitySanction G WITH (NOLOCK) ON B.EntityGUID = G.EntityGUID
         LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON B.EntityGUID = H.EntityGUID
@@ -392,7 +345,6 @@ while True:
 
 # Cleanup intermediate temp tables to release physical TempDB pages
 cursor.execute("DROP TABLE IF EXISTS #Base1")
-cursor.execute("DROP TABLE IF EXISTS #Base2")
 cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
 cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 conn.commit()
@@ -406,3 +358,4 @@ conn.close()
 global_end = time.time()
 total_time = (global_end - global_start) / 60
 print(f"module 4 completed in {total_time:.2f} minutes.")
+
