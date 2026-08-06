@@ -268,3 +268,16 @@ SELECT
     estimated_completion_time / 1000 / 60 AS estimated_minutes_left
 FROM sys.dm_exec_requests
 WHERE status = 'rollback' OR command LIKE '%ROLLBACK%';
+
+
+
+SELECT 
+    des.session_id,
+    des.login_name,
+    des.status,
+    dt.transaction_id,
+    dt.name AS transaction_name,
+    dt.transaction_begin_time
+FROM sys.dm_tran_active_transactions dt
+INNER JOIN sys.dm_tran_session_transactions det ON dt.transaction_id = det.transaction_id
+INNER JOIN sys.dm_exec_sessions des ON det.session_id = des.session_id;
