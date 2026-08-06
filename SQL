@@ -281,3 +281,34 @@ SELECT
 FROM sys.dm_tran_active_transactions dt
 INNER JOIN sys.dm_tran_session_transactions det ON dt.transaction_id = det.transaction_id
 INNER JOIN sys.dm_exec_sessions des ON det.session_id = des.session_id;
+
+
+
+
+USE master;
+GO
+-- 1. D drive me temporary log file add karein taaki database ko I/O space mile
+ALTER DATABASE LexisNexis_Staging 
+ADD LOG FILE (
+    NAME = LexisNexis_Staging_log_temp,
+    FILENAME = 'D:\LexisNexis_Staging_log_temp.ldf',
+    SIZE = 100MB,
+    FILEGROWTH = 50MB
+);
+GO
+
+USE LexisNexis_Staging;
+GO
+-- 2. Recovery SIMPLE karke checkpoint run karein aur original log shrink karein
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+GO
+CHECKPOINT;
+GO
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
+
+USE master;
+GO
+-- 3. Temp log file ko clean-up/remove kar dein
+ALTER DATABASE LexisNexis_Staging REMOVE FILE LexisNexis_Staging_log_temp;
+GO
