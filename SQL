@@ -312,3 +312,10 @@ GO
 -- 3. Temp log file ko clean-up/remove kar dein
 ALTER DATABASE LexisNexis_Staging REMOVE FILE LexisNexis_Staging_log_temp;
 GO
+
+
+
+
+SELECT name, log_reuse_wait, log_reuse_wait_desc 
+FROM sys.databases 
+WHERE name = 'LexisNexis_Staging';
