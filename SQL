@@ -236,3 +236,14 @@ FROM sys.tables t
 INNER JOIN sys.partitions p ON t.object_id = p.object_id
 WHERE p.index_id IN (0,1)
 ORDER BY TableName;
+
+SELECT 
+    r.session_id,
+    r.status,
+    r.command,
+    r.wait_type,
+    r.cpu_time,
+    r.logical_reads,
+    r.writes
+FROM sys.dm_exec_requests r
+WHERE r.session_id > 50 AND r.command = 'INSERT';
