@@ -610,47 +610,17 @@ cursor.execute("DROP TABLE IF EXISTS #DuplicateGUIDs")
 conn.commit()
 
 cursor.execute("""
-    SELECT EntityGUID, Remark
-    FROM EntityRemark_DUP
-    ORDER BY EntityGUID
+    INSERT INTO EntityRemark_New (EntityGUID, Remark)
+    SELECT 
+        EntityGUID,
+        CAST(SUBSTRING(STRING_AGG(CAST(ISNULL(Remark, '') AS NVARCHAR(MAX)), '; '), 1, 4000) AS NVARCHAR(4000))
+    FROM (
+        SELECT DISTINCT EntityGUID, Remark
+        FROM EntityRemark_DUP
+    ) AS t
+    GROUP BY EntityGUID
 """)
-
-current_guid = None
-current_remarks = []
-batch_remark = []
-batch_size = 50000
-
-while True:
-    rows = cursor.fetchmany(batch_size)
-    if not rows:
-        break
-    for guid, remark in rows:
-        if guid != current_guid:
-            if current_guid is not None:
-                unique_remarks = list(dict.fromkeys(current_remarks))
-                merged_remarks = "; ".join(unique_remarks)[:4000]
-                batch_remark.append((current_guid, merged_remarks))
-                
-                if len(batch_remark) >= batch_size:
-                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-                    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
-                    conn_insert.commit()
-                    batch_remark = []
-            current_guid = guid
-            current_remarks = [remark] if remark else [""]
-        else:
-            if remark:
-                current_remarks.append(remark)
-
-if current_guid is not None:
-    unique_remarks = list(dict.fromkeys(current_remarks))
-    merged_remarks = "; ".join(unique_remarks)[:4000]
-    batch_remark.append((current_guid, merged_remarks))
-
-if batch_remark:
-    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
-    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_remark)
-    conn_insert.commit()
+conn.commit()
 
 cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
 conn.commit()
@@ -667,3 +637,4 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"module 3 completed in {total_time:.2f} minutes.")
+
