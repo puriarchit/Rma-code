@@ -111,19 +111,19 @@ print("formatting address details...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityAddress_Dup', 'U') IS NOT NULL DROP TABLE EntityAddress_Dup")
-cursor.execute("CREATE TABLE [dbo].[EntityAddress_Dup]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityAddress_Dup](<[EntityGUID] [nvarchar](50>) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityAddress_New', 'U') IS NOT NULL DROP TABLE EntityAddress_New")
-cursor.execute("CREATE TABLE [dbo].[EntityAddress_New]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [POB] [nvarchar](50) NULL, [Country] [nvarchar](100) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityAddress_New](<[EntityGUID] [nvarchar](50>) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [POB] [nvarchar](50) NULL, [Country] [nvarchar](100) NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityAddress1', 'U') IS NOT NULL DROP TABLE EntityAddress1")
-cursor.execute("CREATE TABLE [dbo].[EntityAddress1]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityAddress1](<[EntityGUID] [nvarchar](50>) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityAddress2', 'U') IS NOT NULL DROP TABLE EntityAddress2")
-cursor.execute("CREATE TABLE [dbo].[EntityAddress2]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL, [Rank] [bigint] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityAddress2](<[EntityGUID] [nvarchar](50>) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL, [Rank] [bigint] NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityAddress3', 'U') IS NOT NULL DROP TABLE EntityAddress3")
-cursor.execute("CREATE TABLE [dbo].[EntityAddress3]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL, [rn] [bigint] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityAddress3](<[EntityGUID] [nvarchar](50>) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL, [rn] [bigint] NULL)")
 conn.commit()
 
 cursor.execute("""
@@ -232,10 +232,10 @@ print("mapping citizenship...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('Entity_Citizenship_Duplicate', 'U') IS NOT NULL DROP TABLE Entity_Citizenship_Duplicate")
-cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_Duplicate]([EntityGUID] [nvarchar](50) NULL, [Rank] [bigint] NULL, [ISOStandard] [nvarchar](50) NULL, [AdministrativeUnitName] [nvarchar](200) NULL, [Citizenship] [nvarchar](100) NULL)")
+cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_Duplicate](<[EntityGUID] [nvarchar](50>) NULL, [Rank] [bigint] NULL, [ISOStandard] [nvarchar](50) NULL, [AdministrativeUnitName] [nvarchar](200) NULL, [Citizenship] [nvarchar](100) NULL)")
 
 cursor.execute("IF OBJECT_ID('Entity_Citizenship_New', 'U') IS NOT NULL DROP TABLE Entity_Citizenship_New")
-cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_New]([EntityGUID] [nvarchar](50) NULL, [ISOStandard] [nvarchar](50) NULL, [Citizenship] [nvarchar](100) NULL)")
+cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_New](<[EntityGUID] [nvarchar](50>) NULL, [ISOStandard] [nvarchar](50) NULL, [Citizenship] [nvarchar](100) NULL)")
 conn.commit()
 
 cursor.execute("""
@@ -289,7 +289,7 @@ print("merging nationalities...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityCountryAssociation_New', 'U') IS NOT NULL DROP TABLE EntityCountryAssociation_New")
-cursor.execute("CREATE TABLE [dbo].[EntityCountryAssociation_New]([EntityGUID] [nvarchar](50) NULL, [Nationality] [nvarchar](4000) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityCountryAssociation_New](<[EntityGUID] [nvarchar](50>) NULL, [Nationality] [nvarchar](4000) NULL)")
 conn.commit()
 
 cursor.execute("""
@@ -362,10 +362,10 @@ print("pivoting dob details...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityDOB_Test', 'U') IS NOT NULL DROP TABLE EntityDOB_Test")
-cursor.execute("CREATE TABLE [dbo].[EntityDOB_Test]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [row_rank] [bigint] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityDOB_Test](<[EntityGUID] [nvarchar](50>) NULL, [DOB] [nvarchar](92) NULL, [row_rank] [bigint] NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityDOB_New', 'U') IS NOT NULL DROP TABLE EntityDOB_New")
-cursor.execute("CREATE TABLE [dbo].[EntityDOB_New]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [ALTDOB1] [datetime] NULL, [ALTDOB2] [datetime] NULL, [ALTDOB3] [datetime] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityDOB_New](<[EntityGUID] [nvarchar](50>) NULL, [DOB] [nvarchar](92) NULL, [ALTDOB1] [datetime] NULL, [ALTDOB2] [datetime] NULL, [ALTDOB3] [datetime] NULL)")
 conn.commit()
 
 cursor.execute("""
@@ -406,16 +406,16 @@ print("pivoting identification cards...")
 start_time = time.time()
 
 cursor.execute("IF OBJECT_ID('EntityIdentification_National', 'U') IS NOT NULL DROP TABLE EntityIdentification_National")
-cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National]([EntityGUID] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National](<[EntityGUID] [nvarchar](50>) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityIdentification_National_New', 'U') IS NOT NULL DROP TABLE EntityIdentification_National_New")
-cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National_New]([EntityGUID] [nvarchar](50) NULL, [IdentificationNumber] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](250) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National_New](<[EntityGUID] [nvarchar](50>) NULL, [IdentificationNumber] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](250) NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityIdentification_New', 'U') IS NOT NULL DROP TABLE EntityIdentification_New")
-cursor.execute("CREATE TABLE [dbo].[EntityIdentification_New]([EntityGUID] [nvarchar](50) NULL, [IdOtherInfo1] [nvarchar](250) NULL, [IdNo1] [nvarchar](250) NULL, [IdOtherInfo2] [nvarchar](250) NULL, [IdNo2] [nvarchar](250) NULL, [IdOtherInfo3] [nvarchar](250) NULL, [IdNo3] [nvarchar](250) NULL, [IdOtherInfo4] [nvarchar](250) NULL, [IdNo4] [nvarchar](250) NULL, [IdOtherInfo5] [nvarchar](250) NULL, [IdNo5] [nvarchar](250) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityIdentification_New](<[EntityGUID] [nvarchar](50>) NULL, [IdOtherInfo1] [nvarchar](250) NULL, [IdNo1] [nvarchar](250) NULL, [IdOtherInfo2] [nvarchar](250) NULL, [IdNo2] [nvarchar](250) NULL, [IdOtherInfo3] [nvarchar](250) NULL, [IdNo3] [nvarchar](250) NULL, [IdOtherInfo4] [nvarchar](250) NULL, [IdNo4] [nvarchar](250) NULL, [IdOtherInfo5] [nvarchar](250) NULL, [IdNo5] [nvarchar](250) NULL)")
 
 cursor.execute("IF OBJECT_ID('EntityIdentification_Test', 'U') IS NOT NULL DROP TABLE EntityIdentification_Test")
-cursor.execute("CREATE TABLE [dbo].[EntityIdentification_Test]([EntityGUID] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL, [row_rank] [bigint] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityIdentification_Test](<[EntityGUID] [nvarchar](50>) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL, [row_rank] [bigint] NULL)")
 conn.commit()
 
 cursor.execute("""
@@ -557,12 +557,12 @@ cursor.execute("CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRe
 conn.commit()
 
 cursor.execute("IF OBJECT_ID('EntityRemark_DUP', 'U') IS NOT NULL DROP TABLE EntityRemark_DUP")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP]([EntityGUID] [nvarchar](50) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_DUP](<[EntityGUID] [nvarchar](50>) NOT NULL, [EntityRemarkGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL, [LastUpdated] [datetime] NULL)")
 cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP(EntityGUID)")
 conn.commit()
 
 cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE EntityRemark_New")
-cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
+cursor.execute("CREATE TABLE [dbo].[EntityRemark_New](<[EntityGUID] [nvarchar](50>) NULL, [Remark] [nvarchar](4000) NULL)")
 conn.commit()
 
 print("calculating uniques and duplicates...")
@@ -610,17 +610,47 @@ cursor.execute("DROP TABLE IF EXISTS #DuplicateGUIDs")
 conn.commit()
 
 cursor.execute("""
-    INSERT INTO EntityRemark_New (EntityGUID, Remark)
-    SELECT 
-        EntityGUID,
-        CAST(SUBSTRING(STRING_AGG(CAST(ISNULL(Remark, '') AS NVARCHAR(MAX)), '; '), 1, 4000) AS NVARCHAR(4000))
-    FROM (
-        SELECT DISTINCT EntityGUID, Remark
-        FROM EntityRemark_DUP
-    ) AS t
-    GROUP BY EntityGUID
+    SELECT EntityGUID, Remark
+    FROM EntityRemark_DUP
+    ORDER BY EntityGUID
 """)
-conn.commit()
+
+current_guid = None
+current_remarks = []
+batch_to_insert = []
+batch_size = 50000
+
+while True:
+    rows = cursor.fetchmany(batch_size)
+    if not rows:
+        break
+    for guid, remark in rows:
+        if guid != current_guid:
+            if current_guid is not None:
+                unique_remarks = list(dict.fromkeys(current_remarks))
+                merged_remarks = "; ".join(unique_remarks)[:4000]
+                batch_to_insert.append((current_guid, merged_remarks))
+                
+                if len(batch_to_insert) >= batch_size:
+                    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
+                    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_to_insert)
+                    conn_insert.commit()
+                    batch_to_insert = []
+            current_guid = guid
+            current_remarks = [remark] if remark else [""]
+        else:
+            if remark:
+                current_remarks.append(remark)
+
+if current_guid is not None:
+    unique_remarks = list(dict.fromkeys(current_remarks))
+    merged_remarks = "; ".join(unique_remarks)[:4000]
+    batch_to_insert.append((current_guid, merged_remarks))
+
+if batch_to_insert:
+    insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
+    insert_cursor.executemany("INSERT INTO EntityRemark_New (EntityGUID, Remark) VALUES (?, ?)", batch_to_insert)
+    conn_insert.commit()
 
 cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
 conn.commit()
@@ -637,4 +667,3 @@ global_end = time.time()
 total_time = (global_end - global_start) / 60
 
 print(f"module 3 completed in {total_time:.2f} minutes.")
-
