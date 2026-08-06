@@ -227,3 +227,12 @@ IF OBJECT_ID('dbo.NegativeList_New', 'U') IS NOT NULL
 IF OBJECT_ID('dbo.NegativeList_New1', 'U') IS NOT NULL 
     DROP TABLE dbo.NegativeList_New1;
 GO
+
+
+SELECT 
+    t.name AS TableName, 
+    p.rows AS RowCount
+FROM sys.tables t
+INNER JOIN sys.partitions p ON t.object_id = p.object_id
+WHERE p.index_id IN (0,1)
+ORDER BY TableName;
