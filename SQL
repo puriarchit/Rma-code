@@ -367,3 +367,16 @@ SELECT
     writes
 FROM sys.dm_exec_requests
 WHERE session_id > 50 AND command IN ('INSERT', 'SELECT', 'SELECT INTO');
+
+
+
+
+SELECT
+    session_id,
+    command,
+    percent_complete,
+    estimated_completion_time / 1000 / 60.0 AS time_left_minutes,
+    wait_type,
+    status
+FROM sys.dm_exec_requests
+WHERE command = 'CREATE INDEX';
