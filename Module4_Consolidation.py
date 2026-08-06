@@ -1,3 +1,4 @@
+import sys
 import json
 import os
 import pyodbc
@@ -250,11 +251,16 @@ while True:
     batch_start = time.time()
     
     # Clean previous batch pages from temp tables
+    print("    cleaning staging temp tables...")
+    sys.stdout.flush()
     cursor.execute("TRUNCATE TABLE #Base1")
     cursor.execute("TRUNCATE TABLE #Base2")
     conn.commit()
     
     # Stage 1: Demographics for current batch range -> #Base1
+    print("    executing Stage 1: compiling demographics...")
+    sys.stdout.flush()
+    stage1_start = time.time()
     cursor.execute("""
         INSERT INTO #Base1 (
             EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -278,8 +284,13 @@ while True:
         OPTION (RECOMPILE, MAXDOP 4)
     """, last_guid, max_guid)
     conn.commit()
+    print(f"    Stage 1 completed in {time.time() - stage1_start:.2f} seconds.")
+    sys.stdout.flush()
     
     # Stage 2: Profile compilation for current batch range -> #Base2
+    print("    executing Stage 2: compiling remarks and sources...")
+    sys.stdout.flush()
+    stage2_start = time.time()
     cursor.execute("""
         INSERT INTO #Base2 (
             EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -297,8 +308,13 @@ while True:
         OPTION (RECOMPILE, MAXDOP 4)
     """)
     conn.commit()
+    print(f"    Stage 2 completed in {time.time() - stage2_start:.2f} seconds.")
+    sys.stdout.flush()
     
     # Stage 3: Load final target NegativeList_New1 (non-PEPs and PEPs splits)
+    print("    executing Stage 3: loading non-PEP profiles...")
+    sys.stdout.flush()
+    stage3_nonpep_start = time.time()
     cursor.execute("""
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
             EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -330,7 +346,12 @@ while True:
         OPTION (RECOMPILE, MAXDOP 4)
     """)
     conn.commit()
+    print(f"    Stage 3 non-PEP completed in {time.time() - stage3_nonpep_start:.2f} seconds.")
+    sys.stdout.flush()
     
+    print("    executing Stage 3: loading PEP profiles...")
+    sys.stdout.flush()
+    stage3_pep_start = time.time()
     cursor.execute("""
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
             EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -361,8 +382,11 @@ while True:
         OPTION (RECOMPILE, MAXDOP 4)
     """)
     conn.commit()
+    print(f"    Stage 3 PEP completed in {time.time() - stage3_pep_start:.2f} seconds.")
+    sys.stdout.flush()
     
     print(f"  --> batch completed in {time.time() - batch_start:.2f} seconds.")
+    sys.stdout.flush()
     last_guid = max_guid
     batch_num += 1
 
