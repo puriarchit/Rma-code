@@ -64,8 +64,12 @@ raw_index_queries = [
 for idx_name, tbl_name, col_name in raw_index_queries:
     try:
         cursor.execute(f"IF EXISTS (SELECT * FROM sys.indexes WHERE name = '{idx_name}') DROP INDEX {idx_name} ON {tbl_name}")
-        print(f"  creating non-clustered index on raw table {tbl_name}...")
-        cursor.execute(f"CREATE NONCLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
+        if tbl_name == "Entity":
+            print(f"  creating clustered index on raw table {tbl_name}...")
+            cursor.execute(f"CREATE CLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
+        else:
+            print(f"  creating non-clustered index on raw table {tbl_name}...")
+            cursor.execute(f"CREATE NONCLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
         conn.commit()
     except Exception as ex:
         print(f"  raw table index alert on {tbl_name}: {ex}")
@@ -75,7 +79,9 @@ index_queries = [
     ("IX_EntityAddress_New_EntityGUID", "EntityAddress_New", "EntityGUID"),
     ("IX_EntityIdentification_New_EntityGUID", "EntityIdentification_New", "EntityGUID"),
     ("IX_EntityIdentification_National_New_EntityGUID", "EntityIdentification_National_New", "EntityGUID"),
-    ("IX_Entity_Citizenship_New_EntityGUID", "Entity_Citizenship_New", "EntityGUID")
+    ("IX_Entity_Citizenship_New_EntityGUID", "Entity_Citizenship_New", "EntityGUID"),
+    ("IX_EntityRemark_New_EntityGUID", "EntityRemark_New", "EntityGUID"),
+    ("IX_EntitySourceItem_New_EntityGUID", "EntitySourceItem_New", "EntityGUID")
 ]
 
 for idx_name, tbl_name, col_name in index_queries:
@@ -202,7 +208,7 @@ conn.commit()
 
 # Keyset range batching loop on EntityGUID index
 last_guid = ""
-batch_size = 250000
+batch_size = 100000
 batch_num = 1
 
 while True:
