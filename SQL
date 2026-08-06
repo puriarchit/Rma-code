@@ -341,3 +341,10 @@ SELECT
     estimated_completion_time / 1000 / 60 AS estimated_minutes_left
 FROM sys.dm_exec_requests
 WHERE command = 'DbccFilesCompat';
+
+
+
+
+SELECT session_id, status, command, wait_type 
+FROM sys.dm_exec_requests 
+WHERE session_id > 50;
