@@ -172,129 +172,209 @@ print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
 print("assembling master profile details...")
 step_start = time.time()
 
-# Stage 1: Demographics compilation (Entity + DOB + Address) -> #Base1
-print("  executing Stage 1: compiling demographic details...")
+# Pre-create Stage 1 and Stage 2 temporary tables with clustered indexes once outside the loop
+print("  pre-creating optimized temp staging tables and indexes...")
+cursor.execute("DROP TABLE IF EXISTS #Base1")
 cursor.execute("""
-    DROP TABLE IF EXISTS #Base1;
-    SELECT 
-        A.EntityGUID,
-        CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
-        CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
-        CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-        CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-        CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
-        CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
-        CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
-        B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
-        C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB
-    INTO #Base1
-    FROM Entity A WITH (NOLOCK)
-    LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-    LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+    CREATE TABLE #Base1 (
+        EntityGUID NVARCHAR(50) NOT NULL,
+        ReferenceID NVARCHAR(50) NULL,
+        EntityType NVARCHAR(50) NULL,
+        Gender NVARCHAR(50) NULL,
+        FirstName NVARCHAR(4000) NULL,
+        LastName NVARCHAR(250) NULL,
+        SecondName NVARCHAR(500) NULL,
+        Title NVARCHAR(250) NULL,
+        DOB NVARCHAR(92) NULL,
+        ALTDOB1 DATETIME NULL,
+        ALTDOB2 DATETIME NULL,
+        ALTDOB3 DATETIME NULL,
+        AddressLine1 NVARCHAR(255) NULL,
+        AddressLine2 NVARCHAR(255) NULL,
+        City NVARCHAR(50) NULL,
+        Country NVARCHAR(100) NULL,
+        POB NVARCHAR(50) NULL
+    )
 """)
-conn.commit()
-
-print("  indexing Stage 1 base table...")
 cursor.execute("CREATE CLUSTERED INDEX IX_Base1_EntityGUID ON #Base1(EntityGUID)")
-conn.commit()
 
-# Stage 2: Profiling compilation (Base1 + Remark + Source) -> #Base2
-print("  executing Stage 2: appending remarks and source links...")
+cursor.execute("DROP TABLE IF EXISTS #Base2")
 cursor.execute("""
-    DROP TABLE IF EXISTS #Base2;
-    SELECT 
-        B.*,
-        D.Remark,
-        E.SourceURI as OriginalSource
-    INTO #Base2
-    FROM #Base1 B
-    LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON B.EntityGUID = D.EntityGUID
-    LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON B.EntityGUID = E.EntityGUID
+    CREATE TABLE #Base2 (
+        EntityGUID NVARCHAR(50) NOT NULL,
+        ReferenceID NVARCHAR(50) NULL,
+        EntityType NVARCHAR(50) NULL,
+        Gender NVARCHAR(50) NULL,
+        FirstName NVARCHAR(4000) NULL,
+        LastName NVARCHAR(250) NULL,
+        SecondName NVARCHAR(500) NULL,
+        Title NVARCHAR(250) NULL,
+        DOB NVARCHAR(92) NULL,
+        ALTDOB1 DATETIME NULL,
+        ALTDOB2 DATETIME NULL,
+        ALTDOB3 DATETIME NULL,
+        AddressLine1 NVARCHAR(255) NULL,
+        AddressLine2 NVARCHAR(255) NULL,
+        City NVARCHAR(50) NULL,
+        Country NVARCHAR(100) NULL,
+        POB NVARCHAR(50) NULL,
+        Remark NVARCHAR(4000) NULL,
+        OriginalSource NVARCHAR(MAX) NULL
+    )
 """)
-conn.commit()
-
-print("  indexing Stage 2 base table...")
 cursor.execute("CREATE CLUSTERED INDEX IX_Base2_EntityGUID ON #Base2(EntityGUID)")
 conn.commit()
 
-# Stage 3: Final compilation and target load (Base2 + Citizenship/Nationality/Identifications) -> NegativeList_New1
-print("  executing Stage 3: loading non-PEP profiles...")
-cursor.execute("""
-    INSERT INTO NegativeList_New1 WITH (TABLOCK) (
-        EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-        DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
-        WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-        IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-        Nationality, Citizenship
-    )
-    SELECT 
-        B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
-        B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
-        CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
-        B.OriginalSource,
-        B.Remark,
-        H.IdentificationTypeDesc as NationalIDInfo,
-        H.IdentificationNumber as NationalIDNo,
-        I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
-        J.Nationality,
-        K.Citizenship
-    FROM #Base2 B
-    LEFT JOIN #PEP_GUIDs p ON B.EntityGUID = p.EntityGUID
-    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON B.EntityGUID = F.EntityGUID
-    LEFT JOIN EntitySanction G WITH (NOLOCK) ON B.EntityGUID = G.EntityGUID
-    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON B.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON B.EntityGUID = I.EntityGUID
-    LEFT JOIN #TempNationalities J ON B.EntityGUID = J.EntityGUID
-    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON B.EntityGUID = K.EntityGUID
-    WHERE p.EntityGUID IS NULL OR (isnull(F.SourceName, G.SourceName) IS NOT NULL AND isnull(F.SourceName, G.SourceName) <> 'PEP')
-    OPTION (MERGE JOIN, MIN_GRANT_PERCENT = 10)
-""")
-conn.commit()
-print(f"  non-PEP and consolidated profiles loaded successfully.")
+# Keyset range batching loop on EntityGUID index
+last_guid = ""
+batch_size = 250000
+batch_num = 1
 
-print("  executing Stage 3: loading PEP category profiles...")
-cursor.execute("""
-    INSERT INTO NegativeList_New1 WITH (TABLOCK) (
-        EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-        DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
-        WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-        IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-        Nationality, Citizenship
-    )
-    SELECT 
-        B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
-        B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
-        'PEP' AS WLType,
-        B.OriginalSource,
-        B.Remark,
-        H.IdentificationTypeDesc as NationalIDInfo,
-        H.IdentificationNumber as NationalIDNo,
-        I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
-        J.Nationality,
-        K.Citizenship
-    FROM #Base2 B
-    INNER JOIN #PEP_GUIDs p ON B.EntityGUID = p.EntityGUID
-    LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON B.EntityGUID = F.EntityGUID
-    LEFT JOIN EntitySanction G WITH (NOLOCK) ON B.EntityGUID = G.EntityGUID
-    LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON B.EntityGUID = H.EntityGUID
-    LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON B.EntityGUID = I.EntityGUID
-    LEFT JOIN #TempNationalities J ON B.EntityGUID = J.EntityGUID
-    LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON B.EntityGUID = K.EntityGUID
-    OPTION (MERGE JOIN, MIN_GRANT_PERCENT = 10)
-""")
-conn.commit()
+while True:
+    # 1. Fetch the maximum GUID for the current batch of 250,000 using covering index scan
+    cursor.execute("""
+        SELECT MAX(EntityGUID) FROM (
+            SELECT TOP (?) EntityGUID 
+            FROM Entity WITH (NOLOCK) 
+            WHERE EntityGUID > ? 
+            ORDER BY EntityGUID
+        ) AS Batch
+    """, batch_size, last_guid)
+    
+    max_guid = cursor.fetchone()[0]
+    if not max_guid:
+        print("  all batches completed successfully.")
+        break
+        
+    print(f"  --> processing batch {batch_num} (EntityGUID from '{last_guid}' to '{max_guid}')...")
+    batch_start = time.time()
+    
+    # Clean previous batch pages from temp tables
+    cursor.execute("TRUNCATE TABLE #Base1")
+    cursor.execute("TRUNCATE TABLE #Base2")
+    conn.commit()
+    
+    # Stage 1: Demographics for current batch range -> #Base1
+    cursor.execute("""
+        INSERT INTO #Base1 (
+            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB
+        )
+        SELECT 
+            A.EntityGUID,
+            CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
+            CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
+            CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
+            CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
+            CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
+            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
+            C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB
+        FROM Entity A WITH (NOLOCK)
+        LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+        LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+        WHERE A.EntityGUID > ? AND A.EntityGUID <= ?
+        OPTION (RECOMPILE, MAXDOP 4)
+    """, last_guid, max_guid)
+    conn.commit()
+    
+    # Stage 2: Profile compilation for current batch range -> #Base2
+    cursor.execute("""
+        INSERT INTO #Base2 (
+            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
+            Remark, OriginalSource
+        )
+        SELECT 
+            B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
+            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
+            D.Remark,
+            E.SourceURI as OriginalSource
+        FROM #Base1 B
+        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON B.EntityGUID = D.EntityGUID
+        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON B.EntityGUID = E.EntityGUID
+        OPTION (RECOMPILE, MAXDOP 4)
+    """)
+    conn.commit()
+    
+    # Stage 3: Load final target NegativeList_New1 (non-PEPs and PEPs splits)
+    cursor.execute("""
+        INSERT INTO NegativeList_New1 WITH (TABLOCK) (
+            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
+            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+            Nationality, Citizenship
+        )
+        SELECT 
+            B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
+            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
+            CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
+            B.OriginalSource,
+            B.Remark,
+            H.IdentificationTypeDesc as NationalIDInfo,
+            H.IdentificationNumber as NationalIDNo,
+            I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+            J.Nationality,
+            K.Citizenship
+        FROM #Base2 B
+        LEFT JOIN #PEP_GUIDs p ON B.EntityGUID = p.EntityGUID
+        LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON B.EntityGUID = F.EntityGUID
+        LEFT JOIN EntitySanction G WITH (NOLOCK) ON B.EntityGUID = G.EntityGUID
+        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON B.EntityGUID = H.EntityGUID
+        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON B.EntityGUID = I.EntityGUID
+        LEFT JOIN #TempNationalities J ON B.EntityGUID = J.EntityGUID
+        LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON B.EntityGUID = K.EntityGUID
+        WHERE p.EntityGUID IS NULL OR (isnull(F.SourceName, G.SourceName) IS NOT NULL AND isnull(F.SourceName, G.SourceName) <> 'PEP')
+        OPTION (RECOMPILE, MAXDOP 4)
+    """)
+    conn.commit()
+    
+    cursor.execute("""
+        INSERT INTO NegativeList_New1 WITH (TABLOCK) (
+            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
+            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+            Nationality, Citizenship
+        )
+        SELECT 
+            B.EntityGUID, B.ReferenceID, B.EntityType, B.Gender, B.FirstName, B.LastName, B.SecondName, B.Title,
+            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3, B.AddressLine1, B.AddressLine2, B.City, B.Country, B.POB,
+            'PEP' AS WLType,
+            B.OriginalSource,
+            B.Remark,
+            H.IdentificationTypeDesc as NationalIDInfo,
+            H.IdentificationNumber as NationalIDNo,
+            I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+            J.Nationality,
+            K.Citizenship
+        FROM #Base2 B
+        INNER JOIN #PEP_GUIDs p ON B.EntityGUID = p.EntityGUID
+        LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON B.EntityGUID = F.EntityGUID
+        LEFT JOIN EntitySanction G WITH (NOLOCK) ON B.EntityGUID = G.EntityGUID
+        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON B.EntityGUID = H.EntityGUID
+        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON B.EntityGUID = I.EntityGUID
+        LEFT JOIN #TempNationalities J ON B.EntityGUID = J.EntityGUID
+        LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON B.EntityGUID = K.EntityGUID
+        OPTION (RECOMPILE, MAXDOP 4)
+    """)
+    conn.commit()
+    
+    print(f"  --> batch completed in {time.time() - batch_start:.2f} seconds.")
+    last_guid = max_guid
+    batch_num += 1
 
-# Cleanup temp tables to release physical TempDB pages
+# Cleanup intermediate temp tables to release physical TempDB pages
 cursor.execute("DROP TABLE IF EXISTS #Base1")
 cursor.execute("DROP TABLE IF EXISTS #Base2")
-conn.commit()
-
 cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
 cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 conn.commit()
 
 rows_split = cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK)").fetchone()[0]
-print(f"watchlist splits categorized ({rows_split} rows), took {time.time() - step_start:.2f} seconds.")
+print(f"Watchlist splits categorized ({rows_split} rows), took {time.time() - step_start:.2f} seconds total.")
 
 cursor.close()
 conn.close()
