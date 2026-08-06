@@ -214,3 +214,16 @@ SELECT
     writes
 FROM sys.dm_exec_requests
 WHERE session_id <> @@SPID;
+
+
+USE LexisNexis_Staging;
+GO
+
+-- Drop intermediate consolidation table if it exists
+IF OBJECT_ID('dbo.NegativeList_New', 'U') IS NOT NULL 
+    DROP TABLE dbo.NegativeList_New;
+
+-- Drop final split consolidation table if it exists
+IF OBJECT_ID('dbo.NegativeList_New1', 'U') IS NOT NULL 
+    DROP TABLE dbo.NegativeList_New1;
+GO
