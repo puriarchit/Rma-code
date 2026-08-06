@@ -380,3 +380,12 @@ SELECT
     status
 FROM sys.dm_exec_requests
 WHERE command = 'CREATE INDEX';
+
+
+SELECT
+    reads,
+    logical_reads,
+    writes,
+    cpu_time
+FROM sys.dm_exec_requests
+WHERE session_id = 56;
