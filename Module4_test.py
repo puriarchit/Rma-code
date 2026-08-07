@@ -192,10 +192,10 @@ except Exception as e:
     print("  warning:", e)
 print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
 
-# Construct CTE wrapper for benchmark testing
+# Construct CTE wrapper for benchmark testing (semicolon prepended for SQL Server CTE rule)
 if ROW_LIMIT is not None:
     cte_prefix = f"""
-    WITH Batch AS (
+    ;WITH Batch AS (
         SELECT TOP ({ROW_LIMIT}) EntityGUID
         FROM Entity WITH (NOLOCK)
         ORDER BY EntityGUID
