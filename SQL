@@ -1,3 +1,16 @@
+SELECT 
+    session_id, 
+    status, 
+    command, 
+    wait_type, 
+    wait_time, 
+    total_elapsed_time / 1000 AS elapsed_seconds
+FROM sys.dm_exec_requests 
+WHERE command IN ('INSERT', 'SELECT', 'CREATE INDEX');
+
+
+
+
 DECLARE @kill varchar(8000) = '';  
 SELECT @kill = @kill + 'kill ' + CONVERT(varchar(5), session_id) + ';'  
 FROM sys.dm_exec_sessions
