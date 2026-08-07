@@ -4,7 +4,6 @@ import os
 import pyodbc
 import time
 
-# Config load karna
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 with open(config_path, "r") as f:
     config = json.load(f)
@@ -17,7 +16,8 @@ conn = pyodbc.connect(conn_str)
 conn.autocommit = True
 cursor = conn.cursor()
 
-# CONFIGURATION: ROW_LIMIT load karna (Default 500,000 test mode)
+# BENCHMARK CONFIGURATION
+# Read dynamic limit from config.json (benchmark_row_limit) or fallback to 500000
 ROW_LIMIT = config.get("benchmark_row_limit", 500000)
 
 try:
@@ -25,7 +25,7 @@ try:
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
     cursor.execute("USE LexisNexis_Staging")
     
-    # Reclaim space by truncating obsolete tables
+    # Reclaim space inside database file by truncating obsolete raw tables
     print("reclaiming database file pages from obsolete raw tables...")
     obsolete_tables = [
         "AssociatedEntity", "ConsolidatedSanction", "EntityAddress", 
@@ -44,11 +44,11 @@ try:
 except Exception as ex:
     print("database optimization warning:", ex)
 
-print(f"starting module 4 (Single-Query Bulk Insert with ROW_LIMIT = {ROW_LIMIT})...")
+print("starting module 4 (Single-Query Bulk Insert)...")
 print("indexing staging tables for fast merge joins...")
 index_start = time.time()
 
-# Staging raw tables indices check/creation
+# Index raw staging tables used in the join to fully optimize join plan
 raw_index_queries = [
     ("IX_Entity_EntityGUID", "Entity", "EntityGUID"),
     ("IX_EntityEnforcement_EntityGUID", "EntityEnforcement", "EntityGUID"),
@@ -61,25 +61,31 @@ for idx_name, tbl_name, col_name in raw_index_queries:
             print(f"  index {idx_name} on raw table {tbl_name} already exists, skipping...")
             continue
         
-        cursor.execute(f"SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1")
+        # Check if the table already has a clustered index (type = 1)
+        cursor.execute(f"""
+            SELECT name FROM sys.indexes 
+            WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1
+        """)
         existing_clustered = cursor.fetchone()
         
         if tbl_name == "Entity":
             if existing_clustered:
-                print(f"  note: raw table {tbl_name} already has clustered index. Creating non-clustered index instead...")
+                print(f"  note: raw table {tbl_name} already has clustered index '{existing_clustered[0]}'. Creating non-clustered index instead...")
                 cursor.execute(f"CREATE NONCLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
             else:
+                print(f"  creating clustered index on raw table {tbl_name}...")
                 cursor.execute(f"CREATE CLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
         else:
-            if existing_clustered:
+            if existing_clustered and tbl_name in ["EntityEnforcement", "EntitySanction"]:
                 cursor.execute(f"CREATE NONCLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
             else:
-                cursor.execute(f"CREATE CLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
+                cursor.execute(f"IF EXISTS (SELECT * FROM sys.indexes WHERE name = '{idx_name}') DROP INDEX {idx_name} ON {tbl_name}")
+                print(f"  creating non-clustered index on raw table {tbl_name}...")
+                cursor.execute(f"CREATE NONCLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
         conn.commit()
     except Exception as ex:
         print(f"  raw table index alert on {tbl_name}: {ex}")
 
-# Check/Create indexes for new tables
 index_queries = [
     ("IX_EntityDOB_New_EntityGUID", "EntityDOB_New", "EntityGUID"),
     ("IX_EntityAddress_New_EntityGUID", "EntityAddress_New", "EntityGUID"),
@@ -89,19 +95,24 @@ index_queries = [
     ("IX_EntityRemark_New_EntityGUID", "EntityRemark_New", "EntityGUID"),
     ("IX_EntitySourceItem_New_EntityGUID", "EntitySourceItem_New", "EntityGUID")
 ]
+
 for idx_name, tbl_name, col_name in index_queries:
     try:
         cursor.execute(f"SELECT 1 FROM sys.indexes WHERE name = '{idx_name}'")
         if cursor.fetchone():
             print(f"  index {idx_name} on {tbl_name} already exists, skipping...")
             continue
-        
-        cursor.execute(f"SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1")
+        # Dynamically check if any clustered index (type = 1) exists and drop it
+        cursor.execute(f"""
+            SELECT name FROM sys.indexes 
+            WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1
+        """)
         row = cursor.fetchone()
         if row:
             cursor.execute(f"DROP INDEX {row[0]} ON {tbl_name}")
             conn.commit()
             
+        print(f"  creating clustered index on {tbl_name}...")
         cursor.execute(f"CREATE CLUSTERED INDEX {idx_name} ON {tbl_name}({col_name})")
         conn.commit()
     except Exception as ex:
@@ -109,12 +120,11 @@ for idx_name, tbl_name, col_name in index_queries:
 
 print(f"indexing staging tables completed, took {time.time() - index_start:.2f} seconds.")
 
-# Recreate target table NegativeList_New1 WITH PAGE COMPRESSION
 print("recreating staging tables with PAGE compression...")
 cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
 cursor.execute("""
-    CREATE TABLE [dbo].[NegativeList_New1](<
-        [EntityGUID] [nvarchar](50>) NULL,
+    CREATE TABLE [dbo].[NegativeList_New1](
+        [EntityGUID] [nvarchar](50) NULL,
         [ReferenceID] [nvarchar](50) NULL,
         [EntityType] [nvarchar](50) NULL,
         [Gender] [nvarchar](50) NULL,
@@ -152,16 +162,16 @@ cursor.execute("""
 """)
 conn.commit()
 
-print("updating database statistics...")
+print("updating database statistics for optimizer plans...")
 try:
     cursor.execute("UPDATE STATISTICS Entity")
     cursor.execute("UPDATE STATISTICS EntityRemark_New")
     cursor.execute("UPDATE STATISTICS EntitySourceItem_New")
     conn.commit()
+    print("  statistics updated successfully.")
 except Exception as e:
-    print("  statistics warning:", e)
+    print("  note: could not update statistics:", e)
 
-# Lookup Tables
 print("creating temporary lookup tables...")
 step_start = time.time()
 cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
@@ -189,10 +199,9 @@ try:
     cursor.execute("TRUNCATE TABLE EntityCountryAssociation")
     cursor.execute("CHECKPOINT")
 except Exception as e:
-    print("  warning:", e)
+    print("  note: could not truncate EntityCountryAssociation:", e)
 print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
 
-# Construct CTE wrapper for benchmark testing (semicolon prepended for SQL Server CTE rule)
 if ROW_LIMIT is not None:
     cte_prefix = f"""
     ;WITH Batch AS (
@@ -206,7 +215,7 @@ else:
     cte_prefix = ""
     from_clause = "FROM Entity A WITH (NOLOCK)"
 
-print("executing Single-Query Bulk Consolidation...")
+print(f"executing Single-Query Bulk Consolidation (ROW_LIMIT = {ROW_LIMIT})...")
 execution_start = time.time()
 
 # 1. Non-PEP Bulk Ingestion
@@ -309,17 +318,20 @@ cursor.execute(f"""
 conn.commit()
 print(f"  Stage 3 PEP completed in {time.time() - stage3_pep_start:.2f} seconds.")
 sys.stdout.flush()
+sys.stdout.flush()
 
-# Cleanup
+# Cleanup lookup tables
 print("cleaning lookup tables...")
 cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
 cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 conn.commit()
 
-# Count Check
+# Final row count verification
 cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK)")
 row_count = cursor.fetchone()[0]
+
 print(f"Watchlist splits categorized ({row_count} rows), took {time.time() - execution_start:.2f} seconds total.")
 print("module 4 completed successfully (Single-Query Bulk Ingest).")
 
 conn.close()
+
