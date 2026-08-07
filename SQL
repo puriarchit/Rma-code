@@ -426,3 +426,13 @@ SELECT
     wait_type, 
     command
 FROM sys.dm_exec_requests;
+
+
+SELECT 
+    session_id, 
+    status, 
+    command, 
+    blocking_session_id, -- Yeh column block karne wale process ka ID batayega
+    wait_type, 
+    wait_time
+FROM sys.dm_exec_requests;
