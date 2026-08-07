@@ -417,3 +417,12 @@ SELECT
     writes
 FROM sys.dm_exec_requests
 WHERE command = 'INSERT';
+
+
+SELECT 
+    session_id, 
+    status, 
+    blocking_session_id, 
+    wait_type, 
+    command
+FROM sys.dm_exec_requests;
