@@ -1,25 +1,23 @@
+python
+
+
 import sys
 import json
 import os
 import pyodbc
 import time
-
 # Config load karna
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 with open(config_path, "r") as f:
     config = json.load(f)
 db = config["database"]
-
 trusted = "yes" if db["trusted_connection"] else "no"
 conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
-
 conn = pyodbc.connect(conn_str)
 conn.autocommit = True
 cursor = conn.cursor()
-
 # CONFIGURATION: ROW_LIMIT load karna (Default 500,000 test mode)
 ROW_LIMIT = config.get("benchmark_row_limit", 500000)
-
 try:
     cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
     cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
@@ -43,11 +41,9 @@ try:
     print("database optimized, logs and data files shrunk, and obsolete staging tables truncated.")
 except Exception as ex:
     print("database optimization warning:", ex)
-
 print(f"starting module 4 (Single-Query Bulk Insert with ROW_LIMIT = {ROW_LIMIT})...")
 print("indexing staging tables for fast merge joins...")
 index_start = time.time()
-
 # Staging raw tables indices check/creation
 raw_index_queries = [
     ("IX_Entity_EntityGUID", "Entity", "EntityGUID"),
@@ -78,7 +74,6 @@ for idx_name, tbl_name, col_name in raw_index_queries:
         conn.commit()
     except Exception as ex:
         print(f"  raw table index alert on {tbl_name}: {ex}")
-
 # Check/Create indexes for new tables
 index_queries = [
     ("IX_EntityDOB_New_EntityGUID", "EntityDOB_New", "EntityGUID"),
@@ -106,9 +101,7 @@ for idx_name, tbl_name, col_name in index_queries:
         conn.commit()
     except Exception as ex:
         print(f"  index alert on {tbl_name}: {ex}")
-
 print(f"indexing staging tables completed, took {time.time() - index_start:.2f} seconds.")
-
 # Recreate target table NegativeList_New1 WITH PAGE COMPRESSION
 print("recreating staging tables with PAGE compression...")
 cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
@@ -151,7 +144,6 @@ cursor.execute("""
     ) WITH (DATA_COMPRESSION = PAGE)
 """)
 conn.commit()
-
 print("updating database statistics...")
 try:
     cursor.execute("UPDATE STATISTICS Entity")
@@ -160,7 +152,6 @@ try:
     conn.commit()
 except Exception as e:
     print("  statistics warning:", e)
-
 # Lookup Tables
 print("creating temporary lookup tables...")
 step_start = time.time()
@@ -174,7 +165,6 @@ cursor.execute("""
     OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_TempNationalities_EntityGUID ON #TempNationalities(EntityGUID)")
-
 cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 cursor.execute("""
     SELECT DISTINCT EntityGUID
@@ -184,14 +174,12 @@ cursor.execute("""
 """)
 cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 conn.commit()
-
 try:
     cursor.execute("TRUNCATE TABLE EntityCountryAssociation")
     cursor.execute("CHECKPOINT")
 except Exception as e:
     print("  warning:", e)
 print(f"lookup tables created, took {time.time() - step_start:.2f} seconds.")
-
 # Construct CTE wrapper for benchmark testing (semicolon prepended for SQL Server CTE rule)
 if ROW_LIMIT is not None:
     cte_prefix = f"""
@@ -205,10 +193,8 @@ if ROW_LIMIT is not None:
 else:
     cte_prefix = ""
     from_clause = "FROM Entity A WITH (NOLOCK)"
-
 print("executing Single-Query Bulk Consolidation...")
 execution_start = time.time()
-
 # 1. Non-PEP Bulk Ingestion
 print("  running Stage 3: loading non-PEP profiles...")
 sys.stdout.flush()
@@ -259,7 +245,6 @@ cursor.execute(f"""
 conn.commit()
 print(f"  Stage 3 non-PEP completed in {time.time() - stage3_nonpep_start:.2f} seconds.")
 sys.stdout.flush()
-
 # 2. PEP Bulk Ingestion
 print("  running Stage 3: loading PEP profiles...")
 sys.stdout.flush()
@@ -309,17 +294,14 @@ cursor.execute(f"""
 conn.commit()
 print(f"  Stage 3 PEP completed in {time.time() - stage3_pep_start:.2f} seconds.")
 sys.stdout.flush()
-
 # Cleanup
 print("cleaning lookup tables...")
 cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
 cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 conn.commit()
-
 # Count Check
 cursor.execute("SELECT COUNT(*) FROM NegativeList_New1 WITH (NOLOCK)")
 row_count = cursor.fetchone()[0]
 print(f"Watchlist splits categorized ({row_count} rows), took {time.time() - execution_start:.2f} seconds total.")
 print("module 4 completed successfully (Single-Query Bulk Ingest).")
-
 conn.close()
