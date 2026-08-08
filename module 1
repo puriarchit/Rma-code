@@ -1,137 +1,45 @@
-import zipfile
-import os
-import pyodbc
-
-server = "WIN-Q6F1HDK5R4D"
-database = "LexisNexis_Staging"
-zip_path = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958.zip"
-
-conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
-conn = pyodbc.connect(conn_str)
-cursor = conn.cursor()
-cursor.fast_executemany = True
-# Self-healing database space maintenance block
-try:
-    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
-    cursor.execute("USE LexisNexis_Staging")
-    cursor.execute("CHECKPOINT")
-    cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    conn.commit()
-    print("Database auto-growth optimized and log file shrunk successfully!")
-except Exception as e:
-    print("Database maintenance warning:", e)
-
-files_list = [
-    ("AssociatedEntity.txt", "AssociatedEntity"),
-    ("ConsolidatedSanction.txt", "ConsolidatedSanction"),
-    ("Entity.txt", "Entity"),
-    ("EntityAddress.txt", "EntityAddress"),
-    ("EntityAdverseMedia.txt", "EntityAdverseMedia"),
-    ("EntityAdverseMediaSubCategory.txt", "EntityAdverseMediaSubCategory"),
-    ("EntityAlias.txt", "EntityAlias"),
-    ("EntityCountryAssociation.txt", "EntityCountryAssociation"),
-    ("EntityDeletes.txt", "EntityDeletes"),
-    ("EntityDOB.txt", "EntityDOB"),
-    ("EntityEnforcement.txt", "EntityEnforcement"),
-    ("EntityEnforcementSubCategory.txt", "EntityEnforcementSubCategory"),
-    ("EntityIdentification.txt", "EntityIdentification"),
-    ("EntityRemark.txt", "EntityRemark"),
-    ("EntitySanction.txt", "EntitySanction"),
-    ("EntitySourceItem.txt", "EntitySourceItem")
-]
-
-print("Starting direct ZIP database loader (Batch Mode)...\n")
-
-with zipfile.ZipFile(zip_path, "r") as z:
-    zip_files = z.namelist()
-    
-    for filename, tablename in files_list:
-        target_path = None
-        for zf in zip_files:
-            if zf.lower().endswith(filename.lower()):
-                target_path = zf
-                break
-                
-        if target_path:
-            print("Loading:", filename)
-            
-            cursor.execute(f"TRUNCATE TABLE {tablename}")
-            
-            cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
-            col_count = len(cursor.description)
-            
-            f = z.open(target_path, "r")
-            f.readline()
-            
-            rows = []
-            total_loaded = 0
-            
-            for line_bytes in f:
-                line = line_bytes.decode("utf-8", errors="ignore")
-                fields = line.strip('\r\n').split('|')
-                
-                if not fields or fields == ['']:
-                    continue
-                
-                clean_fields = []
-                for val in fields:
-                    if val:
-                        clean_fields.append(val.strip().replace("'", "''"))
-                    else:
-                        clean_fields.append(None)
-            
-                if len(clean_fields) < col_count:
-                    clean_fields.extend([None] * (col_count - len(clean_fields)))
-                else:
-                    clean_fields = clean_fields[:col_count]
-                
-                rows.append(clean_fields)
-                
-                # 50,000 rows hone par bulk load chalana aur memory clear karna
-                if len(rows) >= 50000:
-                    placeholders = ", ".join(["?" for i in range(col_count)])
-                    insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
-                    cursor.executemany(insert_query, rows)
-                    conn.commit()
-                    total_loaded += len(rows)
-                    rows.clear() # RAM khali karna
-            
-            # Bache hue rows ko last me insert karna
-            if rows:
-                placeholders = ", ".join(["?" for i in range(col_count)])
-                insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
-                cursor.executemany(insert_query, rows)
-                conn.commit()
-                total_loaded += len(rows)
-                
-            f.close()
-            print(filename, f"done! (Total {total_loaded} rows loaded)\n")
-        else:
-            print("Not found inside ZIP:", filename)
-
-cursor.close()
-conn.close()
-print("All files loaded successfully!")
-
-
-
-
-
-
-
-import zipfile
+import json
 import os
 import pyodbc
 import time
 
-server = "WIN-Q6F1HDK5R4D"
-database = "LexisNexis_Staging"
-zip_path = r"D:\LexisNexis\MWV01TF_WorldCompliancePlus_20260508_075958.zip"
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+with open(config_path, "r") as f:
+    config = json.load(f)
 
-conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
+db = config["database"]
+paths = config["paths"]
+
+trusted = "yes" if db["trusted_connection"] else "no"
+conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
 conn = pyodbc.connect(conn_str)
+conn.autocommit = True
 cursor = conn.cursor()
-cursor.fast_executemany = True
+
+try:
+    cursor.execute("ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE")
+    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 512MB)")
+    cursor.execute("ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
+    cursor.execute("USE LexisNexis_Staging")
+    cursor.execute("CHECKPOINT")
+    cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
+    
+    # Drop raw staging table indexes to make BULK INSERT fast
+    raw_indexes_to_drop = [
+        ("IX_Entity_EntityGUID", "Entity"),
+        ("IX_EntityEnforcement_EntityGUID", "EntityEnforcement"),
+        ("IX_EntitySanction_EntityGUID", "EntitySanction"),
+        ("IX_EntityRemark_EntityGUID", "EntityRemark")
+    ]
+    for idx_name, tbl_name in raw_indexes_to_drop:
+        try:
+            cursor.execute(f"DROP INDEX IF EXISTS {idx_name} ON {tbl_name}")
+        except Exception:
+            pass
+            
+    print("database optimized, logs shrunk, and raw staging indexes dropped.")
+except Exception as e:
+    print("db maintenance alert:", e)
 
 files_list = [
     ("AssociatedEntity.txt", "AssociatedEntity"),
@@ -152,76 +60,49 @@ files_list = [
     ("EntitySourceItem.txt", "EntitySourceItem")
 ]
 
-print("Starting Optimized Direct ZIP database loader (Dynamic Batch Mode)...\n")
+print("starting bulk load...")
 global_start = time.time()
 
-with zipfile.ZipFile(zip_path, "r") as z:
-    zip_files = z.namelist()
+for filename, tablename in files_list:
+    filepath = os.path.join(paths["unzipped_folder"], filename)
     
-    for filename, tablename in files_list:
-        target_path = None
-        for zf in zip_files:
-            if zf.lower().endswith(filename.lower()):
-                target_path = zf
-                break
-                
-        if target_path:
-            print("Loading:", filename)
-            file_start = time.time()
-            
+    if os.path.exists(filepath):
+        print(f"ingesting {filename}...")
+        file_start = time.time()
+        
+        try:
             cursor.execute(f"TRUNCATE TABLE {tablename}")
             
-            cursor.execute(f"SELECT TOP 0 * FROM {tablename}")
-            col_count = len(cursor.description)
+            bulk_query = f"""
+                BULK INSERT {tablename}
+                FROM '{filepath}'
+                WITH (
+                    FIELDTERMINATOR = '|',
+                    ROWTERMINATOR = '0x0a',
+                    FIRSTROW = 2,
+                    CODEPAGE = '65001',
+                    TABLOCK,
+                    BATCHSIZE = 100000
+                );
+            """
+            cursor.execute(bulk_query)
             
-            # Dynamic batch size: EntityRemark ke liye 1000, baaki sab ke liye 50000
-            current_batch_size = 1000 if tablename == "EntityRemark" else 50000
-            
-            f = z.open(target_path, "r")
-            f.readline()
-            
-            rows = []
-            total_loaded = 0
-            
-            for line_bytes in f:
-                line = line_bytes.decode("utf-8", errors="ignore")
-                fields = line.strip('\r\n').split('|')
-                
-                if not fields or fields == ['']:
-                    continue
-                
-                clean_fields = [val.strip() if (val and val.strip() != "") else None for val in fields[:col_count]]
-                if len(clean_fields) < col_count:
-                    clean_fields += [None] * (col_count - len(clean_fields))
-                
-                rows.append(clean_fields)
-                
-                if len(rows) >= current_batch_size:
-                    placeholders = ", ".join(["?" for _ in range(col_count)])
-                    insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
-                    cursor.executemany(insert_query, rows)
-                    conn.commit()
-                    total_loaded += len(rows)
-                    rows.clear()
-            
-            if rows:
-                placeholders = ", ".join(["?" for _ in range(col_count)])
-                insert_query = f"INSERT INTO {tablename} VALUES ({placeholders})"
-                cursor.executemany(insert_query, rows)
-                conn.commit()
-                total_loaded += len(rows)
-                
-            f.close()
+            cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
+            row_count = cursor.fetchone()[0]
             
             file_end = time.time()
             time_taken = file_end - file_start
-            print(f"✅ {filename} done! (Total {total_loaded} rows loaded) - Time: {time_taken:.2f} seconds\n")
-        else:
-            print("Not found inside ZIP:", filename)
+            print(f"loaded {tablename} ({row_count} rows) in {time_taken:.2f} seconds.\n")
+            
+        except Exception as ex:
+            print(f"failed to load {filename}: {ex}")
+            raise ex
+    else:
+        print(f"skipping {filename}, file not found\n")
 
 cursor.close()
 conn.close()
 
 global_end = time.time()
 total_time = (global_end - global_start) / 60
-print(f"All files loaded successfully! Total time taken: {total_time:.2f} minutes")
+print(f"bulk load completed in {total_time:.2f} minutes.")
