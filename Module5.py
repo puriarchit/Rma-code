@@ -1,6 +1,7 @@
 import json
 import os
 import pyodbc
+import sys
 import time
 
 config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
@@ -17,8 +18,11 @@ cursor = conn.cursor()
 
 try:
     print("Starting Module 5 (Production Sync & Merge)...")
+    sys.stdout.flush()
     global_start = time.time()
     
+    print("Recreating staging NegativeList table...")
+    sys.stdout.flush()
     cursor.execute("IF OBJECT_ID('NegativeList', 'U') IS NOT NULL DROP TABLE NegativeList")
     cursor.execute("""
         CREATE TABLE [dbo].[NegativeList](
@@ -68,6 +72,8 @@ try:
         )
     """)
     
+    print("Loading non-alias records from NegativeList_New1...")
+    sys.stdout.flush()
     cursor.execute("""
         INSERT INTO NegativeList (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -85,6 +91,8 @@ try:
         FROM NegativeList_New1 WITH (NOLOCK)
     """)
     
+    print("Loading alias profiles using EntityAlias...")
+    sys.stdout.flush()
     cursor.execute("""
         INSERT INTO NegativeList (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -107,9 +115,13 @@ try:
         WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
     """)
     
+    print("Creating indexes on NegativeList staging table...")
+    sys.stdout.flush()
     cursor.execute("CREATE CLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
     cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_Alias ON NegativeList(Alias)")
     
+    print("Extracting unique EntityGUID mapping table...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS EntityGUID")
     cursor.execute("""
         CREATE TABLE EntityGUID (
@@ -128,6 +140,8 @@ try:
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_EntityGUID_Join ON EntityGUID(EntityGUID, EntityAliasGUID, Nationality1, WLType1)")
     
+    print("Populating NegativeList_NotNull table...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS NegativeList_NotNull")
     cursor.execute("""
         CREATE TABLE NegativeList_NotNull (
@@ -145,6 +159,8 @@ try:
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_NegativeListNotNull_Join ON NegativeList_NotNull(Basis, Alias, Nationality1, WLType1)")
 
+    print("Recreating updated backup temporary tables...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS EntityGUID_Updated")
     cursor.execute("""
         CREATE TABLE EntityGUID_Updated (
@@ -179,6 +195,8 @@ try:
         )
     """)
     
+    print("Backing up non-alias updated profiles to NegativeList_History...")
+    sys.stdout.flush()
     cursor.execute("""
         INSERT INTO EntityGUID_Updated (Nationality1, WLType1, EntityGUID, EntityAliasGUID, Nationality, WLType)
         SELECT DISTINCT B.Nationality1, B.WLType1, C.EntityGUID, C.EntityAliasGUID, C.Nationality, C.WLType
@@ -188,6 +206,8 @@ try:
         WHERE A.Alias IS NULL AND B.Alias IS NULL AND C.EntityAliasGUID IS NULL
     """)
     
+    print("Backing up alias updated profiles to NegativeList_History...")
+    sys.stdout.flush()
     cursor.execute("""
         INSERT INTO EntityGUID_Updated (Nationality1, WLType1, EntityGUID, EntityAliasGUID, Nationality, WLType)
         SELECT DISTINCT B.Nationality1, B.WLType1, C.EntityGUID, C.EntityAliasGUID, C.Nationality, C.WLType
@@ -197,6 +217,8 @@ try:
         WHERE A.Alias IS NOT NULL AND B.Alias IS NOT NULL AND C.EntityAliasGUID IS NOT NULL
     """)
     
+    print("Filtering update candidates into NegativeList_Temp...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS NegativeList_Temp")
     cursor.execute("""
         CREATE TABLE NegativeList_Temp(
@@ -255,6 +277,8 @@ try:
         WHERE A.EntityAliasGUID IS NOT NULL
     """)
     
+    print("Compiling incremental records to NegativeList_Update_INC...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS NegativeList_Update_INC")
     cursor.execute("""
         CREATE TABLE [NegativeList_Update_INC] (
@@ -320,6 +344,8 @@ try:
         WHERE NT.EntityAliasGUID IS NOT NULL AND A.Alias IS NOT NULL AND N.Alias IS NOT NULL
     """)
     
+    print("Filtering duplicate updates (Latest row per ID)...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS NegativeList_Update_INC1")
     cursor.execute("""
         CREATE TABLE [NegativeList_Update_INC1] (
@@ -361,6 +387,8 @@ try:
         WHERE rn = 1
     """)
     
+    print("Executing SQL MERGE (UPSERT) into NegativeList...")
+    sys.stdout.flush()
     cursor.execute("""
         MERGE INTO NegativeList AS Dest
         USING (SELECT * FROM NegativeList_Update_INC1 WHERE rn = 1) AS source
@@ -404,6 +432,8 @@ try:
             Dest.Action = source.Action;
     """)
 
+    print("Updating alias change statuses in NegativeList...")
+    sys.stdout.flush()
     cursor.execute("""
         UPDATE N 
         SET ReferenceID = NT.ReferenceID, 
@@ -448,6 +478,8 @@ try:
           ON N.Basis = NT.EntityGUID AND N.Alias = NT.EntityAliasGUID AND ISNULL(N.Nationality,'ABC') = ISNULL(NT.Nationality,'ABC') AND ISNULL(N.WLType,'ABC') = ISNULL(NT.WLType,'ABC')
     """)
 
+    print("Updating non-alias change statuses in NegativeList...")
+    sys.stdout.flush()
     cursor.execute("""
         UPDATE N 
         SET ReferenceID = NT.ReferenceID, 
@@ -492,6 +524,8 @@ try:
           ON N.Basis = NT.EntityGUID AND ISNULL(N.Nationality,'ABC') = ISNULL(NT.Nationality,'ABC') AND ISNULL(N.WLType,'ABC') = ISNULL(NT.WLType,'ABC')
     """)
 
+    print("Rebuilding VersionID index & executing batch version updates...")
+    sys.stdout.flush()
     cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_VersionID' AND object_id = OBJECT_ID('NegativeList')) BEGIN CREATE NONCLUSTERED INDEX IX_NegativeList_VersionID ON NegativeList (VersionID) INCLUDE (CreationDate, LastUpdatedDate) END")
     
     cursor.execute("""
@@ -510,6 +544,8 @@ try:
         );
     """)
 
+    print("Synchronizing search indexing in NegativeListFilter...")
+    sys.stdout.flush()
     cursor.execute("IF OBJECT_ID('NegativeListFilter', 'U') IS NULL BEGIN CREATE TABLE NegativeListFilter (ID INT PRIMARY KEY, FirstName NVARCHAR(1000) NULL, LastName NVARCHAR(1000) NULL, Nationality NVARCHAR(255) NULL) END")
     
     cursor.execute("""
@@ -534,6 +570,8 @@ try:
         WHERE NT.Action = 'chg' AND NT.LastUpdatedDate >= CAST(GETDATE() AS DATE) AND NT.LastUpdatedDate < DATEADD(DAY, 1, CAST(GETDATE() AS DATE));
     """)
 
+    print("Writing execution statistics to NegativeList_History_Summary...")
+    sys.stdout.flush()
     cursor.execute("IF OBJECT_ID('NegativeList_History_Summary', 'U') IS NULL BEGIN CREATE TABLE [NegativeList_History_Summary] ([Type] varchar(29), [Count] int, [RunDate] datetime) END")
     
     cursor.write = """
@@ -546,7 +584,8 @@ try:
     """
     cursor.execute(cursor.write)
     
-    # Drop all intermediate staging tables to clean the staging workspace
+    print("Cleaning up staging workspace temp tables...")
+    sys.stdout.flush()
     cursor.execute("DROP TABLE IF EXISTS EntityGUID")
     cursor.execute("DROP TABLE IF EXISTS NegativeList_NotNull")
     cursor.execute("DROP TABLE IF EXISTS EntityGUID_Updated")
@@ -556,10 +595,12 @@ try:
     
     conn.commit()
     print(f"Module 5 completed successfully! Time taken: {time.time() - global_start:.2f} seconds.")
+    sys.stdout.flush()
     
 except Exception as ex:
     conn.rollback()
     print(f"Module 5 failed! Rolled back changes. Error: {ex}")
+    sys.stdout.flush()
     raise ex
     
 finally:
