@@ -180,7 +180,6 @@ try:
 
     print(f"#BaseSource created in {time.time() - basesource_start:.2f} seconds.")
     sys.stdout.flush()
-    sys.stdout.flush()
 
     if is_initial_load:
         print("\n==============================================")
