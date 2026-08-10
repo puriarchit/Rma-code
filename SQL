@@ -485,3 +485,15 @@ SELECT t.text AS full_query_text
 FROM sys.dm_exec_requests r
 CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
 WHERE r.session_id = 58;
+
+
+
+SELECT 
+    r.session_id,
+    r.status,
+    r.command,
+    r.percent_complete,
+    r.estimated_completion_time / 1000 / 60 AS Estimated_Completion_Minutes,
+    t.text AS query_text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t;
