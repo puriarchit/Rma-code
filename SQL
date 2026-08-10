@@ -615,3 +615,14 @@ GROUP BY
     EntityGUID,
     ReferenceID
 HAVING COUNT_BIG(*) > 1;
+
+
+
+SELECT 
+    session_id, status, command, wait_type,
+    writes AS Physical_Writes,
+    logical_reads AS Logical_Reads,
+    cpu_time AS CPU_Time_MS
+FROM sys.dm_exec_requests
+WHERE database_id = DB_ID()
+  AND session_id <> @@SPID;
