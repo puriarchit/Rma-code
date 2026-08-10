@@ -640,3 +640,9 @@ ORDER BY session_id;
 SELECT session_id, status, program_name 
 FROM sys.dm_exec_sessions 
 WHERE is_user_process = 1;
+
+
+
+SELECT session_id, command, wait_type, cpu_time, writes
+FROM sys.dm_exec_requests
+WHERE session_id = 74;
