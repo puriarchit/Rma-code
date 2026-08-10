@@ -635,3 +635,8 @@ FROM sys.dm_exec_sessions
 WHERE is_user_process = 1
   AND program_name LIKE '%pyodbc%'
 ORDER BY session_id;
+
+
+SELECT session_id, status, program_name 
+FROM sys.dm_exec_sessions 
+WHERE is_user_process = 1;
