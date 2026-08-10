@@ -523,3 +523,15 @@ ADD LOG FILE (
     MAXSIZE = 10GB,
     FILEGROWTH = 1GB
 );
+
+
+SELECT 
+    session_id,
+    status,
+    command,
+    wait_type,
+    wait_time AS Wait_Time_MS,
+    cpu_time AS CPU_Time_MS,
+    logical_reads
+FROM sys.dm_exec_requests
+WHERE command LIKE '%DBCC%';
