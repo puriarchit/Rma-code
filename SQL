@@ -681,3 +681,11 @@ SELECT
     r.percent_complete
 FROM sys.dm_exec_requests r
 WHERE r.session_id = 74;
+
+
+SELECT
+    name,
+    size / 128.0 AS SizeMB,
+    FILEPROPERTY(name, 'SpaceUsed') / 128.0 AS UsedMB,
+    (size - FILEPROPERTY(name, 'SpaceUsed')) / 128.0 AS FreeMB
+FROM tempdb.sys.database_files;
