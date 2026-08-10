@@ -548,3 +548,17 @@ WHERE session_id = 58;
 
 USE LexisNexis_Staging;
 DBCC SHRINKFILE (LexisNexis_Staging_log, 1024);
+
+
+
+
+SELECT 
+    r.session_id,
+    r.status,
+    r.command,
+    r.percent_complete,
+    r.wait_type,
+    t.text AS query_text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE t.text LIKE '%INDEX%' OR t.text LIKE '%NegativeList_New1%';
