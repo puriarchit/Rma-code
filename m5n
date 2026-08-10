@@ -318,13 +318,13 @@ try:
                 DOB, ALTDOB1, ALTDOB2, ALTDOB3, SUBSTRING(AddressLine1, 1, 200), SUBSTRING(AddressLine2, 1, 200), City, Country,
                 WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
                 IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, NULL, Nationality, SUBSTRING(Citizenship, 1, 70), POB, NULL, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-          FROM dbo.NegativeList_New1 AS A
+        FROM dbo.NegativeList_New1 AS A
 INNER JOIN #BaseKeys AS K
     ON K.EntityGUID = A.EntityGUID
-   AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%);
-            
-            SELECT @@ROWCOUNT;
+   AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+OPTION (MAXDOP 2);
+
+SELECT @@ROWCOUNT;
         """, (run_version_id,))
         inserted_base = cursor.fetchone()[0]
         conn.commit()
