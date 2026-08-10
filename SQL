@@ -463,3 +463,8 @@ WHERE session_id = 52;
 
 SELECT COUNT(*) AS [Rows_Loaded_In_Staging] 
 FROM NegativeList_Staging WITH (NOLOCK);
+
+
+SELECT * 
+FROM NegativeList_New1 WITH (NOLOCK) 
+WHERE EntityGUID = '834BAB8A-1926-4C72-825A-6A841C9C569D';
