@@ -20,7 +20,7 @@ try:
     cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
     conn.commit()
 
-    print("Starting Module 5 (V3.5 Production-Ready Sync)...")
+    print("Starting Module 5 (V3.6 - Multi-Stage Key Deduplication Sync)...")
     sys.stdout.flush()
     global_start = time.time()
 
@@ -45,9 +45,9 @@ try:
     print("Verifying persistent indexes on source tables...")
     sys.stdout.flush()
     cursor.execute("""
-        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_New1_EntityGUID' AND object_id = OBJECT_ID('NegativeList_New1'))
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_New1_EntityGUID_ReferenceID' AND object_id = OBJECT_ID('dbo.NegativeList_New1'))
         BEGIN
-            CREATE NONCLUSTERED INDEX IX_NegativeList_New1_EntityGUID ON NegativeList_New1(EntityGUID)
+            CREATE NONCLUSTERED INDEX IX_NegativeList_New1_EntityGUID_ReferenceID ON dbo.NegativeList_New1(EntityGUID, ReferenceID);
         END
     """)
     cursor.execute("""
@@ -58,6 +58,87 @@ try:
         END
     """)
     conn.commit()
+
+    # Step 3: Build narrow #BaseKeys (One physical source row selected per EntityGUID)
+    print("Building narrow #BaseKeys...")
+    sys.stdout.flush()
+    basekeys_start = time.time()
+    cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
+    cursor.execute("""
+        CREATE TABLE #BaseKeys (
+            EntityGUID NVARCHAR(50) NOT NULL,
+            RowRID VARBINARY(8) NOT NULL
+        );
+    """)
+    cursor.execute("""
+        INSERT INTO #BaseKeys (EntityGUID, RowRID)
+        SELECT
+            A.EntityGUID,
+            MIN(CONVERT(VARBINARY(8), A.%%physloc%%)) AS RowRID
+        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+        GROUP BY A.EntityGUID
+        OPTION (MAXDOP 2);
+    """)
+    cursor.execute("""
+        CREATE UNIQUE CLUSTERED INDEX CX_BaseKeys_EntityGUID ON #BaseKeys(EntityGUID);
+    """)
+    conn.commit()
+    print(f"#BaseKeys created in {time.time() - basekeys_start:.2f} seconds.")
+    sys.stdout.flush()
+
+    # Step 4: Build #BaseSource (Retrieve exactly one physical row per EntityGUID)
+    print("Building #BaseSource...")
+    sys.stdout.flush()
+    basesource_start = time.time()
+    cursor.execute("DROP TABLE IF EXISTS #BaseSource")
+    cursor.execute("""
+        SELECT
+            A.ReferenceID,
+            A.EntityType,
+            A.Gender,
+            A.FirstName,
+            A.LastName,
+            A.SecondName,
+            A.Title,
+            A.DOB,
+            A.ALTDOB1,
+            A.ALTDOB2,
+            A.ALTDOB3,
+            A.AddressLine1,
+            A.AddressLine2,
+            A.City,
+            A.Country,
+            A.WLType,
+            A.OriginalSource,
+            A.Remark,
+            A.NationalIDInfo,
+            A.NationalIDNo,
+            A.IdOtherInfo1,
+            A.IdNo1,
+            A.IdOtherInfo2,
+            A.IdNo2,
+            A.IdOtherInfo3,
+            A.IdNo3,
+            A.IdOtherInfo4,
+            A.IdNo4,
+            A.IdOtherInfo5,
+            A.IdNo5,
+            A.EntityGUID,
+            A.Nationality,
+            A.Citizenship,
+            A.POB
+        INTO #BaseSource
+        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+        INNER JOIN #BaseKeys AS K ON K.EntityGUID = A.EntityGUID
+           AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+        OPTION (MAXDOP 2);
+    """)
+    cursor.execute("""
+        CREATE UNIQUE CLUSTERED INDEX CX_BaseSource_EntityGUID ON #BaseSource(EntityGUID);
+    """)
+    conn.commit()
+    print(f"#BaseSource created in {time.time() - basesource_start:.2f} seconds.")
+    sys.stdout.flush()
 
     if is_initial_load:
         print("\n==============================================")
@@ -182,16 +263,11 @@ try:
         cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
         run_version_id = str(cursor.fetchone()[0])
 
-        # Bulk Insert Base Entities (deduplicated by EntityGUID to avoid duplicate key issues)
-        print("Inserting deduplicated base records into HEAP...")
+        # Bulk Insert Base Entities (loaded directly from deduplicated #BaseSource)
+        print("Inserting base records from #BaseSource into NegativeList HEAP...")
         sys.stdout.flush()
         base_start = time.time()
         cursor.execute("""
-            WITH BaseSource AS (
-                SELECT *,
-                       ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY ReferenceID) AS rn
-                FROM dbo.NegativeList_New1 WITH (NOLOCK)
-            )
             INSERT INTO dbo.NegativeList WITH (TABLOCK) (
                 ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
                 DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -207,8 +283,7 @@ try:
                 WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
                 IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
                 EntityGUID, NULL, Nationality, SUBSTRING(Citizenship, 1, 70), POB, NULL, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM BaseSource
-            WHERE rn = 1;
+            FROM #BaseSource;
             
             SELECT @@ROWCOUNT;
         """, (run_version_id,))
@@ -217,22 +292,11 @@ try:
         print(f"Loaded {inserted_base} base records into HEAP in {time.time() - base_start:.2f} seconds.")
         sys.stdout.flush()
 
-        # Bulk Insert Alias Entities (deduplicated by EntityGUID, EntityAliasGUID)
-        print("Inserting deduplicated alias records into HEAP...")
+        # Bulk Insert Alias Entities (using indexed joins with EntityAlias)
+        print("Inserting alias records using #BaseSource join into NegativeList HEAP...")
         sys.stdout.flush()
         alias_start = time.time()
         cursor.execute("""
-            WITH AliasSource AS (
-                SELECT A.*, B.EntityAliasGUID,
-                       B.Name AS SecondName_Alias,
-                       ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,'') AS FirstName_Alias,
-                       B.LastName AS LastName_Alias,
-                       B.Name AS Alias_Name,
-                       ROW_NUMBER() OVER (PARTITION BY A.EntityGUID, B.EntityAliasGUID ORDER BY A.ReferenceID) AS rn
-                FROM dbo.NegativeList_New1 A WITH (NOLOCK)
-                INNER JOIN dbo.EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-                WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-            )
             INSERT INTO dbo.NegativeList WITH (TABLOCK) (
                 ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
                 DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -241,19 +305,21 @@ try:
                 EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
             )
             SELECT 
-                ReferenceID, 
-                CASE WHEN EntityType='Individual' THEN 3 WHEN EntityType='Country' THEN 1 WHEN EntityType='Organization' THEN 9 WHEN EntityType='Vessel' THEN 4 ELSE 6 END,
-                SUBSTRING(Gender, 1, 7), 
-                CAST(SUBSTRING(FirstName_Alias, 1, 300) AS NVARCHAR(300)),
-                CAST(SUBSTRING(LastName_Alias, 1, 255) AS NVARCHAR(255)),
-                CAST(SUBSTRING(SecondName_Alias, 1, 500) AS NVARCHAR(500)),
-                SUBSTRING(Title, 1, 255),
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, SUBSTRING(AddressLine1, 1, 200), SUBSTRING(AddressLine2, 1, 200), City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, EntityAliasGUID, Nationality, SUBSTRING(Citizenship, 1, 70), POB, Alias_Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM AliasSource
-            WHERE rn = 1;
+                A.ReferenceID, 
+                CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
+                SUBSTRING(A.Gender, 1, 7), 
+                CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300)),
+                CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
+                CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
+                SUBSTRING(A.Title, 1, 255),
+                A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200), A.City, A.Country,
+                A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+                A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+                A.EntityGUID, B.EntityAliasGUID, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, B.Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
+            FROM #BaseSource A
+            INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID
+            WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
+            OPTION (MAXDOP 2);
             
             SELECT @@ROWCOUNT;
         """, (run_version_id,))
@@ -373,19 +439,13 @@ try:
             )
         """)
 
-        # Non-alias change detection directly matching against deduplicated source CTE
+        # Non-alias change detection directly matching against pre-deduplicated #BaseSource
         cursor.execute("""
-            WITH DeduplicatedSource AS (
-                SELECT *,
-                       ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY ReferenceID) AS rn
-                FROM NegativeList_New1 WITH (NOLOCK)
-            )
             INSERT INTO #ChangeSet (ID, ChangeType)
             SELECT N.ID, 'chg'
             FROM NegativeList N
-            INNER JOIN DeduplicatedSource NT ON N.EntityGUID = NT.EntityGUID 
-            WHERE NT.rn = 1
-              AND N.EntityAliasGUID IS NULL
+            INNER JOIN #BaseSource NT ON N.EntityGUID = NT.EntityGUID 
+            WHERE N.EntityAliasGUID IS NULL
               AND (
                 (ISNULL(N.ReferenceID, '') <> ISNULL(NT.ReferenceID, '')) OR
                 (ISNULL(N.EntityType, 0) <> CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END) OR
@@ -424,61 +484,51 @@ try:
               )
         """)
 
-        # Alias change detection matching against deduplicated alias CTE
+        # Alias change detection matching against pre-deduplicated #BaseSource joined with EntityAlias
         cursor.execute("""
-            WITH AliasSource AS (
-                SELECT A.*, B.EntityAliasGUID,
-                       B.Name AS SecondName_Alias,
-                       ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,'') AS FirstName_Alias,
-                       B.LastName AS LastName_Alias,
-                       B.Name AS Alias_Name,
-                       ROW_NUMBER() OVER (PARTITION BY A.EntityGUID, B.EntityAliasGUID ORDER BY A.ReferenceID) AS rn
-                FROM NegativeList_New1 A WITH (NOLOCK)
-                INNER JOIN EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-                WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-            )
             INSERT INTO #ChangeSet (ID, ChangeType)
             SELECT N.ID, 'chg'
             FROM NegativeList N
-            INNER JOIN AliasSource NT ON N.EntityGUID = NT.EntityGUID AND N.EntityAliasGUID = NT.EntityAliasGUID
-            WHERE NT.rn = 1
-              AND N.EntityAliasGUID IS NOT NULL
+            INNER JOIN #BaseSource A ON N.EntityGUID = A.EntityGUID 
+            INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID AND N.EntityAliasGUID = B.EntityAliasGUID
+            WHERE N.EntityAliasGUID IS NOT NULL
+              AND B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
               AND NOT EXISTS (SELECT 1 FROM #ChangeSet C WHERE C.ID = N.ID)
               AND (
-                (ISNULL(N.ReferenceID, '') <> ISNULL(NT.ReferenceID, '')) OR
-                (ISNULL(N.EntityType, 0) <> CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END) OR
-                (ISNULL(N.Gender, '') <> CAST(SUBSTRING(ISNULL(NT.Gender, ''), 1, 7) AS NVARCHAR(7))) OR
-                (ISNULL(N.FirstName, '') <> CAST(SUBSTRING(NT.FirstName_Alias, 1, 300) AS NVARCHAR(300))) OR
-                (ISNULL(N.LastName, '') <> CAST(SUBSTRING(NT.LastName_Alias, 1, 255) AS NVARCHAR(255))) OR
-                (ISNULL(N.SecondName, '') <> CAST(SUBSTRING(NT.SecondName_Alias, 1, 500) AS NVARCHAR(500))) OR
-                (ISNULL(N.Title, '') <> CAST(SUBSTRING(ISNULL(NT.Title, ''), 1, 255) AS NVARCHAR(255))) OR
-                (ISNULL(N.DOB, '') <> ISNULL(NT.DOB, '')) OR
-                (ISNULL(N.ALTDOB1, '1900-01-01') <> ISNULL(NT.ALTDOB1, '1900-01-01')) OR
-                (ISNULL(N.ALTDOB2, '1900-01-01') <> ISNULL(NT.ALTDOB2, '1900-01-01')) OR
-                (ISNULL(N.ALTDOB3, '1900-01-01') <> ISNULL(NT.ALTDOB3, '1900-01-01')) OR
-                (ISNULL(N.AddressLine1, '') <> CAST(SUBSTRING(ISNULL(NT.AddressLine1, ''), 1, 200) AS NVARCHAR(200))) OR
-                (ISNULL(N.AddressLine2, '') <> CAST(SUBSTRING(ISNULL(NT.AddressLine2, ''), 1, 200) AS NVARCHAR(200))) OR
-                (ISNULL(N.City, '') <> ISNULL(NT.City, '')) OR
-                (ISNULL(N.Country, '') <> ISNULL(NT.Country, '')) OR
-                (ISNULL(N.WLType, '') <> ISNULL(NT.WLType, '')) OR
-                (ISNULL(N.OriginalSource, '') <> ISNULL(NT.OriginalSource, '')) OR
-                (ISNULL(N.Remark, '') <> ISNULL(NT.Remark, '')) OR
-                (ISNULL(N.NationalIDInfo, '') <> ISNULL(NT.NationalIDInfo, '')) OR
-                (ISNULL(N.NationalIDNo, '') <> ISNULL(NT.NationalIDNo, '')) OR
-                (ISNULL(N.IdOtherInfo1, '') <> ISNULL(NT.IdOtherInfo1, '')) OR
-                (ISNULL(N.IdNo1, '') <> ISNULL(NT.IdNo1, '')) OR
-                (ISNULL(N.IdOtherInfo2, '') <> ISNULL(NT.IdOtherInfo2, '')) OR
-                (ISNULL(N.IdNo2, '') <> ISNULL(NT.IdNo2, '')) OR
-                (ISNULL(N.IdOtherInfo3, '') <> ISNULL(NT.IdOtherInfo3, '')) OR
-                (ISNULL(N.IdNo3, '') <> ISNULL(NT.IdNo3, '')) OR
-                (ISNULL(N.IdOtherInfo4, '') <> ISNULL(NT.IdOtherInfo4, '')) OR
-                (ISNULL(N.IdNo4, '') <> ISNULL(NT.IdNo4, '')) OR
-                (ISNULL(N.IdOtherInfo5, '') <> ISNULL(NT.IdOtherInfo5, '')) OR
-                (ISNULL(N.IdNo5, '') <> ISNULL(NT.IdNo5, '')) OR
-                (ISNULL(N.Nationality, '') <> ISNULL(NT.Nationality, '')) OR
-                (ISNULL(N.Citizenship, '') <> CAST(SUBSTRING(ISNULL(NT.Citizenship, ''), 1, 70) AS NVARCHAR(70))) OR
-                (ISNULL(N.POB, '') <> ISNULL(NT.POB, '')) OR
-                (ISNULL(N.Alias, '') <> ISNULL(NT.Alias_Name, ''))
+                (ISNULL(N.ReferenceID, '') <> ISNULL(A.ReferenceID, '')) OR
+                (ISNULL(N.EntityType, 0) <> CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END) OR
+                (ISNULL(N.Gender, '') <> CAST(SUBSTRING(ISNULL(A.Gender, ''), 1, 7) AS NVARCHAR(7))) OR
+                (ISNULL(N.FirstName, '') <> CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300))) OR
+                (ISNULL(N.LastName, '') <> CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255))) OR
+                (ISNULL(N.SecondName, '') <> CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500))) OR
+                (ISNULL(N.Title, '') <> CAST(SUBSTRING(ISNULL(A.Title, ''), 1, 255) AS NVARCHAR(255))) OR
+                (ISNULL(N.DOB, '') <> ISNULL(A.DOB, '')) OR
+                (ISNULL(N.ALTDOB1, '1900-01-01') <> ISNULL(A.ALTDOB1, '1900-01-01')) OR
+                (ISNULL(N.ALTDOB2, '1900-01-01') <> ISNULL(A.ALTDOB2, '1900-01-01')) OR
+                (ISNULL(N.ALTDOB3, '1900-01-01') <> ISNULL(A.ALTDOB3, '1900-01-01')) OR
+                (ISNULL(N.AddressLine1, '') <> CAST(SUBSTRING(ISNULL(A.AddressLine1, ''), 1, 200) AS NVARCHAR(200))) OR
+                (ISNULL(N.AddressLine2, '') <> CAST(SUBSTRING(ISNULL(A.AddressLine2, ''), 1, 200) AS NVARCHAR(200))) OR
+                (ISNULL(N.City, '') <> ISNULL(A.City, '')) OR
+                (ISNULL(N.Country, '') <> ISNULL(A.Country, '')) OR
+                (ISNULL(N.WLType, '') <> ISNULL(A.WLType, '')) OR
+                (ISNULL(N.OriginalSource, '') <> ISNULL(A.OriginalSource, '')) OR
+                (ISNULL(N.Remark, '') <> ISNULL(A.Remark, '')) OR
+                (ISNULL(N.NationalIDInfo, '') <> ISNULL(A.NationalIDInfo, '')) OR
+                (ISNULL(N.NationalIDNo, '') <> ISNULL(A.NationalIDNo, '')) OR
+                (ISNULL(N.IdOtherInfo1, '') <> ISNULL(A.IdOtherInfo1, '')) OR
+                (ISNULL(N.IdNo1, '') <> ISNULL(A.IdNo1, '')) OR
+                (ISNULL(N.IdOtherInfo2, '') <> ISNULL(A.IdOtherInfo2, '')) OR
+                (ISNULL(N.IdNo2, '') <> ISNULL(A.IdNo2, '')) OR
+                (ISNULL(N.IdOtherInfo3, '') <> ISNULL(A.IdOtherInfo3, '')) OR
+                (ISNULL(N.IdNo3, '') <> ISNULL(A.IdNo3, '')) OR
+                (ISNULL(N.IdOtherInfo4, '') <> ISNULL(A.IdOtherInfo4, '')) OR
+                (ISNULL(N.IdNo4, '') <> ISNULL(A.IdNo4, '')) OR
+                (ISNULL(N.IdOtherInfo5, '') <> ISNULL(A.IdOtherInfo5, '')) OR
+                (ISNULL(N.IdNo5, '') <> ISNULL(A.IdNo5, '')) OR
+                (ISNULL(N.Nationality, '') <> ISNULL(A.Nationality, '')) OR
+                (ISNULL(N.Citizenship, '') <> CAST(SUBSTRING(ISNULL(A.Citizenship, ''), 1, 70) AS NVARCHAR(70))) OR
+                (ISNULL(N.POB, '') <> ISNULL(A.POB, '')) OR
+                (ISNULL(N.Alias, '') <> ISNULL(B.Name, ''))
               )
         """)
 
@@ -525,13 +575,8 @@ try:
             INNER JOIN #ChangeSet C ON A.ID = C.ID
         """)
 
-        # Update base entities (deduplicated source match)
+        # Update base entities from pre-deduplicated #BaseSource
         cursor.execute("""
-            WITH DeduplicatedSource AS (
-                SELECT *,
-                       ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY ReferenceID) AS rn
-                FROM NegativeList_New1 WITH (NOLOCK)
-            )
             UPDATE N 
             SET N.ReferenceID = NT.ReferenceID, 
                 N.EntityType = CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END,
@@ -574,62 +619,50 @@ try:
                 N.VersionID = ?
             FROM NegativeList N
             INNER JOIN #ChangeSet C ON N.ID = C.ID
-            INNER JOIN DeduplicatedSource NT ON N.EntityGUID = NT.EntityGUID 
-            WHERE NT.rn = 1
-              AND N.EntityAliasGUID IS NULL;
+            INNER JOIN #BaseSource NT ON N.EntityGUID = NT.EntityGUID 
+            WHERE N.EntityAliasGUID IS NULL;
             
             SELECT @@ROWCOUNT;
         """, (run_version_id,))
         total_updated = cursor.fetchone()[0]
 
-        # Update alias records (deduplicated join match)
+        # Update alias records from #BaseSource joined with EntityAlias
         cursor.execute("""
-            WITH AliasSource AS (
-                SELECT A.*, B.EntityAliasGUID,
-                       B.Name AS SecondName_Alias,
-                       ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,'') AS FirstName_Alias,
-                       B.LastName AS LastName_Alias,
-                       B.Name AS Alias_Name,
-                       ROW_NUMBER() OVER (PARTITION BY A.EntityGUID, B.EntityAliasGUID ORDER BY A.ReferenceID) AS rn
-                FROM NegativeList_New1 A WITH (NOLOCK)
-                INNER JOIN EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-                WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-            )
             UPDATE N 
-            SET N.ReferenceID = NT.ReferenceID, 
-                N.EntityType = CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END,
-                N.Gender = SUBSTRING(NT.Gender,1,7),
-                N.FirstName = CAST(SUBSTRING(NT.FirstName_Alias, 1, 300) AS NVARCHAR(300)),
-                N.LastName = CAST(SUBSTRING(NT.LastName_Alias, 1, 255) AS NVARCHAR(255)),
-                N.SecondName = CAST(SUBSTRING(NT.SecondName_Alias, 1, 500) AS NVARCHAR(500)),
-                N.Title = SUBSTRING(NT.Title,1,255),
-                N.DOB = NT.DOB,
-                N.ALTDOB1 = NT.ALTDOB1,
-                N.ALTDOB2 = NT.ALTDOB2,
-                N.ALTDOB3 = NT.ALTDOB3, 
-                N.AddressLine1 = SUBSTRING(NT.AddressLine1,1,200),
-                N.AddressLine2 = SUBSTRING(NT.AddressLine2,1,200),
-                N.City = NT.City,
-                N.Country = NT.Country,
-                N.WLType = NT.WLType,
-                N.OriginalSource = NT.OriginalSource,
-                N.Remark = NT.Remark,
-                N.NationalIDInfo = NT.NationalIDInfo,
-                N.NationalIDNo = NT.NationalIDNo,
-                N.IdOtherInfo1 = NT.IdOtherInfo1,
-                N.IdNo1 = NT.IdNo1,
-                N.IdOtherInfo2 = NT.IdOtherInfo2,
-                N.IdNo2 = NT.IdNo2,
-                N.IdOtherInfo3 = NT.IdOtherInfo3,
-                N.IdNo3 = NT.IdNo3,
-                N.IdOtherInfo4 = NT.IdOtherInfo4,
-                N.IdNo4 = NT.IdNo4,
-                N.IdOtherInfo5 = NT.IdOtherInfo5,
-                N.IdNo5 = NT.IdNo5,
-                N.Nationality = NT.Nationality,
-                N.Citizenship = SUBSTRING(NT.Citizenship,1,70),
-                N.POB = NT.POB,
-                N.Alias = NT.Alias_Name,
+            SET N.ReferenceID = A.ReferenceID, 
+                N.EntityType = CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
+                N.Gender = SUBSTRING(A.Gender,1,7),
+                N.FirstName = CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300)),
+                N.LastName = CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
+                N.SecondName = CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
+                N.Title = SUBSTRING(A.Title,1,255),
+                N.DOB = A.DOB,
+                N.ALTDOB1 = A.ALTDOB1,
+                N.ALTDOB2 = A.ALTDOB2,
+                N.ALTDOB3 = A.ALTDOB3, 
+                N.AddressLine1 = SUBSTRING(A.AddressLine1,1,200),
+                N.AddressLine2 = SUBSTRING(A.AddressLine2,1,200),
+                N.City = A.City,
+                N.Country = A.Country,
+                N.WLType = A.WLType,
+                N.OriginalSource = A.OriginalSource,
+                N.Remark = A.Remark,
+                N.NationalIDInfo = A.NationalIDInfo,
+                N.NationalIDNo = A.NationalIDNo,
+                N.IdOtherInfo1 = A.IdOtherInfo1,
+                N.IdNo1 = A.IdNo1,
+                N.IdOtherInfo2 = A.IdOtherInfo2,
+                N.IdNo2 = A.IdNo2,
+                N.IdOtherInfo3 = A.IdOtherInfo3,
+                N.IdNo3 = A.IdNo3,
+                N.IdOtherInfo4 = A.IdOtherInfo4,
+                N.IdNo4 = A.IdNo4,
+                N.IdOtherInfo5 = A.IdOtherInfo5,
+                N.IdNo5 = A.IdNo5,
+                N.Nationality = A.Nationality,
+                N.Citizenship = SUBSTRING(A.Citizenship,1,70),
+                N.POB = A.POB,
+                N.Alias = B.Name,
                 N.FileName = CONVERT(char(10), GETDATE(), 126),
                 N.LastUpdatedBy = 3,
                 N.LastUpdatedDate = GETDATE(),
@@ -637,21 +670,17 @@ try:
                 N.VersionID = ?
             FROM NegativeList N
             INNER JOIN #ChangeSet C ON N.ID = C.ID
-            INNER JOIN AliasSource NT ON N.EntityGUID = NT.EntityGUID AND N.EntityAliasGUID = NT.EntityAliasGUID
-            WHERE NT.rn = 1
-              AND N.EntityAliasGUID IS NOT NULL;
+            INNER JOIN #BaseSource A ON N.EntityGUID = A.EntityGUID
+            INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID AND N.EntityAliasGUID = B.EntityAliasGUID
+            WHERE N.EntityAliasGUID IS NOT NULL
+              AND B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity');
     
             SELECT @@ROWCOUNT;
         """, (run_version_id,))
         total_updated += cursor.fetchone()[0]
 
-        # Insert new base entities (deduplicated source)
+        # Insert new base entities from #BaseSource
         cursor.execute("""
-            WITH BaseSource AS (
-                SELECT *,
-                       ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY ReferenceID) AS rn
-                FROM NegativeList_New1 WITH (NOLOCK)
-            )
             INSERT INTO NegativeList WITH (TABLOCK) (
                 ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
                 DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -668,31 +697,19 @@ try:
                 WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
                 IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
                 EntityGUID, NULL, Nationality, SUBSTRING(Citizenship, 1, 70), POB, NULL, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM BaseSource A
-            WHERE A.rn = 1
-              AND NOT EXISTS (
-                  SELECT 1 FROM NegativeList N
-                  WHERE N.EntityGUID = A.EntityGUID 
-                    AND N.EntityAliasGUID IS NULL
-              );
+            FROM #BaseSource A
+            WHERE NOT EXISTS (
+                SELECT 1 FROM NegativeList N
+                WHERE N.EntityGUID = A.EntityGUID 
+                  AND N.EntityAliasGUID IS NULL
+            );
     
             SELECT @@ROWCOUNT;
         """, (run_version_id,))
         total_inserted = cursor.fetchone()[0]
 
-        # Insert new alias records (deduplicated source joins)
+        # Insert new alias records from #BaseSource joined with EntityAlias
         cursor.execute("""
-            WITH AliasSource AS (
-                SELECT A.*, B.EntityAliasGUID,
-                       B.Name AS SecondName_Alias,
-                       ISNULL(B.FirstName,'') + ' ' + B.MiddleName AS FirstName_Alias,
-                       B.LastName AS LastName_Alias,
-                       B.Name AS Alias_Name,
-                       ROW_NUMBER() OVER (PARTITION BY A.EntityGUID, B.EntityAliasGUID ORDER BY ReferenceID) AS rn
-                FROM NegativeList_New1 A WITH (NOLOCK)
-                INNER JOIN EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-                WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-            )
             INSERT INTO NegativeList WITH (TABLOCK) (
                 ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
                 DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -702,23 +719,24 @@ try:
             )
             OUTPUT INSERTED.ID INTO #NewIDs(ID)
             SELECT 
-                ReferenceID, 
-                CASE WHEN EntityType='Individual' THEN 3 WHEN EntityType='Country' THEN 1 WHEN EntityType='Organization' THEN 9 WHEN EntityType='Vessel' THEN 4 ELSE 6 END,
-                SUBSTRING(Gender, 1, 7), 
-                CAST(SUBSTRING(FirstName_Alias, 1, 300) AS NVARCHAR(300)),
-                CAST(SUBSTRING(LastName_Alias, 1, 255) AS NVARCHAR(255)),
-                CAST(SUBSTRING(SecondName_Alias, 1, 500) AS NVARCHAR(500)),
-                SUBSTRING(Title, 1, 255),
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, SUBSTRING(AddressLine1, 1, 200), SUBSTRING(AddressLine2, 1, 200), City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, EntityAliasGUID, Nationality, SUBSTRING(Citizenship, 1, 70), POB, Alias_Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM AliasSource A
-            WHERE A.rn = 1
+                A.ReferenceID, 
+                CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
+                SUBSTRING(A.Gender, 1, 7), 
+                CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300)),
+                CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
+                CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
+                SUBSTRING(A.Title, 1, 255),
+                A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200), A.City, A.Country,
+                A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+                A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+                A.EntityGUID, B.EntityAliasGUID, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, B.Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
+            FROM #BaseSource A
+            INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID
+            WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
               AND NOT EXISTS (
                   SELECT 1 FROM NegativeList N
                   WHERE N.EntityGUID = A.EntityGUID 
-                    AND N.EntityAliasGUID = A.EntityAliasGUID
+                    AND N.EntityAliasGUID = B.EntityAliasGUID
               );
     
             SELECT @@ROWCOUNT;
@@ -793,6 +811,8 @@ try:
             INNER JOIN #ChangeSet C ON NT.ID = C.ID
         """)
 
+        cursor.execute("IF OBJECT_ID('NegativeList_History_Summary', 'U') IS NULL BEGIN CREATE TABLE [NegativeList_History_Summary] ([Type] varchar(29), [Count] int, [RunDate] datetime) END")
+        cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
         cursor.execute("""
             INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
             VALUES 
@@ -809,13 +829,15 @@ try:
         sys.stdout.flush()
         phase_e_start = time.time()
 
+        cursor.execute("DROP TABLE IF EXISTS #BaseSource")
+        cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
         cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
         cursor.execute("DROP TABLE IF EXISTS #NewIDs")
         cursor.execute("DROP TABLE IF EXISTS #AffectedIDs")
         
         conn.commit()
         print(f"Phase E completed in {time.time() - phase_e_start:.2f} seconds.")
-        print(f"Module 5 V3.5 Incremental Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
+        print(f"Module 5 V3.6 Incremental Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
         sys.stdout.flush()
 
 except KeyboardInterrupt:
