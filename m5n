@@ -320,7 +320,10 @@ in {time.time() - basesource_start:.2f} seconds.")
                 WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
                 IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
                 EntityGUID, NULL, Nationality, SUBSTRING(Citizenship, 1, 70), POB, NULL, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM #BaseSource;
+          FROM dbo.NegativeList_New1 AS A
+INNER JOIN #BaseKeys AS K
+    ON K.EntityGUID = A.EntityGUID
+   AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%);
             
             SELECT @@ROWCOUNT;
         """, (run_version_id,))
