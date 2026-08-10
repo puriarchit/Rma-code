@@ -319,7 +319,7 @@ try:
                 WHEN A.EntityType = 'Vessel' THEN 4
                 ELSE 6 
             END, 
-            A.SystemSource, A.OriginalSource, A.Action, CAST(SUBSTRING(A.Gender, 1, 7) AS NVARCHAR(7)), CAST(SUBSTRING(A.LastName, 1, 150) AS NVARCHAR(150)), 
+            NULL, A.OriginalSource, A.Action, CAST(SUBSTRING(A.Gender, 1, 7) AS NVARCHAR(7)), CAST(SUBSTRING(A.LastName, 1, 150) AS NVARCHAR(150)), 
             A.FirstName, CAST(SUBSTRING(A.SecondName, 1, 300) AS NVARCHAR(300)), A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, 
             A.Nationality, CAST(SUBSTRING(A.Citizenship, 1, 70) AS NVARCHAR(70)), A.Alias, CAST(SUBSTRING(A.Title, 1, 255) AS NVARCHAR(255)), 
             CAST(SUBSTRING(A.AddressLine1, 1, 200) AS NVARCHAR(200)), CAST(SUBSTRING(A.AddressLine2, 1, 200) AS NVARCHAR(200)), 
