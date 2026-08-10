@@ -20,7 +20,7 @@ try:
     cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
     conn.commit()
 
-    print("Starting Module 5 (V3.6 - Multi-Stage Key Deduplication Sync)...")
+    print("Starting Module 5 (V3.8 - Narrow Key Deduplication Sync)...")
     sys.stdout.flush()
     global_start = time.time()
 
@@ -59,7 +59,7 @@ try:
     """)
     conn.commit()
 
-    # Step 3: Build narrow #BaseKeys (One physical source row selected per EntityGUID)
+    # Step 3: Build narrow #BaseKeys (No tempdb sorting of wide columns, index-supported scan)
     print("Building narrow #BaseKeys...")
     sys.stdout.flush()
     basekeys_start = time.time()
@@ -67,16 +67,14 @@ try:
     cursor.execute("""
         CREATE TABLE #BaseKeys (
             EntityGUID NVARCHAR(50) NOT NULL,
-            RowRID VARBINARY(8) NOT NULL
+            ReferenceID NVARCHAR(50) NULL
         );
     """)
     cursor.execute("""
-        INSERT INTO #BaseKeys (EntityGUID, RowRID)
-        SELECT
-            A.EntityGUID,
-            MIN(CONVERT(VARBINARY(8), A.%%physloc%%)) AS RowRID
-        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
-        GROUP BY A.EntityGUID
+        INSERT INTO #BaseKeys (EntityGUID, ReferenceID)
+        SELECT EntityGUID, MIN(ReferenceID) AS ReferenceID
+        FROM dbo.NegativeList_New1 WITH (READUNCOMMITTED)
+        GROUP BY EntityGUID
         OPTION (MAXDOP 2);
     """)
     cursor.execute("""
@@ -86,56 +84,40 @@ try:
     print(f"#BaseKeys created in {time.time() - basekeys_start:.2f} seconds.")
     sys.stdout.flush()
 
-    # Step 4: Build #BaseSource (Retrieve exactly one physical row per EntityGUID)
+    # Step 4: Build #BaseSource (Relational pre-filtered deduplication)
     print("Building #BaseSource...")
     sys.stdout.flush()
     basesource_start = time.time()
     cursor.execute("DROP TABLE IF EXISTS #BaseSource")
     cursor.execute("""
+        WITH FilteredSource AS (
+            SELECT A.ReferenceID, A.EntityType, A.Gender, A.FirstName, A.LastName, A.SecondName, A.Title,
+                   A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, A.AddressLine1, A.AddressLine2, A.City, A.Country,
+                   A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+                   A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+                   A.EntityGUID, A.Nationality, A.Citizenship, A.POB,
+                   ROW_NUMBER() OVER (PARTITION BY A.EntityGUID ORDER BY A.ReferenceID) AS rn
+            FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+            INNER JOIN #BaseKeys AS K ON K.EntityGUID = A.EntityGUID
+               AND K.ReferenceID = A.ReferenceID
+        )
         SELECT
-            A.ReferenceID,
-            A.EntityType,
-            A.Gender,
-            A.FirstName,
-            A.LastName,
-            A.SecondName,
-            A.Title,
-            A.DOB,
-            A.ALTDOB1,
-            A.ALTDOB2,
-            A.ALTDOB3,
-            A.AddressLine1,
-            A.AddressLine2,
-            A.City,
-            A.Country,
-            A.WLType,
-            A.OriginalSource,
-            A.Remark,
-            A.NationalIDInfo,
-            A.NationalIDNo,
-            A.IdOtherInfo1,
-            A.IdNo1,
-            A.IdOtherInfo2,
-            A.IdNo2,
-            A.IdOtherInfo3,
-            A.IdNo3,
-            A.IdOtherInfo4,
-            A.IdNo4,
-            A.IdOtherInfo5,
-            A.IdNo5,
-            A.EntityGUID,
-            A.Nationality,
-            A.Citizenship,
-            A.POB
+            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
+            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+            EntityGUID, Nationality, Citizenship, POB
         INTO #BaseSource
-        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
-        INNER JOIN #BaseKeys AS K ON K.EntityGUID = A.EntityGUID
-           AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+        FROM FilteredSource
+        WHERE rn = 1
         OPTION (MAXDOP 2);
     """)
     cursor.execute("""
         CREATE UNIQUE CLUSTERED INDEX CX_BaseSource_EntityGUID ON #BaseSource(EntityGUID);
     """)
+    
+    # Drop #BaseKeys early to save tempdb space
+    cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
     conn.commit()
     print(f"#BaseSource created in {time.time() - basesource_start:.2f} seconds.")
     sys.stdout.flush()
@@ -837,7 +819,7 @@ try:
         
         conn.commit()
         print(f"Phase E completed in {time.time() - phase_e_start:.2f} seconds.")
-        print(f"Module 5 V3.6 Incremental Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
+        print(f"Module 5 V3.8 Incremental Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
         sys.stdout.flush()
 
 except KeyboardInterrupt:
@@ -861,4 +843,5 @@ except Exception as ex:
 finally:
     cursor.close()
     conn.close()
+
 
