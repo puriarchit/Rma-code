@@ -497,3 +497,14 @@ SELECT
     t.text AS query_text
 FROM sys.dm_exec_requests r
 CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t;
+
+
+
+ALTER DATABASE LexisNexis_Staging 
+ADD LOG FILE (
+    NAME = LexisNexis_Staging_TempLog,
+    FILENAME = 'D:\LexisNexis\LexisNexis_Staging_TempLog.ldf',
+    SIZE = 5GB,
+    MAXSIZE = 10GB,
+    FILEGROWTH = 1GB
+);
