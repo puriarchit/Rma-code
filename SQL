@@ -468,3 +468,14 @@ FROM NegativeList_Staging WITH (NOLOCK);
 SELECT * 
 FROM NegativeList_New1 WITH (NOLOCK) 
 WHERE EntityGUID = '834BAB8A-1926-4C72-825A-6A841C9C569D';
+
+SELECT 
+    session_id,
+    cpu_time AS [CPU_Time_MS],
+    logical_reads AS [Logical_Reads],
+    writes AS [Writes],
+    row_count AS [Rows_Processed],
+    wait_type,
+    wait_time AS [Wait_Time_MS]
+FROM sys.dm_exec_requests
+WHERE session_id = 58;
