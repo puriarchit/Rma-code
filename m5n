@@ -356,8 +356,12 @@ INNER JOIN #BaseKeys AS K
                 A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
                 A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
                 A.EntityGUID, B.EntityAliasGUID, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, B.Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM #BaseSource A
-            INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID
+           FROM dbo.NegativeList_New1 A WITH (READUNCOMMITTED)
+INNER JOIN #BaseKeys K
+    ON K.EntityGUID = A.EntityGUID
+   AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED)
+    ON A.EntityGUID = B.EntityGUID
             WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
             OPTION (MAXDOP 2);
             
