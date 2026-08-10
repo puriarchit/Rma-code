@@ -449,3 +449,13 @@ SELECT
     t.text AS query_text
 FROM sys.dm_exec_requests r
 CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t;
+
+
+SELECT 
+    session_id,
+    command,
+    percent_complete,
+    estimated_completion_time / 1000 AS [Estimated_Completion_Seconds],
+    (estimated_completion_time / 1000) / 60 AS [Estimated_Completion_Minutes]
+FROM sys.dm_exec_requests
+WHERE session_id = 52;
