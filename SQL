@@ -542,3 +542,9 @@ WHERE command LIKE '%DBCC%';
 SELECT session_id, status, command 
 FROM sys.dm_exec_requests 
 WHERE session_id = 58;
+
+
+
+
+USE LexisNexis_Staging;
+DBCC SHRINKFILE (LexisNexis_Staging_log, 1024);
