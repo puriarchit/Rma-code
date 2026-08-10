@@ -535,3 +535,10 @@ SELECT
     logical_reads
 FROM sys.dm_exec_requests
 WHERE command LIKE '%DBCC%';
+
+
+
+
+SELECT session_id, status, command 
+FROM sys.dm_exec_requests 
+WHERE session_id = 58;
