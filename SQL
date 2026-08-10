@@ -602,3 +602,16 @@ SELECT
     cpu_time AS CPU_Time_MS
 FROM sys.dm_exec_requests
 WHERE database_id = DB_ID();
+
+
+
+
+SELECT TOP 10
+    EntityGUID,
+    ReferenceID,
+    COUNT_BIG(*) AS DuplicateCount
+FROM dbo.NegativeList_New1 WITH (READUNCOMMITTED)
+GROUP BY
+    EntityGUID,
+    ReferenceID
+HAVING COUNT_BIG(*) > 1;
