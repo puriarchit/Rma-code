@@ -171,10 +171,7 @@ try:
         OPTION (MAXDOP 2);
     """)
 
-    cursor.execute("""
-    CREATE UNIQUE CLUSTERED INDEX CX_BaseSource_EntityGUID
-    ON #BaseSource(EntityGUID);
-""")
+  
 
     # #BaseKeys is no longer required after #BaseSource is created.
     cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
