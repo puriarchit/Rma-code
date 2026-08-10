@@ -114,71 +114,67 @@ try:
 
     print(f"#BaseKeys created in {time.time() - basekeys_start:.2f} seconds.")
     sys.stdout.flush()
+    # Step 4: Build #BaseSource ONLY for incremental sync.
+    # Initial load reads directly from NegativeList_New1 using #BaseKeys,
+    # avoiding the large #BaseSource temp table and its disk usage.
+    if not is_initial_load:
+        print("Building #BaseSource for incremental sync...")
+        sys.stdout.flush()
 
+        basesource_start = time.time()
 
-    # Step 4: Build #BaseSource
-    # IMPORTANT:
-    # No ROW_NUMBER() here.
-    # #BaseKeys already contains exactly one physical row per EntityGUID.
-    print("Building #BaseSource...")
-    sys.stdout.flush()
+        cursor.execute("DROP TABLE IF EXISTS #BaseSource")
 
-    basesource_start = time.time()
+        cursor.execute("""
+            SELECT
+                A.ReferenceID,
+                A.EntityType,
+                A.Gender,
+                A.FirstName,
+                A.LastName,
+                A.SecondName,
+                A.Title,
+                A.DOB,
+                A.ALTDOB1,
+                A.ALTDOB2,
+                A.ALTDOB3,
+                A.AddressLine1,
+                A.AddressLine2,
+                A.City,
+                A.Country,
+                A.WLType,
+                A.OriginalSource,
+                A.Remark,
+                A.NationalIDInfo,
+                A.NationalIDNo,
+                A.IdOtherInfo1,
+                A.IdNo1,
+                A.IdOtherInfo2,
+                A.IdNo2,
+                A.IdOtherInfo3,
+                A.IdNo3,
+                A.IdOtherInfo4,
+                A.IdNo4,
+                A.IdOtherInfo5,
+                A.IdNo5,
+                A.EntityGUID,
+                A.Nationality,
+                A.Citizenship,
+                A.POB
+            INTO #BaseSource
+            FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+            INNER JOIN #BaseKeys AS K
+                ON K.EntityGUID = A.EntityGUID
+               AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+            OPTION (MAXDOP 2);
+        """)
 
-    cursor.execute("DROP TABLE IF EXISTS #BaseSource")
+        cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
+        conn.commit()
 
-    cursor.execute("""
-        SELECT
-            A.ReferenceID,
-            A.EntityType,
-            A.Gender,
-            A.FirstName,
-            A.LastName,
-            A.SecondName,
-            A.Title,
-            A.DOB,
-            A.ALTDOB1,
-            A.ALTDOB2,
-            A.ALTDOB3,
-            A.AddressLine1,
-            A.AddressLine2,
-            A.City,
-            A.Country,
-            A.WLType,
-            A.OriginalSource,
-            A.Remark,
-            A.NationalIDInfo,
-            A.NationalIDNo,
-            A.IdOtherInfo1,
-            A.IdNo1,
-            A.IdOtherInfo2,
-            A.IdNo2,
-            A.IdOtherInfo3,
-            A.IdNo3,
-            A.IdOtherInfo4,
-            A.IdNo4,
-            A.IdOtherInfo5,
-            A.IdNo5,
-            A.EntityGUID,
-            A.Nationality,
-            A.Citizenship,
-            A.POB
-        INTO #BaseSource
-        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
-        INNER JOIN #BaseKeys AS K
-            ON K.EntityGUID = A.EntityGUID
-           AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
-        OPTION (MAXDOP 2);
-    """)
-
-  
-
-    # #BaseKeys is no longer required after #BaseSource is created.
-    cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
-
-    conn.commit()
-
-    print(f"#BaseSource created in {time.time() - basesource_start:.2f} seconds.")
+        print(f"#BaseSource created in {time.time() - basesource_start:.2f} seconds.")
+        sys.stdout.flush()
+in {time.time() - basesource_start:.2f} seconds.")
     sys.stdout.flush()
 
     if is_initial_load:
