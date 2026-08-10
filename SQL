@@ -436,3 +436,16 @@ SELECT
     wait_type, 
     wait_time
 FROM sys.dm_exec_requests;
+
+
+
+SELECT 
+    r.session_id,
+    r.status,
+    r.blocking_session_id,
+    r.wait_type,
+    r.wait_time,
+    r.command,
+    t.text AS query_text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t;
