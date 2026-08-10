@@ -479,3 +479,9 @@ SELECT
     wait_time AS [Wait_Time_MS]
 FROM sys.dm_exec_requests
 WHERE session_id = 58;
+
+
+SELECT t.text AS full_query_text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.session_id = 58;
