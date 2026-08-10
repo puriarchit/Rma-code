@@ -381,7 +381,12 @@ try:
         """)
         conn.commit()
         print("Building Non-Clustered Indexes on NegativeList...")
+
         sys.stdout.flush()
+cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = OFF)")
+cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
+cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_Alias ON NegativeList(Alias) WITH (SORT_IN_TEMPDB = OFF)")
+cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
         
         conn.commit()
         print(f"All Indexes created in {time.time() - idx_start:.2f} seconds.")
