@@ -508,3 +508,8 @@ ADD LOG FILE (
     MAXSIZE = 10GB,
     FILEGROWTH = 1GB
 );
+
+
+SELECT physical_name 
+FROM sys.master_files 
+WHERE database_id = DB_ID('LexisNexis_Staging');
