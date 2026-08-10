@@ -513,3 +513,13 @@ ADD LOG FILE (
 SELECT physical_name 
 FROM sys.master_files 
 WHERE database_id = DB_ID('LexisNexis_Staging');
+
+
+ALTER DATABASE LexisNexis_Staging 
+ADD LOG FILE (
+    NAME = LexisNexis_Staging_TempLog,
+    FILENAME = 'C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\DATA\LexisNexis_Staging_TempLog.ldf',
+    SIZE = 5GB,
+    MAXSIZE = 10GB,
+    FILEGROWTH = 1GB
+);
