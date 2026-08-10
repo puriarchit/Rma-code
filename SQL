@@ -459,3 +459,7 @@ SELECT
     (estimated_completion_time / 1000) / 60 AS [Estimated_Completion_Minutes]
 FROM sys.dm_exec_requests
 WHERE session_id = 52;
+
+
+SELECT COUNT(*) AS [Rows_Loaded_In_Staging] 
+FROM NegativeList_Staging WITH (NOLOCK);
