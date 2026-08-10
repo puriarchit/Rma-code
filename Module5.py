@@ -75,7 +75,7 @@ try:
     print("Loading non-alias records from NegativeList_New1...")
     sys.stdout.flush()
     cursor.execute("""
-        INSERT INTO NegativeList (
+        INSERT INTO NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
@@ -94,7 +94,7 @@ try:
     print("Loading alias profiles using EntityAlias...")
     sys.stdout.flush()
     cursor.execute("""
-        INSERT INTO NegativeList (
+        INSERT INTO NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
@@ -134,7 +134,7 @@ try:
         )
     """)
     cursor.execute("""
-        INSERT INTO EntityGUID (EntityGUID, EntityAliasGUID, Nationality, WLType, Nationality1, WLType1)
+        INSERT INTO EntityGUID WITH (TABLOCK) (EntityGUID, EntityAliasGUID, Nationality, WLType, Nationality1, WLType1)
         SELECT DISTINCT EntityGUID, EntityAliasGUID, Nationality, WLType, ISNULL(Nationality,'ABC'), ISNULL(WLType,'XYZ')
         FROM NegativeList
     """)
@@ -153,7 +153,7 @@ try:
         )
     """)
     cursor.execute("""
-        INSERT INTO NegativeList_NotNull (ID, Basis, Alias, WLType1, Nationality1)
+        INSERT INTO NegativeList_NotNull WITH (TABLOCK) (ID, Basis, Alias, WLType1, Nationality1)
         SELECT ID, EntityGUID, Alias, ISNULL(WLType,'XYZ'), ISNULL(Nationality,'ABC')
         FROM NegativeList
     """)
@@ -198,7 +198,7 @@ try:
     print("Backing up non-alias updated profiles to NegativeList_History...")
     sys.stdout.flush()
     cursor.execute("""
-        INSERT INTO EntityGUID_Updated (Nationality1, WLType1, EntityGUID, EntityAliasGUID, Nationality, WLType)
+        INSERT INTO EntityGUID_Updated WITH (TABLOCK) (Nationality1, WLType1, EntityGUID, EntityAliasGUID, Nationality, WLType)
         SELECT DISTINCT B.Nationality1, B.WLType1, C.EntityGUID, C.EntityAliasGUID, C.Nationality, C.WLType
         FROM NegativeList A
         INNER JOIN NegativeList_NotNull B ON A.ID = B.ID
@@ -209,7 +209,7 @@ try:
     print("Backing up alias updated profiles to NegativeList_History...")
     sys.stdout.flush()
     cursor.execute("""
-        INSERT INTO EntityGUID_Updated (Nationality1, WLType1, EntityGUID, EntityAliasGUID, Nationality, WLType)
+        INSERT INTO EntityGUID_Updated WITH (TABLOCK) (Nationality1, WLType1, EntityGUID, EntityAliasGUID, Nationality, WLType)
         SELECT DISTINCT B.Nationality1, B.WLType1, C.EntityGUID, C.EntityAliasGUID, C.Nationality, C.WLType
         FROM NegativeList A
         INNER JOIN NegativeList_NotNull B ON A.ID = B.ID
@@ -238,7 +238,7 @@ try:
     """)
     
     cursor.execute("""
-        INSERT INTO NegativeList_Temp (
+        INSERT INTO NegativeList_Temp WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title, DOB,
             ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, WLType, OriginalSource,
             Remark, NationalIDInfo, NationalIDNo, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3,
@@ -258,7 +258,7 @@ try:
     """)
     
     cursor.execute("""
-        INSERT INTO NegativeList_Temp (
+        INSERT INTO NegativeList_Temp WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title, DOB,
             ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, WLType, OriginalSource,
             Remark, NationalIDInfo, NationalIDNo, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3,
@@ -299,7 +299,7 @@ try:
     """)
     
     cursor.execute("""
-        INSERT INTO NegativeList_Update_INC (
+        INSERT INTO NegativeList_Update_INC WITH (TABLOCK) (
             ID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title, DOB,
             ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, WLType, OriginalSource,
             Remark, NationalIDInfo, NationalIDNo, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3,
@@ -322,7 +322,7 @@ try:
     """)
     
     cursor.execute("""
-        INSERT INTO NegativeList_Update_INC (
+        INSERT INTO NegativeList_Update_INC WITH (TABLOCK) (
             ID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title, DOB,
             ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, WLType, OriginalSource,
             Remark, NationalIDInfo, NationalIDNo, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3,
@@ -366,7 +366,7 @@ try:
     """)
     
     cursor.execute("""
-        INSERT INTO NegativeList_Update_INC1 (
+        INSERT INTO NegativeList_Update_INC1 WITH (TABLOCK) (
             ID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title, DOB,
             ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, WLType, OriginalSource,
             Remark, NationalIDInfo, NationalIDNo, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3,
@@ -549,7 +549,7 @@ try:
     cursor.execute("IF OBJECT_ID('NegativeListFilter', 'U') IS NULL BEGIN CREATE TABLE NegativeListFilter (ID INT PRIMARY KEY, FirstName NVARCHAR(1000) NULL, LastName NVARCHAR(1000) NULL, Nationality NVARCHAR(255) NULL) END")
     
     cursor.execute("""
-        INSERT INTO NegativeListFilter (ID, FirstName, LastName, Nationality)
+        INSERT INTO NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
         SELECT i.ID, 
                UPPER(RTRIM(LTRIM(ISNULL(i.FirstName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.LastName, '')))), 
                UPPER(RTRIM(LTRIM(ISNULL(i.LastName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.FirstName, '')))), 
@@ -575,7 +575,7 @@ try:
     cursor.execute("IF OBJECT_ID('NegativeList_History_Summary', 'U') IS NULL BEGIN CREATE TABLE [NegativeList_History_Summary] ([Type] varchar(29), [Count] int, [RunDate] datetime) END")
     
     cursor.write = """
-        INSERT INTO NegativeList_History_Summary (Type, Count, RunDate)
+        INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
         SELECT 'New Negative List Records', COUNT(*), GETDATE() FROM NegativeList WHERE CONVERT(VARCHAR, CreationDate, 23) = CONVERT(VARCHAR, GETDATE(), 23)
         UNION ALL
         SELECT 'Updated Negative List Records', COUNT(*), GETDATE() FROM NegativeList WHERE CONVERT(VARCHAR, LastUpdatedDate, 23) = CONVERT(VARCHAR, GETDATE(), 23)
