@@ -646,3 +646,20 @@ WHERE is_user_process = 1;
 SELECT session_id, command, wait_type, cpu_time, writes
 FROM sys.dm_exec_requests
 WHERE session_id = 74;
+
+
+SELECT
+    r.session_id,
+    r.status,
+    r.command,
+    r.cpu_time,
+    r.total_elapsed_time,
+    r.logical_reads,
+    r.reads,
+    r.writes,
+    r.wait_type,
+    r.wait_time,
+    r.wait_resource
+FROM sys.dm_exec_requests r
+WHERE r.database_id = DB_ID()
+  AND r.session_id <> @@SPID;
