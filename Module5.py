@@ -20,7 +20,7 @@ try:
     cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
     conn.commit()
 
-    print("Starting Module 5 (V3.1 Production Sync)...")
+    print("Starting Module 5 (V3.2 Production Sync)...")
     sys.stdout.flush()
     global_start = time.time()
 
@@ -76,7 +76,12 @@ try:
             [CreationDate] [datetime] DEFAULT GETDATE()
         )
     """)
+    conn.commit()
+    print("Staging table schema created.")
+    sys.stdout.flush()
 
+    print("Inserting non-alias staging records...")
+    sys.stdout.flush()
     cursor.execute("""
         INSERT INTO NegativeList_Staging WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -93,7 +98,12 @@ try:
             EntityGUID, NULL, Nationality, Citizenship, POB, NULL, NULL, 'add'
         FROM NegativeList_New1 WITH (NOLOCK)
     """)
+    conn.commit()
+    print("Non-alias staging records inserted.")
+    sys.stdout.flush()
 
+    print("Inserting alias staging records...")
+    sys.stdout.flush()
     cursor.execute("""
         INSERT INTO NegativeList_Staging WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
@@ -115,11 +125,22 @@ try:
         INNER JOIN EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
         WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
     """)
-
-    cursor.execute("CREATE CLUSTERED INDEX CX_NegativeListStaging_SyncKey ON NegativeList_Staging(EntityGUID, EntityAliasGUID)")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeListStaging_Alias ON NegativeList_Staging(Alias)")
-    
     conn.commit()
+    print("Alias staging records inserted.")
+    sys.stdout.flush()
+
+    print("Creating composite clustered index on staging...")
+    sys.stdout.flush()
+    cursor.execute("CREATE CLUSTERED INDEX CX_NegativeListStaging_SyncKey ON NegativeList_Staging(EntityGUID, EntityAliasGUID)")
+    conn.commit()
+    print("Clustered index created.")
+    sys.stdout.flush()
+
+    print("Creating non-clustered index on staging...")
+    sys.stdout.flush()
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeListStaging_Alias ON NegativeList_Staging(Alias)")
+    conn.commit()
+
     print(f"Phase A completed in {time.time() - phase_a_start:.2f} seconds.")
     sys.stdout.flush()
 
@@ -652,7 +673,7 @@ try:
     
     conn.commit()
     print(f"Phase E completed in {time.time() - phase_e_start:.2f} seconds.")
-    print(f"Module 5 V3.1 Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
+    print(f"Module 5 V3.2 Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
     sys.stdout.flush()
 
 except KeyboardInterrupt:
