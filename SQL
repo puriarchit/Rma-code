@@ -626,3 +626,12 @@ SELECT
 FROM sys.dm_exec_requests
 WHERE database_id = DB_ID()
   AND session_id <> @@SPID;
+
+
+
+
+SELECT session_id, status, login_time, program_name, last_request_start_time, last_request_end_time
+FROM sys.dm_exec_sessions
+WHERE is_user_process = 1
+  AND program_name LIKE '%pyodbc%'
+ORDER BY session_id;
