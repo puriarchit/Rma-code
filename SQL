@@ -562,3 +562,18 @@ SELECT
 FROM sys.dm_exec_requests r
 CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
 WHERE t.text LIKE '%INDEX%' OR t.text LIKE '%NegativeList_New1%';
+
+
+
+
+SELECT 
+    r.session_id,
+    r.status,
+    r.command,
+    r.wait_type,
+    r.writes AS Physical_Writes,
+    r.logical_reads AS Logical_Reads,
+    r.cpu_time AS CPU_Time_MS
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE t.text LIKE '%BaseSource%';
