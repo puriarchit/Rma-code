@@ -862,3 +862,15 @@ EXCEPT
 SELECT COLUMN_NAME
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = 'NegativeList_New1';
+
+
+
+
+
+
+USE LexisNexis_Staging;
+
+SELECT COUNT(*) AS MatchingRows
+FROM dbo.NegativeList_New1 N
+INNER JOIN dbo.NegativeList_Staging S
+    ON N.EntityGUID = S.EntityGUID;
