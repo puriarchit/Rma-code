@@ -1103,3 +1103,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+-- Stale 16M rows hataao
+TRUNCATE TABLE dbo.NegativeList;
+SELECT COUNT(*) FROM dbo.NegativeList;  -- 0 aana chahiye
