@@ -726,3 +726,8 @@ FROM sys.partitions p
 JOIN sys.tables t ON p.object_id = t.object_id
 WHERE t.name = 'NegativeList'
   AND p.index_id IN (0, 1);  -- heap or clustered index
+
+
+SELECT 
+    CAST(SUM(df.size - FILEPROPERTY(df.name,'SpaceUsed')) * 8.0 / 1024 AS DECIMAL(10,2)) AS FreeMB
+FROM sys.database_files df;
