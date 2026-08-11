@@ -944,3 +944,28 @@ WHERE NOT EXISTS
     FROM dbo.NegativeList_New1 N
     WHERE N.EntityGUID = S.EntityGUID
 );
+
+
+
+
+USE LexisNexis_Staging;
+
+WITH N AS
+(
+    SELECT EntityGUID, COUNT(*) AS New1Count
+    FROM dbo.NegativeList_New1
+    GROUP BY EntityGUID
+),
+S AS
+(
+    SELECT EntityGUID, COUNT(*) AS StagingCount
+    FROM dbo.NegativeList_Staging
+    GROUP BY EntityGUID
+)
+SELECT
+    COUNT(*) AS DifferentEntityGUIDs,
+    SUM(ABS(ISNULL(N.New1Count, 0) - ISNULL(S.StagingCount, 0))) AS RowCountDifference
+FROM N
+FULL OUTER JOIN S
+    ON N.EntityGUID = S.EntityGUID
+WHERE ISNULL(N.New1Count, 0) <> ISNULL(S.StagingCount, 0);
