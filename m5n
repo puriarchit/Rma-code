@@ -243,10 +243,10 @@ def bulk_insert_alias(cursor, run_version_id):
 
 def create_primary_key(cursor):
     start = time.time()
-    logging.info("Creating Primary Key clustered index on NegativeList (ID)...")
+    logging.info("Creating Primary Key clustered index on NegativeList (ID) (parallel mode MAXDOP 4)...")
     cursor.execute(
         """
-        ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (SORT_IN_TEMPDB = OFF)
+        ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (MAXDOP = 4, SORT_IN_TEMPDB = OFF)
         """
     )
     cursor.connection.commit()
@@ -255,17 +255,17 @@ def create_primary_key(cursor):
 
 def create_nonclustered_indexes(cursor):
     start = time.time()
-    logging.info("Creating non-clustered indexes on NegativeList...")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = OFF)")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
+    logging.info("Creating non-clustered indexes on NegativeList (parallel mode MAXDOP 4)...")
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (MAXDOP = 4)")
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (MAXDOP = 4)")
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (MAXDOP = 4)")
     cursor.connection.commit()
     logging.info("Non-clustered indexes created in %.2f seconds", time.time() - start)
     return time.time() - start
 
 def populate_master_and_filter(cursor, inserted_total):
     start = time.time()
-    logging.info("Populating NegativeList_Master & NegativeListFilter...")
+    logging.info("Populating NegativeList_Master & NegativeListFilter (parallel mode)...")
     cursor.execute("TRUNCATE TABLE NegativeList_Master")
     cursor.execute(
         """
@@ -302,7 +302,8 @@ def populate_master_and_filter(cursor, inserted_total):
             A.NationalIDNo, A.NationalIDInfo,
             A.EntityGUID, A.Remark, A.Country,
             A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-        FROM NegativeList A;
+        FROM NegativeList A
+        OPTION (MAXDOP 4);
         """
     )
     cursor.execute("TRUNCATE TABLE NegativeListFilter")
@@ -314,7 +315,8 @@ def populate_master_and_filter(cursor, inserted_total):
             UPPER(RTRIM(LTRIM(ISNULL(i.FirstName,'')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.LastName,'')))),
             UPPER(RTRIM(LTRIM(ISNULL(i.LastName,'')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.FirstName,'')))),
             i.Nationality
-        FROM NegativeList i;
+        FROM NegativeList i
+        OPTION (MAXDOP 4);
         """
     )
     cursor.execute("IF OBJECT_ID('NegativeList_History_Summary','U') IS NULL CREATE TABLE NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
@@ -880,3 +882,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
