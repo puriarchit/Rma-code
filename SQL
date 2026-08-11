@@ -997,3 +997,21 @@ SELECT
 FROM sys.filegroups fg
 JOIN sys.database_files df ON fg.data_space_id = df.data_space_id
 GROUP BY fg.name;
+
+
+
+
+
+
+SELECT 
+    r.session_id,
+    r.command,
+    CAST(r.percent_complete AS DECIMAL(5,2)) AS [Percent_Complete_%],
+    CAST(r.estimated_completion_time / 1000.0 / 60.0 AS DECIMAL(10,2)) AS [Est_Remaining_Minutes],
+    r.total_elapsed_time / 1000 / 60 AS [Elapsed_Minutes],
+    r.status,
+    t.text AS [Executing_Query]
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.session_id <> @@SPID
+  AND r.status <> 'sleeping';
