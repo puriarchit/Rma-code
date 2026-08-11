@@ -708,3 +708,13 @@ SELECT
 FROM sys.dm_exec_requests r
 WHERE r.database_id = DB_ID('LexisNexis_Staging')
   AND r.session_id <> @@SPID;
+
+
+SELECT 
+    fg.name AS FileGroupName,
+    CAST(SUM(df.size) * 8.0 / 1024 AS DECIMAL(10,2)) AS TotalSizeMB,
+    CAST(SUM(FILEPROPERTY(df.name,'SpaceUsed')) * 8.0 / 1024 AS DECIMAL(10,2)) AS UsedMB,
+    CAST(SUM(df.size - FILEPROPERTY(df.name,'SpaceUsed')) * 8.0 / 1024 AS DECIMAL(10,2)) AS FreeMB
+FROM sys.filegroups fg
+JOIN sys.database_files df ON fg.data_space_id = df.data_space_id
+GROUP BY fg.name;
