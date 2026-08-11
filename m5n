@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import json
 import os
 import pyodbc
@@ -7,30 +8,11 @@ import logging
 import argparse
 from pathlib import Path
 
-# --------------------------------------------------------------
-# Configuration & Argument parsing
-# --------------------------------------------------------------
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="RMA NegativeList sync – V3.8 full script (fixed ambiguous columns)"
-    )
-    parser.add_argument(
-        "--config",
-        default="config.json",
-        help="Path to the JSON configuration file (default: config.json)"
-    )
-    parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity"
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=10000,
-        help="Rows per batch when inserting into heap tables"
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.json")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument("--batch-size", type=int, default=10000)
     return parser.parse_args()
 
 def setup_logging(level: str):
@@ -40,9 +22,6 @@ def setup_logging(level: str):
         datefmt="%H:%M:%S",
     )
 
-# --------------------------------------------------------------
-# Helper functions
-# --------------------------------------------------------------
 def load_config(config_path: str) -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -57,7 +36,16 @@ def get_connection(config: dict) -> pyodbc.Connection:
     return pyodbc.connect(conn_str, autocommit=False)
 
 def ensure_indexes(cursor):
-    logging.info("Verifying persistent indexes on source tables…")
+    logging.info("Verifying persistent indexes on source tables...")
+
+    # Check NegativeList_New1 exists before trying to index it
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
+    if cursor.fetchone()[0] == 0:
+        raise RuntimeError(
+            "NegativeList_New1 does not exist. "
+            "Please run Module4_Consolidation.py first to build the source table."
+        )
+
     cursor.execute(
         """
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_New1_EntityGUID_ReferenceID'
@@ -80,12 +68,9 @@ def ensure_indexes(cursor):
         """
     )
 
-# --------------------------------------------------------------
-# Phase 1 – Build #BaseKeys (narrow key selector)
-# --------------------------------------------------------------
 def build_basekeys(cursor):
     start = time.time()
-    logging.info("Building narrow #BaseKeys…")
+    logging.info("Building narrow #BaseKeys...")
     cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
     cursor.execute(
         """
@@ -123,53 +108,23 @@ def build_basekeys(cursor):
     logging.info("#BaseKeys created in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase 2 – Build #BaseSource (only for incremental runs)
-# --------------------------------------------------------------
 def build_basesource(cursor, is_initial_load):
     if is_initial_load:
-        logging.info("Initial load – #BaseSource not required (full scan will use #BaseKeys).")
+        logging.info("Initial load - #BaseSource not required (full scan will use #BaseKeys).")
         return 0
     start = time.time()
-    logging.info("Building #BaseSource for incremental sync…")
+    logging.info("Building #BaseSource for incremental sync...")
     cursor.execute("DROP TABLE IF EXISTS #BaseSource")
     cursor.execute(
         """
         SELECT
-            A.ReferenceID,
-            A.EntityType,
-            A.Gender,
-            A.FirstName,
-            A.LastName,
-            A.SecondName,
-            A.Title,
-            A.DOB,
-            A.ALTDOB1,
-            A.ALTDOB2,
-            A.ALTDOB3,
-            A.AddressLine1,
-            A.AddressLine2,
-            A.City,
-            A.Country,
-            A.WLType,
-            A.OriginalSource,
-            A.Remark,
-            A.NationalIDInfo,
-            A.NationalIDNo,
-            A.IdOtherInfo1,
-            A.IdNo1,
-            A.IdOtherInfo2,
-            A.IdNo2,
-            A.IdOtherInfo3,
-            A.IdNo3,
-            A.IdOtherInfo4,
-            A.IdNo4,
-            A.IdOtherInfo5,
-            A.IdNo5,
-            A.EntityGUID,
-            A.Nationality,
-            A.Citizenship,
-            A.POB
+            A.ReferenceID, A.EntityType, A.Gender, A.FirstName, A.LastName, A.SecondName, A.Title,
+            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, A.AddressLine1, A.AddressLine2,
+            A.City, A.Country, A.WLType, A.OriginalSource, A.Remark,
+            A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3,
+            A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+            A.EntityGUID, A.Nationality, A.Citizenship, A.POB
         INTO #BaseSource
         FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
         INNER JOIN #BaseKeys AS K
@@ -183,12 +138,9 @@ def build_basesource(cursor, is_initial_load):
     logging.info("#BaseSource created in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase 3 – Bulk insert base records (full load path)
-# --------------------------------------------------------------
 def bulk_insert_base(cursor, run_version_id):
     start = time.time()
-    logging.info("Inserting base records into NegativeList (heap)…")
+    logging.info("Inserting base records into NegativeList (heap)...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -218,16 +170,14 @@ def bulk_insert_base(cursor, run_version_id):
             ON K.EntityGUID = A.EntityGUID
            AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
         OPTION (MAXDOP 2);
-        """
-    , (run_version_id,))
+        """,
+        (run_version_id,)
+    )
     inserted = cursor.rowcount
     cursor.connection.commit()
     logging.info("Loaded %d base records in %.2f seconds", inserted, time.time() - start)
     return inserted, time.time() - start
 
-# --------------------------------------------------------------
-# Phase 4 – Bulk insert alias records (full load path)
-# --------------------------------------------------------------
 def bulk_insert_alias(cursor, run_version_id):
     start = time.time()
     logging.info("Inserting alias records into NegativeList (heap)...")
@@ -241,57 +191,58 @@ def bulk_insert_alias(cursor, run_version_id):
     prev_row_rid    = None
     prev_alias_guid = None
 
-   # Create staging table once; loop reuses it via TRUNCATE
-cursor.execute("""
-IF OBJECT_ID('tempdb..#AliasBatch') IS NOT NULL
-    DROP TABLE #AliasBatch;
+    # Create staging table once; loop reuses it via TRUNCATE
+    cursor.execute(
+        """
+        IF OBJECT_ID('tempdb..#AliasBatch') IS NOT NULL
+            DROP TABLE #AliasBatch;
 
-CREATE TABLE #AliasBatch
-(
-    ReferenceID       NVARCHAR(255),
-    EntityType        INT,
-    Gender            NVARCHAR(7),
-    FirstName         NVARCHAR(300),
-    LastName          NVARCHAR(255),
-    SecondName        NVARCHAR(500),
-    Title             NVARCHAR(255),
-    DOB               DATE,
-    ALTDOB1           DATE,
-    ALTDOB2           DATE,
-    ALTDOB3           DATE,
-    AddressLine1      NVARCHAR(200),
-    AddressLine2      NVARCHAR(200),
-    City              NVARCHAR(255),
-    Country           NVARCHAR(255),
-    WLType            NVARCHAR(255),
-    OriginalSource    NVARCHAR(255),
-    Remark            NVARCHAR(MAX),
-    NationalIDInfo    NVARCHAR(255),
-    NationalIDNo      NVARCHAR(255),
-    IdOtherInfo1      NVARCHAR(255),
-    IdNo1              NVARCHAR(255),
-    IdOtherInfo2      NVARCHAR(255),
-    IdNo2              NVARCHAR(255),
-    IdOtherInfo3      NVARCHAR(255),
-    IdNo3              NVARCHAR(255),
-    IdOtherInfo4      NVARCHAR(255),
-    IdNo4              NVARCHAR(255),
-    IdOtherInfo5      NVARCHAR(255),
-    IdNo5              NVARCHAR(255),
-    EntityGUID        UNIQUEIDENTIFIER,
-    EntityAliasGUID   UNIQUEIDENTIFIER,
-    Nationality       NVARCHAR(255),
-    Citizenship       NVARCHAR(70),
-    POB               NVARCHAR(255),
-    Alias             NVARCHAR(500),
-    VersionID         BIGINT,
-    Action            VARCHAR(10),
-    FileName          CHAR(10),
-    CreationDate      DATETIME,
-    RowRID            VARBINARY(8),
-    BatchAliasGUID    UNIQUEIDENTIFIER
-)
-""")
+        CREATE TABLE #AliasBatch (
+            ReferenceID       NVARCHAR(255),
+            EntityType        INT,
+            Gender            NVARCHAR(7),
+            FirstName         NVARCHAR(300),
+            LastName          NVARCHAR(255),
+            SecondName        NVARCHAR(500),
+            Title             NVARCHAR(255),
+            DOB               DATE,
+            ALTDOB1           DATE,
+            ALTDOB2           DATE,
+            ALTDOB3           DATE,
+            AddressLine1      NVARCHAR(200),
+            AddressLine2      NVARCHAR(200),
+            City              NVARCHAR(255),
+            Country           NVARCHAR(255),
+            WLType            NVARCHAR(255),
+            OriginalSource    NVARCHAR(255),
+            Remark            NVARCHAR(MAX),
+            NationalIDInfo    NVARCHAR(255),
+            NationalIDNo      NVARCHAR(255),
+            IdOtherInfo1      NVARCHAR(255),
+            IdNo1             NVARCHAR(255),
+            IdOtherInfo2      NVARCHAR(255),
+            IdNo2             NVARCHAR(255),
+            IdOtherInfo3      NVARCHAR(255),
+            IdNo3             NVARCHAR(255),
+            IdOtherInfo4      NVARCHAR(255),
+            IdNo4             NVARCHAR(255),
+            IdOtherInfo5      NVARCHAR(255),
+            IdNo5             NVARCHAR(255),
+            EntityGUID        UNIQUEIDENTIFIER,
+            EntityAliasGUID   UNIQUEIDENTIFIER,
+            Nationality       NVARCHAR(255),
+            Citizenship       NVARCHAR(70),
+            POB               NVARCHAR(255),
+            Alias             NVARCHAR(500),
+            VersionID         BIGINT,
+            Action            VARCHAR(10),
+            FileName          CHAR(10),
+            CreationDate      DATETIME,
+            RowRID            VARBINARY(8),
+            BatchAliasGUID    UNIQUEIDENTIFIER
+        );
+        """
+    )
 
     while True:
         batch_counter += 1
@@ -414,18 +365,12 @@ CREATE TABLE #AliasBatch
         "IF OBJECT_ID('tempdb..#AliasBatch') IS NOT NULL DROP TABLE #AliasBatch"
     )
     cursor.connection.commit()
-    logging.info(
-        "Loaded %d alias records in %.2f seconds",
-        total_inserted, time.time() - start
-    )
+    logging.info("Loaded %d alias records in %.2f seconds", total_inserted, time.time() - start)
     return total_inserted, time.time() - start
 
-# --------------------------------------------------------------
-# Phase 5 – Create primary key clustered index on NegativeList
-# --------------------------------------------------------------
 def create_primary_key(cursor):
     start = time.time()
-    logging.info("Creating Primary Key clustered index on NegativeList (ID)…")
+    logging.info("Creating Primary Key clustered index on NegativeList (ID)...")
     cursor.execute(
         """
         ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (SORT_IN_TEMPDB = OFF)
@@ -435,26 +380,19 @@ def create_primary_key(cursor):
     logging.info("Primary key created in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase 6 – Create supporting non‑clustered indexes
-# --------------------------------------------------------------
 def create_nonclustered_indexes(cursor):
     start = time.time()
-    logging.info("Creating supporting non‑clustered indexes on NegativeList…")
+    logging.info("Creating non-clustered indexes on NegativeList...")
     cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = OFF)")
     cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
     cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
     cursor.connection.commit()
-    logging.info("Non‑clustered indexes created in %.2f seconds", time.time() - start)
+    logging.info("Non-clustered indexes created in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase 7 – Populate NegativeList_Master & NegativeListFilter (full load)
-# --------------------------------------------------------------
 def populate_master_and_filter(cursor, inserted_total):
     start = time.time()
-    logging.info("Populating NegativeList_Master & NegativeListFilter (bulk initial load)…")
-    # Master table bulk copy
+    logging.info("Populating NegativeList_Master & NegativeListFilter...")
     cursor.execute("TRUNCATE TABLE NegativeList_Master")
     cursor.execute(
         """
@@ -466,20 +404,14 @@ def populate_master_and_filter(cursor, inserted_total):
             Country, CreationDate, LastUpdatedBy, LastUpdatedDate
         )
         SELECT
-            A.ID,
-            A.ReferenceID,
-            A.WLType,
-            A.FileName,
-            A.VersionID,
+            A.ID, A.ReferenceID, A.WLType, A.FileName, A.VersionID,
             CASE WHEN ISNUMERIC(A.EntityType)=1 THEN CAST(A.EntityType AS NUMERIC(2,0))
                  WHEN A.EntityType='Individual' THEN 3
                  WHEN A.EntityType='Country' THEN 1
                  WHEN A.EntityType='Organization' THEN 9
                  WHEN A.EntityType='Vessel' THEN 4
                  ELSE 6 END,
-            NULL,
-            A.OriginalSource,
-            A.Action,
+            NULL, A.OriginalSource, A.Action,
             CAST(SUBSTRING(A.Gender,1,7) AS NVARCHAR(7)),
             CAST(SUBSTRING(A.LastName,1,150) AS NVARCHAR(150)),
             A.FirstName,
@@ -500,7 +432,6 @@ def populate_master_and_filter(cursor, inserted_total):
         FROM NegativeList A;
         """
     )
-    # Filter table bulk copy
     cursor.execute("TRUNCATE TABLE NegativeListFilter")
     cursor.execute(
         """
@@ -513,13 +444,12 @@ def populate_master_and_filter(cursor, inserted_total):
         FROM NegativeList i;
         """
     )
-    # History summary table
     cursor.execute("IF OBJECT_ID('NegativeList_History_Summary','U') IS NULL CREATE TABLE NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
     cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
     cursor.execute(
         """
         INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
-        VALUES 
+        VALUES
             ('New Negative List Records', ?, GETDATE()),
             ('Updated Negative List Records', 0, GETDATE()),
             ('Total Negative List Records', ?, GETDATE());
@@ -530,12 +460,9 @@ def populate_master_and_filter(cursor, inserted_total):
     logging.info("Master & Filter populated in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase 8 – Incremental sync: Change detection (Phase B)
-# --------------------------------------------------------------
 def detect_changes(cursor):
     start = time.time()
-    logging.info("Phase B – Detecting changes between source and target…")
+    logging.info("Detecting changes between source and target...")
     cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
     cursor.execute(
         """
@@ -545,7 +472,6 @@ def detect_changes(cursor):
         );
         """
     )
-    # Non‑alias rows change detection (compare source #BaseSource with target NegativeList)
     cursor.execute(
         """
         INSERT INTO #ChangeSet (ID, ChangeType)
@@ -591,7 +517,6 @@ def detect_changes(cursor):
           );
         """
     )
-    # Alias rows change detection (join with EntityAlias)
     cursor.execute(
         """
         INSERT INTO #ChangeSet (ID, ChangeType)
@@ -641,28 +566,21 @@ def detect_changes(cursor):
         """
     )
     cursor.connection.commit()
-    logging.info("Phase B completed in %.2f seconds (rows in #ChangeSet: %d)", time.time() - start, cursor.execute("SELECT COUNT(*) FROM #ChangeSet").fetchone()[0])
+    cnt = cursor.execute("SELECT COUNT(*) FROM #ChangeSet").fetchone()[0]
+    logging.info("Change detection completed in %.2f seconds (changeset rows: %d)", time.time() - start, cnt)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase C – Apply changes (updates, inserts, history backup)
-# --------------------------------------------------------------
 def apply_changes(cursor):
     phase_c_start = time.time()
-    logging.info("Phase C – Backing up history and applying updates/inserts…")
-    # Get a new version ID for this sync run
+    logging.info("Backing up history and applying updates/inserts...")
     cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
     run_version_id = str(cursor.fetchone()[0])
 
-    # Temporary tables for new IDs and affected IDs
     cursor.execute("DROP TABLE IF EXISTS #NewIDs")
     cursor.execute("CREATE TABLE #NewIDs (ID INT NOT NULL PRIMARY KEY)")
     cursor.execute("DROP TABLE IF EXISTS #AffectedIDs")
     cursor.execute("CREATE TABLE #AffectedIDs (ID INT NOT NULL PRIMARY KEY)")
 
-    # -----------------------------------------------------------------
-    # 1) Backup changed rows into NegativeList_History
-    # -----------------------------------------------------------------
     cursor.execute(
         """
         INSERT INTO NegativeList_History (
@@ -704,9 +622,6 @@ def apply_changes(cursor):
     )
     cursor.connection.commit()
 
-    # -----------------------------------------------------------------
-    # 2) Update existing base rows (EntityAliasGUID IS NULL)
-    # -----------------------------------------------------------------
     cursor.execute(
         """
         UPDATE N
@@ -718,38 +633,22 @@ def apply_changes(cursor):
             LastName = SUBSTRING(NT.LastName,1,150),
             SecondName = SUBSTRING(NT.SecondName,1,300),
             Title = SUBSTRING(NT.Title,1,255),
-            DOB = NT.DOB,
-            ALTDOB1 = NT.ALTDOB1,
-            ALTDOB2 = NT.ALTDOB2,
-            ALTDOB3 = NT.ALTDOB3,
+            DOB = NT.DOB, ALTDOB1 = NT.ALTDOB1, ALTDOB2 = NT.ALTDOB2, ALTDOB3 = NT.ALTDOB3,
             AddressLine1 = SUBSTRING(NT.AddressLine1,1,200),
             AddressLine2 = SUBSTRING(NT.AddressLine2,1,200),
-            City = NT.City,
-            Country = NT.Country,
-            WLType = NT.WLType,
-            OriginalSource = NT.OriginalSource,
-            Remark = NT.Remark,
-            NationalIDInfo = NT.NationalIDInfo,
-            NationalIDNo = NT.NationalIDNo,
-            IdOtherInfo1 = NT.IdOtherInfo1,
-            IdNo1 = NT.IdNo1,
-            IdOtherInfo2 = NT.IdOtherInfo2,
-            IdNo2 = NT.IdNo2,
-            IdOtherInfo3 = NT.IdOtherInfo3,
-            IdNo3 = NT.IdNo3,
-            IdOtherInfo4 = NT.IdOtherInfo4,
-            IdNo4 = NT.IdNo4,
-            IdOtherInfo5 = NT.IdOtherInfo5,
-            IdNo5 = NT.IdNo5,
-            Nationality = NT.Nationality,
-            Citizenship = SUBSTRING(NT.Citizenship,1,70),
-            POB = NT.POB,
-            Alias = NULL,
+            City = NT.City, Country = NT.Country, WLType = NT.WLType,
+            OriginalSource = NT.OriginalSource, Remark = NT.Remark,
+            NationalIDInfo = NT.NationalIDInfo, NationalIDNo = NT.NationalIDNo,
+            IdOtherInfo1 = NT.IdOtherInfo1, IdNo1 = NT.IdNo1,
+            IdOtherInfo2 = NT.IdOtherInfo2, IdNo2 = NT.IdNo2,
+            IdOtherInfo3 = NT.IdOtherInfo3, IdNo3 = NT.IdNo3,
+            IdOtherInfo4 = NT.IdOtherInfo4, IdNo4 = NT.IdNo4,
+            IdOtherInfo5 = NT.IdOtherInfo5, IdNo5 = NT.IdNo5,
+            Nationality = NT.Nationality, Citizenship = SUBSTRING(NT.Citizenship,1,70),
+            POB = NT.POB, Alias = NULL,
             FileName = CONVERT(char(10), GETDATE(), 126),
-            LastUpdatedBy = 3,
-            LastUpdatedDate = GETDATE(),
-            Action = 'chg',
-            VersionID = ?
+            LastUpdatedBy = 3, LastUpdatedDate = GETDATE(),
+            Action = 'chg', VersionID = ?
         FROM NegativeList N
         INNER JOIN #ChangeSet C ON N.ID = C.ID
         INNER JOIN #BaseSource NT ON N.EntityGUID = NT.EntityGUID
@@ -760,9 +659,6 @@ def apply_changes(cursor):
     cursor.execute("SELECT @@ROWCOUNT")
     updated_base = cursor.fetchone()[0]
 
-    # -----------------------------------------------------------------
-    # 3) Update existing alias rows (EntityAliasGUID NOT NULL)
-    # -----------------------------------------------------------------
     cursor.execute(
         """
         UPDATE N
@@ -774,38 +670,22 @@ def apply_changes(cursor):
             LastName = CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)),
             SecondName = CAST(SUBSTRING(B.Name,1,500) AS NVARCHAR(500)),
             Title = SUBSTRING(A.Title,1,255),
-            DOB = A.DOB,
-            ALTDOB1 = A.ALTDOB1,
-            ALTDOB2 = A.ALTDOB2,
-            ALTDOB3 = A.ALTDOB3,
+            DOB = A.DOB, ALTDOB1 = A.ALTDOB1, ALTDOB2 = A.ALTDOB2, ALTDOB3 = A.ALTDOB3,
             AddressLine1 = SUBSTRING(A.AddressLine1,1,200),
             AddressLine2 = SUBSTRING(A.AddressLine2,1,200),
-            City = A.City,
-            Country = A.Country,
-            WLType = A.WLType,
-            OriginalSource = A.OriginalSource,
-            Remark = A.Remark,
-            NationalIDInfo = A.NationalIDInfo,
-            NationalIDNo = A.NationalIDNo,
-            IdOtherInfo1 = A.IdOtherInfo1,
-            IdNo1 = A.IdNo1,
-            IdOtherInfo2 = A.IdOtherInfo2,
-            IdNo2 = A.IdNo2,
-            IdOtherInfo3 = A.IdOtherInfo3,
-            IdNo3 = A.IdNo3,
-            IdOtherInfo4 = A.IdOtherInfo4,
-            IdNo4 = A.IdNo4,
-            IdOtherInfo5 = A.IdOtherInfo5,
-            IdNo5 = A.IdNo5,
-            Nationality = A.Nationality,
-            Citizenship = SUBSTRING(A.Citizenship,1,70),
-            POB = A.POB,
-            Alias = B.Name,
+            City = A.City, Country = A.Country, WLType = A.WLType,
+            OriginalSource = A.OriginalSource, Remark = A.Remark,
+            NationalIDInfo = A.NationalIDInfo, NationalIDNo = A.NationalIDNo,
+            IdOtherInfo1 = A.IdOtherInfo1, IdNo1 = A.IdNo1,
+            IdOtherInfo2 = A.IdOtherInfo2, IdNo2 = A.IdNo2,
+            IdOtherInfo3 = A.IdOtherInfo3, IdNo3 = A.IdNo3,
+            IdOtherInfo4 = A.IdOtherInfo4, IdNo4 = A.IdNo4,
+            IdOtherInfo5 = A.IdOtherInfo5, IdNo5 = A.IdNo5,
+            Nationality = A.Nationality, Citizenship = SUBSTRING(A.Citizenship,1,70),
+            POB = A.POB, Alias = B.Name,
             FileName = CONVERT(char(10), GETDATE(), 126),
-            LastUpdatedBy = 3,
-            LastUpdatedDate = GETDATE(),
-            Action = 'chg',
-            VersionID = ?
+            LastUpdatedBy = 3, LastUpdatedDate = GETDATE(),
+            Action = 'chg', VersionID = ?
         FROM NegativeList N
         INNER JOIN #ChangeSet C ON N.ID = C.ID
         INNER JOIN #BaseSource A ON N.EntityGUID = A.EntityGUID
@@ -818,9 +698,6 @@ def apply_changes(cursor):
     cursor.execute("SELECT @@ROWCOUNT")
     updated_alias = cursor.fetchone()[0]
 
-    # -----------------------------------------------------------------
-    # 4) Insert new base entities (not present in target)
-    # -----------------------------------------------------------------
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -834,16 +711,13 @@ def apply_changes(cursor):
         SELECT
             A.ReferenceID,
             CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
-            SUBSTRING(A.Gender,1,7),
-            A.FirstName,
-            SUBSTRING(A.LastName,1,150),
-            SUBSTRING(A.SecondName,1,300),
-            SUBSTRING(A.Title,1,255),
+            SUBSTRING(A.Gender,1,7), A.FirstName, SUBSTRING(A.LastName,1,150),
+            SUBSTRING(A.SecondName,1,300), SUBSTRING(A.Title,1,255),
             A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
             SUBSTRING(A.AddressLine1,1,200), SUBSTRING(A.AddressLine2,1,200),
-            A.City, A.Country,
-            A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
-            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+            A.City, A.Country, A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3,
+            A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
             A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship,1,70), A.POB, NULL,
             ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
         FROM #BaseSource A
@@ -856,9 +730,6 @@ def apply_changes(cursor):
     cursor.execute("SELECT @@ROWCOUNT")
     inserted_base = cursor.fetchone()[0]
 
-    # -----------------------------------------------------------------
-    # 5) Insert new alias entities (not present in target)
-    # -----------------------------------------------------------------
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -879,9 +750,9 @@ def apply_changes(cursor):
             SUBSTRING(A.Title,1,255),
             A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
             SUBSTRING(A.AddressLine1,1,200), SUBSTRING(A.AddressLine2,1,200),
-            A.City, A.Country,
-            A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
-            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+            A.City, A.Country, A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3,
+            A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
             A.EntityGUID, B.EntityAliasGUID, A.Nationality, SUBSTRING(A.Citizenship,1,70), A.POB, B.Name,
             ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
         FROM #BaseSource A
@@ -896,14 +767,13 @@ def apply_changes(cursor):
     cursor.execute("SELECT @@ROWCOUNT")
     inserted_alias = cursor.fetchone()[0]
 
-    # -----------------------------------------------------------------
-    # 6) Consolidate affected IDs (changed + newly inserted)
-    # -----------------------------------------------------------------
     cursor.execute("INSERT INTO #AffectedIDs (ID) SELECT ID FROM #ChangeSet UNION SELECT ID FROM #NewIDs")
     cursor.connection.commit()
 
-    logging.info("Phase C completed (updates: base=%d, alias=%d; inserts: base=%d, alias=%d) in %.2f seconds",
-                 updated_base, updated_alias, inserted_base, inserted_alias, time.time() - phase_c_start)
+    logging.info(
+        "Changes applied (updates: base=%d, alias=%d; inserts: base=%d, alias=%d) in %.2f seconds",
+        updated_base, updated_alias, inserted_base, inserted_alias, time.time() - phase_c_start
+    )
     return {
         "run_version_id": run_version_id,
         "updated_base": updated_base,
@@ -913,19 +783,16 @@ def apply_changes(cursor):
         "total_affected": cursor.execute("SELECT COUNT(*) FROM #AffectedIDs").fetchone()[0]
     }
 
-# --------------------------------------------------------------
-# Phase D – Sync Master & Filter tables with affected IDs
-# --------------------------------------------------------------
-def sync_master_and_filter(cursor, total_affected):
+def sync_master_and_filter(cursor, changes_info):
     start = time.time()
-    logging.info("Phase D – Updating Master & Filter tables for %d affected rows…", total_affected)
-    # Delete old master rows for affected IDs
-    cursor.execute(
-        """
-        DELETE M FROM NegativeList_Master M INNER JOIN #AffectedIDs A ON M.ID = A.ID;
-        """
-    )
-    # Insert fresh master rows
+    total_affected  = changes_info["total_affected"]
+    inserted_base   = changes_info["inserted_base"]
+    inserted_alias  = changes_info["inserted_alias"]
+    updated_base    = changes_info["updated_base"]
+    updated_alias   = changes_info["updated_alias"]
+    logging.info("Updating Master & Filter tables for %d affected rows...", total_affected)
+
+    cursor.execute("DELETE M FROM NegativeList_Master M INNER JOIN #AffectedIDs A ON M.ID = A.ID;")
     cursor.execute(
         """
         INSERT INTO NegativeList_Master (
@@ -965,7 +832,6 @@ def sync_master_and_filter(cursor, total_affected):
         INNER JOIN #AffectedIDs AI ON A.ID = AI.ID;
         """
     )
-    # Refresh Filter table (only for newly inserted IDs that might not exist yet)
     cursor.execute(
         """
         INSERT INTO NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
@@ -978,7 +844,6 @@ def sync_master_and_filter(cursor, total_affected):
         WHERE NOT EXISTS (SELECT 1 FROM NegativeListFilter f WHERE f.ID = i.ID);
         """
     )
-    # Update existing filter rows for changed IDs
     cursor.execute(
         """
         UPDATE F
@@ -992,29 +857,29 @@ def sync_master_and_filter(cursor, total_affected):
         INNER JOIN #BaseSource NT ON NL.EntityGUID = NT.EntityGUID;
         """
     )
-    # History summary rows (new, updated, total)
     cursor.execute("IF OBJECT_ID('NegativeList_History_Summary','U') IS NULL CREATE TABLE NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
     cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
     cursor.execute(
         """
         INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
-        VALUES 
+        VALUES
             ('New Negative List Records', ?, GETDATE()),
             ('Updated Negative List Records', ?, GETDATE()),
             ('Total Negative List Records', ?, GETDATE());
         """,
-        (inserted_base + inserted_alias, updated_base + updated_alias, inserted_base + inserted_alias + updated_base + updated_alias)
+        (
+            inserted_base + inserted_alias,
+            updated_base + updated_alias,
+            inserted_base + inserted_alias + updated_base + updated_alias
+        )
     )
     cursor.connection.commit()
-    logging.info("Phase D completed in %.2f seconds", time.time() - start)
+    logging.info("Master & Filter sync completed in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase E – Cleanup temporary tables
-# --------------------------------------------------------------
 def cleanup(cursor):
     start = time.time()
-    logging.info("Phase E – Dropping temporary tables…")
+    logging.info("Dropping temporary tables...")
     cursor.execute("DROP TABLE IF EXISTS #BaseSource")
     cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
     cursor.execute("DROP TABLE IF EXISTS #NewIDs")
@@ -1023,12 +888,9 @@ def cleanup(cursor):
     logging.info("Cleanup finished in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Phase F – Update statistics
-# --------------------------------------------------------------
 def update_statistics(cursor):
     start = time.time()
-    logging.info("Updating database statistics for key tables…")
+    logging.info("Updating database statistics...")
     cursor.execute("UPDATE STATISTICS dbo.NegativeList")
     cursor.execute("UPDATE STATISTICS dbo.NegativeList_New1")
     cursor.execute("UPDATE STATISTICS dbo.EntityAlias")
@@ -1036,9 +898,57 @@ def update_statistics(cursor):
     logging.info("Statistics updated in %.2f seconds", time.time() - start)
     return time.time() - start
 
-# --------------------------------------------------------------
-# Main orchestration
-# --------------------------------------------------------------
+def pre_sync_cleanup(cursor):
+    # Called at the START of Module 5 — before any inserts.
+    # Drops all confirmed-safe tables to free PRIMARY filegroup space.
+    # NegativeList_New1 is NOT dropped here — it is still needed as source.
+    start = time.time()
+    logging.info("Pre-sync cleanup: freeing space by dropping unused intermediate tables...")
+
+    tables_to_drop = [
+        # Never used in any module
+        "NegativeList_Staging",
+        "EntityCountryAssociation_New",
+        "EntityEnforcementSubCategory",
+        "AssociatedEntity",
+        "ConsolidatedSanction",
+        "EntityAdverseMedia",
+        "EntityAdverseMediaSubCategory",
+        # Module4 _New tables — consumed, no longer needed
+        "EntitySourceItem_New",
+        "EntityAddress_New",
+        "Entity_Citizenship_New",
+        "EntityDOB_New",
+        "EntityIdentification_New",
+        "EntityIdentification_National_New",
+        "EntityRemark_New",
+    ]
+
+    for table in tables_to_drop:
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS dbo.[{table}]")
+            cursor.connection.commit()
+            logging.info("Dropped: %s", table)
+        except Exception as ex:
+            logging.warning("Could not drop %s: %s", table, ex)
+
+    logging.info("Pre-sync cleanup done in %.2f seconds", time.time() - start)
+
+
+def post_sync_cleanup(cursor):
+    # Called only after Module 5 completes SUCCESSFULLY.
+    # Drops NegativeList_New1 — safe now that sync is done.
+    start = time.time()
+    logging.info("Post-sync cleanup: dropping source table NegativeList_New1...")
+    try:
+        cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
+        cursor.connection.commit()
+        logging.info("Dropped: NegativeList_New1")
+    except Exception as ex:
+        logging.warning("Could not drop NegativeList_New1: %s", ex)
+    logging.info("Post-sync cleanup done in %.2f seconds", time.time() - start)
+
+
 def main():
     args = parse_args()
     setup_logging(args.log_level)
@@ -1048,12 +958,9 @@ def main():
     try:
         cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
         conn.commit()
-        logging.info("=== Starting Module 5 – V3.8 (full script, fixed ambiguities) ===")
+        logging.info("=== Starting Module 5 sync ===")
         global_start = time.time()
 
-        # ----------------------------------------------------------
-        # Detect load state (initial vs incremental)
-        # ----------------------------------------------------------
         cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_LoadState'")
         state_table_exists = cursor.fetchone()[0] > 0
         is_initial_load = True
@@ -1068,15 +975,12 @@ def main():
                         is_initial_load = False
         logging.info("Load state: %s", "INITIAL" if is_initial_load else "INCREMENTAL")
 
-        # ----------------------------------------------------------
-        # Common preparation steps
-        # ----------------------------------------------------------
+        pre_sync_cleanup(cursor)
         ensure_indexes(cursor)
         build_basekeys(cursor)
         build_basesource(cursor, is_initial_load)
 
         if is_initial_load:
-            # Full load path
             cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
             run_version_id = str(cursor.fetchone()[0])
             inserted_base, _ = bulk_insert_base(cursor, run_version_id)
@@ -1085,13 +989,13 @@ def main():
             create_nonclustered_indexes(cursor)
             populate_master_and_filter(cursor, inserted_base + inserted_alias)
         else:
-            # Incremental sync path
-            phase_b_time = detect_changes(cursor)
+            detect_changes(cursor)
             changes_info = apply_changes(cursor)
-            phase_d_time = sync_master_and_filter(cursor, changes_info["total_affected"])
+            sync_master_and_filter(cursor, changes_info)
             cleanup(cursor)
             update_statistics(cursor)
 
+        post_sync_cleanup(cursor)
         logging.info("=== Total execution time: %.2f seconds ===", time.time() - global_start)
     except Exception as e:
         logging.error("Execution failed: %s", e)
@@ -1103,8 +1007,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
--- Stale 16M rows hataao
-TRUNCATE TABLE dbo.NegativeList;
-SELECT COUNT(*) FROM dbo.NegativeList;  -- 0 aana chahiye
