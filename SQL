@@ -1015,3 +1015,15 @@ FROM sys.dm_exec_requests r
 CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
 WHERE r.session_id <> @@SPID
   AND r.status <> 'sleeping';
+
+
+SELECT 
+    r.session_id,
+    r.command,
+    r.status,
+    r.wait_type,
+    r.blocking_session_id AS Blocked_By,
+    r.reads,
+    r.writes
+FROM sys.dm_exec_requests r
+WHERE r.session_id = 53;
