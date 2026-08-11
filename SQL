@@ -759,3 +759,16 @@ SELECT
     FILEPROPERTY(name, 'SpaceUsed') * 8.0 / 1024 AS UsedMB,
     (size - FILEPROPERTY(name, 'SpaceUsed')) * 8.0 / 1024 AS FreeMB
 FROM sys.database_files;
+
+
+USE LexisNexis_Staging;
+
+SELECT 
+    t.name AS TableName,
+    SUM(p.rows) AS RowCount
+FROM sys.tables t
+INNER JOIN sys.partitions p 
+    ON t.object_id = p.object_id
+WHERE p.index_id IN (0,1)
+GROUP BY t.name
+ORDER BY RowCount DESC;
