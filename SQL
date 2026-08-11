@@ -746,3 +746,16 @@ SELECT
     is_percent_growth,
     max_size
 FROM sys.database_files;
+
+
+
+
+
+USE LexisNexis_Staging;
+
+SELECT
+    name,
+    size * 8.0 / 1024 AS SizeMB,
+    FILEPROPERTY(name, 'SpaceUsed') * 8.0 / 1024 AS UsedMB,
+    (size - FILEPROPERTY(name, 'SpaceUsed')) * 8.0 / 1024 AS FreeMB
+FROM sys.database_files;
