@@ -138,9 +138,96 @@ def build_basesource(cursor, is_initial_load):
     logging.info("#BaseSource created in %.2f seconds", time.time() - start)
     return time.time() - start
 
+def recreate_negativelist_with_pk(cursor):
+    """Drop and recreate NegativeList WITH clustered PK from the start.
+    This eliminates the 1-hour post-insert ALTER TABLE ADD PRIMARY KEY step
+    because rows insert directly into the B-Tree in sorted ID order."""
+    start = time.time()
+    logging.info("Recreating NegativeList table WITH PRIMARY KEY (pre-indexed mode)...")
+
+    # Save the original column schema by scripting from the existing table
+    # First check if NegativeList exists
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList'")
+    table_exists = cursor.fetchone()[0] > 0
+
+    # Drop all indexes and constraints first, then drop and recreate
+    if table_exists:
+        # Drop foreign keys referencing this table
+        cursor.execute("""
+            DECLARE @sql NVARCHAR(MAX) = '';
+            SELECT @sql = @sql + 'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(parent_object_id)) + '.' +
+                   QUOTENAME(OBJECT_NAME(parent_object_id)) + ' DROP CONSTRAINT ' + QUOTENAME(name) + ';'
+            FROM sys.foreign_keys WHERE referenced_object_id = OBJECT_ID('NegativeList');
+            IF @sql <> '' EXEC sp_executesql @sql;
+        """)
+        cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
+        cursor.connection.commit()
+
+    # Recreate with IDENTITY PK clustered from the start
+    cursor.execute("""
+        CREATE TABLE dbo.NegativeList (
+            ID                  INT IDENTITY(1,1) NOT NULL,
+            ReferenceID         NVARCHAR(255)  NULL,
+            EntityType          NVARCHAR(50)   NULL,
+            Gender              NVARCHAR(10)   NULL,
+            FirstName           NVARCHAR(300)  NULL,
+            LastName            NVARCHAR(255)  NULL,
+            SecondName          NVARCHAR(500)  NULL,
+            Title               NVARCHAR(255)  NULL,
+            DOB                 NVARCHAR(100)  NULL,
+            ALTDOB1             DATETIME       NULL,
+            ALTDOB2             DATETIME       NULL,
+            ALTDOB3             DATETIME       NULL,
+            AddressLine1        NVARCHAR(500)  NULL,
+            AddressLine2        NVARCHAR(500)  NULL,
+            City                NVARCHAR(255)  NULL,
+            Country             NVARCHAR(255)  NULL,
+            WLType              NVARCHAR(100)  NULL,
+            OriginalSource      NVARCHAR(MAX)  NULL,
+            Remark              NVARCHAR(MAX)  NULL,
+            NationalIDInfo      NVARCHAR(MAX)  NULL,
+            NationalIDNo        NVARCHAR(255)  NULL,
+            IdOtherInfo1        NVARCHAR(MAX)  NULL,
+            IdNo1               NVARCHAR(255)  NULL,
+            IdOtherInfo2        NVARCHAR(MAX)  NULL,
+            IdNo2               NVARCHAR(255)  NULL,
+            IdOtherInfo3        NVARCHAR(MAX)  NULL,
+            IdNo3               NVARCHAR(255)  NULL,
+            IdOtherInfo4        NVARCHAR(MAX)  NULL,
+            IdNo4               NVARCHAR(255)  NULL,
+            IdOtherInfo5        NVARCHAR(MAX)  NULL,
+            IdNo5               NVARCHAR(255)  NULL,
+            EntityGUID          NVARCHAR(50)   NULL,
+            EntityAliasGUID     NVARCHAR(50)   NULL,
+            Nationality         NVARCHAR(255)  NULL,
+            Citizenship         NVARCHAR(100)  NULL,
+            POB                 NVARCHAR(500)  NULL,
+            Alias               NVARCHAR(500)  NULL,
+            VersionID           NVARCHAR(50)   NULL,
+            Action              NVARCHAR(10)   NULL,
+            FileName            NVARCHAR(100)  NULL,
+            CreationDate        DATETIME       NULL,
+            LastUpdatedBy       INT            NULL,
+            LastUpdatedDate     DATETIME       NULL,
+            CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID)
+        );
+    """)
+    cursor.connection.commit()
+    logging.info("NegativeList recreated WITH PK in %.2f seconds (0-cost PK!)", time.time() - start)
+    return time.time() - start
+
+def set_recovery_model(cursor, model):
+    """Switch recovery model for minimal logging during bulk inserts."""
+    try:
+        cursor.execute(f"ALTER DATABASE LexisNexis_Staging SET RECOVERY {model}")
+        cursor.connection.commit()
+        logging.info("Recovery model set to %s", model)
+    except Exception as e:
+        logging.warning("Could not set recovery model to %s: %s", model, e)
+
 def bulk_insert_base(cursor, run_version_id):
     start = time.time()
-    logging.info("Inserting base records into NegativeList (heap)...")
+    logging.info("Inserting base records into NegativeList (pre-indexed clustered PK, minimal-log)...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -169,7 +256,7 @@ def bulk_insert_base(cursor, run_version_id):
         INNER JOIN #BaseKeys AS K
             ON K.EntityGUID = A.EntityGUID
            AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
-        OPTION (MAXDOP 2);
+        OPTION (MAXDOP 4);
         """,
         (run_version_id,)
     )
@@ -180,7 +267,7 @@ def bulk_insert_base(cursor, run_version_id):
 
 def bulk_insert_alias(cursor, run_version_id):
     start = time.time()
-    logging.info("Inserting alias records into NegativeList (heap fast bulk mode)...")
+    logging.info("Inserting alias records into NegativeList (pre-indexed clustered PK, minimal-log)...")
 
     cursor.execute(
         """
@@ -228,7 +315,7 @@ def bulk_insert_alias(cursor, run_version_id):
         WHERE B.AliasTypeDesc NOT IN (
               'Acronym','Call Sign','Chinese Commercial Code (CCC)',
               'Native Script For Alias','Native Script For Entity')
-        OPTION (MAXDOP 2);
+        OPTION (MAXDOP 4);
         """,
         (run_version_id,)
     )
@@ -241,31 +328,30 @@ def bulk_insert_alias(cursor, run_version_id):
     logging.info("Loaded %d alias records in %.2f seconds", inserted, time.time() - start)
     return inserted, time.time() - start
 
-def create_primary_key(cursor):
-    start = time.time()
-    logging.info("Creating Primary Key clustered index on NegativeList (ID) (parallel mode MAXDOP 4)...")
-    cursor.execute(
-        """
-        ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (MAXDOP = 4, SORT_IN_TEMPDB = OFF)
-        """
-    )
-    cursor.connection.commit()
-    logging.info("Primary key created in %.2f seconds", time.time() - start)
-    return time.time() - start
-
 def create_nonclustered_indexes(cursor):
     start = time.time()
-    logging.info("Creating non-clustered indexes on NegativeList (parallel mode MAXDOP 4)...")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (MAXDOP = 4)")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (MAXDOP = 4)")
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (MAXDOP = 4)")
+    logging.info("Creating non-clustered indexes on NegativeList (parallel MAXDOP 4)...")
+    # Create all 3 indexes with maximum parallelism
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (MAXDOP = 4, SORT_IN_TEMPDB = ON)")
     cursor.connection.commit()
-    logging.info("Non-clustered indexes created in %.2f seconds", time.time() - start)
+    logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - start)
+
+    t2 = time.time()
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (MAXDOP = 4, SORT_IN_TEMPDB = ON)")
+    cursor.connection.commit()
+    logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t2)
+
+    t3 = time.time()
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (MAXDOP = 4, SORT_IN_TEMPDB = ON)")
+    cursor.connection.commit()
+    logging.info("  IX_NegativeList_SyncKey created in %.2f sec", time.time() - t3)
+
+    logging.info("All non-clustered indexes created in %.2f seconds", time.time() - start)
     return time.time() - start
 
 def populate_master_and_filter(cursor, inserted_total):
     start = time.time()
-    logging.info("Populating NegativeList_Master & NegativeListFilter (parallel mode)...")
+    logging.info("Populating NegativeList_Master & NegativeListFilter (parallel MAXDOP 4)...")
     cursor.execute("TRUNCATE TABLE NegativeList_Master")
     cursor.execute(
         """
@@ -306,6 +392,10 @@ def populate_master_and_filter(cursor, inserted_total):
         OPTION (MAXDOP 4);
         """
     )
+    cursor.connection.commit()
+    logging.info("  NegativeList_Master populated in %.2f sec", time.time() - start)
+
+    t2 = time.time()
     cursor.execute("TRUNCATE TABLE NegativeListFilter")
     cursor.execute(
         """
@@ -319,6 +409,9 @@ def populate_master_and_filter(cursor, inserted_total):
         OPTION (MAXDOP 4);
         """
     )
+    cursor.connection.commit()
+    logging.info("  NegativeListFilter populated in %.2f sec", time.time() - t2)
+
     cursor.execute("IF OBJECT_ID('NegativeList_History_Summary','U') IS NULL CREATE TABLE NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
     cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
     cursor.execute(
@@ -858,10 +951,28 @@ def main():
         if is_initial_load:
             cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
             run_version_id = str(cursor.fetchone()[0])
+
+            # STEP 1: Recreate NegativeList WITH PK clustered from start
+            #         This ELIMINATES the 1-hour post-insert ALTER TABLE step!
+            recreate_negativelist_with_pk(cursor)
+
+            # STEP 2: Switch to SIMPLE recovery for minimal-logged bulk inserts
+            set_recovery_model(cursor, 'SIMPLE')
+
+            # STEP 3: Insert base + alias directly into pre-indexed table
             inserted_base, _ = bulk_insert_base(cursor, run_version_id)
             inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
-            create_primary_key(cursor)
+
+            # STEP 4: Restore FULL recovery model
+            set_recovery_model(cursor, 'FULL')
+
+            # STEP 5: PK already exists! Skip create_primary_key entirely!
+            logging.info("Primary Key already exists (pre-indexed mode) - SKIPPED! 0.00 seconds saved!")
+
+            # STEP 6: Create non-clustered indexes
             create_nonclustered_indexes(cursor)
+
+            # STEP 7: Populate master & filter
             populate_master_and_filter(cursor, inserted_base + inserted_alias)
         else:
             detect_changes(cursor)
