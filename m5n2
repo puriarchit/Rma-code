@@ -965,14 +965,14 @@ def main():
             recreate_negativelist_with_pk(cursor)
 
             # STEP 2: Switch to SIMPLE recovery for minimal-logged bulk inserts
-            set_recovery_model(cursor, 'SIMPLE')
+           # set_recovery_model(cursor, 'SIMPLE')
 
             # STEP 3: Insert base + alias directly into pre-indexed table
             inserted_base, _ = bulk_insert_base(cursor, run_version_id)
             inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
 
             # STEP 4: Restore FULL recovery model
-            set_recovery_model(cursor, 'FULL')
+           # set_recovery_model(cursor, 'FULL')
 
             # STEP 5: PK already exists! Skip create_primary_key entirely!
             logging.info("Primary Key already exists (pre-indexed mode) - SKIPPED! 0.00 seconds saved!")
@@ -1001,3 +1001,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
