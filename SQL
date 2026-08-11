@@ -731,3 +731,18 @@ WHERE t.name = 'NegativeList'
 SELECT 
     CAST(SUM(df.size - FILEPROPERTY(df.name,'SpaceUsed')) * 8.0 / 1024 AS DECIMAL(10,2)) AS FreeMB
 FROM sys.database_files df;
+
+
+USE LexisNexis_Staging;
+
+SELECT
+    name,
+    type_desc,
+    physical_name,
+    size * 8.0 / 1024 AS SizeMB,
+    FILEPROPERTY(name, 'SpaceUsed') * 8.0 / 1024 AS UsedMB,
+    (size - FILEPROPERTY(name, 'SpaceUsed')) * 8.0 / 1024 AS FreeMB,
+    growth,
+    is_percent_growth,
+    max_size
+FROM sys.database_files;
