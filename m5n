@@ -1,15 +1,3 @@
-# -*- coding: utf-8 -*-
-"""Module5_Sync_full_fixed.py
-
-Full V3.8 sync script – includes all phases (initial load, incremental sync, alias handling,
-change detection, history backup, master & filter sync, cleanup, statistics update).
-All previously ambiguous column references have been qualified with the appropriate
-table aliases (A, K, B, NT, etc.) to eliminate the "Ambiguous column name" errors.
-
-The functional logic mirrors the original script; only SQL column qualification and a
-modular structure have been added for readability and maintainability.
-"""
-
 import json
 import os
 import pyodbc
