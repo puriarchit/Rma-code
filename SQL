@@ -1049,3 +1049,18 @@ FROM sys.databases
 WHERE name = 'LexisNexis_Staging';
 
 DBCC OPENTRAN('LexisNexis_Staging');
+
+
+
+
+
+USE LexisNexis_Staging;
+
+SELECT
+    name,
+    size / 128.0 AS SizeMB,
+    growth,
+    is_percent_growth,
+    max_size
+FROM sys.database_files
+WHERE type_desc = 'LOG';
