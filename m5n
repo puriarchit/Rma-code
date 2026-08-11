@@ -230,8 +230,10 @@ def bulk_insert_base(cursor, run_version_id):
             ON K.EntityGUID = A.EntityGUID
            AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
         OPTION (MAXDOP 2);
+        SELECT @@ROWCOUNT;
         """
     , (run_version_id,))
+    cursor.nextset()
     inserted = cursor.fetchone()[0]
     cursor.connection.commit()
     logging.info("Loaded %d base records in %.2f seconds", inserted, time.time() - start)
@@ -275,8 +277,10 @@ def bulk_insert_alias(cursor, run_version_id):
             ON A.EntityGUID = B.EntityGUID
         WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
         OPTION (MAXDOP 2);
+        SELECT @@ROWCOUNT;
         """
     , (run_version_id,))
+    cursor.nextset()
     inserted = cursor.fetchone()[0]
     cursor.connection.commit()
     logging.info("Loaded %d alias records in %.2f seconds", inserted, time.time() - start)
@@ -965,4 +969,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
