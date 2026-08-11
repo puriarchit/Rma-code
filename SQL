@@ -889,3 +889,27 @@ SELECT
         THEN 1 ELSE 0 
     END) AS RowsWithMatch
 FROM dbo.NegativeList_New1 N;
+
+
+
+USE LexisNexis_Staging;
+
+SELECT
+    COUNT(*) AS New1Rows,
+    SUM(CASE WHEN X.HasMatch = 1 THEN 1 ELSE 0 END) AS RowsWithMatch
+FROM
+(
+    SELECT
+        N.EntityGUID,
+        CASE
+            WHEN EXISTS
+            (
+                SELECT 1
+                FROM dbo.NegativeList_Staging S
+                WHERE S.EntityGUID = N.EntityGUID
+            )
+            THEN 1
+            ELSE 0
+        END AS HasMatch
+    FROM dbo.NegativeList_New1 N
+) X;
