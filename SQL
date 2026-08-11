@@ -913,3 +913,20 @@ FROM
         END AS HasMatch
     FROM dbo.NegativeList_New1 N
 ) X;
+
+
+USE LexisNexis_Staging;
+
+SELECT
+    COUNT(*) AS TotalRows,
+    COUNT(DISTINCT EntityGUID) AS DistinctEntityGUID
+FROM dbo.NegativeList_Staging;
+
+
+
+
+
+SELECT
+    COUNT(*) AS TotalRows,
+    COUNT(DISTINCT EntityGUID) AS DistinctEntityGUID
+FROM dbo.NegativeList_New1;
