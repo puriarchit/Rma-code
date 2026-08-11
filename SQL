@@ -930,3 +930,17 @@ SELECT
     COUNT(*) AS TotalRows,
     COUNT(DISTINCT EntityGUID) AS DistinctEntityGUID
 FROM dbo.NegativeList_New1;
+
+
+
+
+USE LexisNexis_Staging;
+
+SELECT COUNT(*) AS StagingRowsNotInNew1
+FROM dbo.NegativeList_Staging S
+WHERE NOT EXISTS
+(
+    SELECT 1
+    FROM dbo.NegativeList_New1 N
+    WHERE N.EntityGUID = S.EntityGUID
+);
