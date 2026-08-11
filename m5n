@@ -241,56 +241,57 @@ def bulk_insert_alias(cursor, run_version_id):
     prev_row_rid    = None
     prev_alias_guid = None
 
-    # Create staging table once; loop reuses it via TRUNCATE
-    cursor.execute(
-        "IF OBJECT_ID('tempdb..#AliasBatch') IS NOT NULL DROP TABLE #AliasBatch"
-    )
-    cursor.execute(
-        """
-        SELECT TOP (0)
-            A.ReferenceID,
-            CASE WHEN A.EntityType='Individual'  THEN 3
-                 WHEN A.EntityType='Country'      THEN 1
-                 WHEN A.EntityType='Organization' THEN 9
-                 WHEN A.EntityType='Vessel'       THEN 4
-                 ELSE 6 END                                  AS EntityType,
-            SUBSTRING(A.Gender,1,7)                         AS Gender,
-            CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''),1,300)
-                 AS NVARCHAR(300))                           AS FirstName,
-            CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)) AS LastName,
-            CAST(SUBSTRING(B.Name,1,500)     AS NVARCHAR(500)) AS SecondName,
-            SUBSTRING(A.Title,1,255)                        AS Title,
-            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
-            SUBSTRING(A.AddressLine1,1,200)                 AS AddressLine1,
-            SUBSTRING(A.AddressLine2,1,200)                 AS AddressLine2,
-            A.City, A.Country,
-            A.WLType, A.OriginalSource, A.Remark,
-            A.NationalIDInfo, A.NationalIDNo,
-            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2,
-            A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4,
-            A.IdOtherInfo5, A.IdNo5,
-            A.EntityGUID,
-            B.EntityAliasGUID,
-            A.Nationality,
-            SUBSTRING(A.Citizenship,1,70)                   AS Citizenship,
-            A.POB,
-            B.Name                                          AS Alias,
-            ?                                               AS VersionID,
-            'add'                                           AS Action,
-            CONVERT(char(10),GETDATE(),126)                 AS FileName,
-            GETDATE()                                       AS CreationDate,
-            K.RowRID,
-            B.EntityAliasGUID                               AS BatchAliasGUID
-        INTO #AliasBatch
-        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
-        INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED)
-            ON A.EntityGUID = B.EntityGUID
-        INNER JOIN #BaseKeys K
-            ON K.EntityGUID = A.EntityGUID
-        WHERE 1 = 0;
-        """,
-        (run_version_id,)
-    )
+   # Create staging table once; loop reuses it via TRUNCATE
+cursor.execute("""
+IF OBJECT_ID('tempdb..#AliasBatch') IS NOT NULL
+    DROP TABLE #AliasBatch;
+
+CREATE TABLE #AliasBatch
+(
+    ReferenceID       NVARCHAR(255),
+    EntityType        INT,
+    Gender            NVARCHAR(7),
+    FirstName         NVARCHAR(300),
+    LastName          NVARCHAR(255),
+    SecondName        NVARCHAR(500),
+    Title             NVARCHAR(255),
+    DOB               DATE,
+    ALTDOB1           DATE,
+    ALTDOB2           DATE,
+    ALTDOB3           DATE,
+    AddressLine1      NVARCHAR(200),
+    AddressLine2      NVARCHAR(200),
+    City              NVARCHAR(255),
+    Country           NVARCHAR(255),
+    WLType            NVARCHAR(255),
+    OriginalSource    NVARCHAR(255),
+    Remark            NVARCHAR(MAX),
+    NationalIDInfo    NVARCHAR(255),
+    NationalIDNo      NVARCHAR(255),
+    IdOtherInfo1      NVARCHAR(255),
+    IdNo1              NVARCHAR(255),
+    IdOtherInfo2      NVARCHAR(255),
+    IdNo2              NVARCHAR(255),
+    IdOtherInfo3      NVARCHAR(255),
+    IdNo3              NVARCHAR(255),
+    IdOtherInfo4      NVARCHAR(255),
+    IdNo4              NVARCHAR(255),
+    IdOtherInfo5      NVARCHAR(255),
+    IdNo5              NVARCHAR(255),
+    EntityGUID        UNIQUEIDENTIFIER,
+    EntityAliasGUID   UNIQUEIDENTIFIER,
+    Nationality       NVARCHAR(255),
+    Citizenship       NVARCHAR(70),
+    POB               NVARCHAR(255),
+    Alias             NVARCHAR(500),
+    VersionID         BIGINT,
+    Action            VARCHAR(10),
+    FileName          CHAR(10),
+    CreationDate      DATETIME,
+    RowRID            VARBINARY(8),
+    BatchAliasGUID    UNIQUEIDENTIFIER
+)
+""")
 
     while True:
         batch_counter += 1
