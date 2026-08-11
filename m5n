@@ -216,14 +216,22 @@ def recreate_negativelist_with_pk(cursor):
     logging.info("NegativeList recreated WITH PK in %.2f seconds (0-cost PK!)", time.time() - start)
     return time.time() - start
 
-def set_recovery_model(cursor, model):
-    """Switch recovery model for minimal logging during bulk inserts."""
+def set_recovery_model(model):
     try:
-        cursor.execute(f"ALTER DATABASE LexisNexis_Staging SET RECOVERY {model}")
-        cursor.connection.commit()
-        logging.info("Recovery model set to %s", model)
+        conn = pyodbc.connect(conn_str, autocommit=True)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            f"ALTER DATABASE LexisNexis_Staging SET RECOVERY {model}"
+        )
+
+        logging.info(f"Recovery model set to {model}")
+
+        cursor.close()
+        conn.close()
+
     except Exception as e:
-        logging.warning("Could not set recovery model to %s: %s", model, e)
+        logging.warning(f"Could not set recovery model to {model}: {e}")
 
 def bulk_insert_base(cursor, run_version_id):
     start = time.time()
