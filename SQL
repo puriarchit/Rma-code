@@ -718,3 +718,11 @@ SELECT
 FROM sys.filegroups fg
 JOIN sys.database_files df ON fg.data_space_id = df.data_space_id
 GROUP BY fg.name;
+
+
+SELECT 
+    SUM(p.rows) AS ApproximateRowCount
+FROM sys.partitions p
+JOIN sys.tables t ON p.object_id = t.object_id
+WHERE t.name = 'NegativeList'
+  AND p.index_id IN (0, 1);  -- heap or clustered index
