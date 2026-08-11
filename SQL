@@ -874,3 +874,18 @@ SELECT COUNT(*) AS MatchingRows
 FROM dbo.NegativeList_New1 N
 INNER JOIN dbo.NegativeList_Staging S
     ON N.EntityGUID = S.EntityGUID;
+
+
+USE LexisNexis_Staging;
+
+SELECT 
+    COUNT(*) AS New1Rows,
+    SUM(CASE 
+        WHEN EXISTS (
+            SELECT 1
+            FROM dbo.NegativeList_Staging S
+            WHERE S.EntityGUID = N.EntityGUID
+        )
+        THEN 1 ELSE 0 
+    END) AS RowsWithMatch
+FROM dbo.NegativeList_New1 N;
