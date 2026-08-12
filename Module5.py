@@ -1,848 +1,665 @@
+# -*- coding: utf-8 -*-
 import json
 import os
 import pyodbc
 import sys
 import time
+import logging
+import argparse
+from datetime import datetime
 
-config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
-with open(config_path, "r") as f:
-    config = json.load(f)
+def setup_logging(level: str = "INFO"):
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="[%(asctime)s] %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
-db = config["database"]
-trusted = "yes" if db["trusted_connection"] else "no"
-conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.json")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    return parser.parse_args()
 
-conn = pyodbc.connect(conn_str)
-conn.autocommit = False
-cursor = conn.cursor()
+def load_config(config_path: str) -> dict:
+    if not os.path.isabs(config_path):
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), config_path)
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-try:
-    cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
-    conn.commit()
+def get_connection(config: dict) -> pyodbc.Connection:
+    db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
+    conn_str = (
+        f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};"
+        f"Trusted_Connection={trusted};"
+    )
+    return pyodbc.connect(conn_str, autocommit=False)
 
-    print("Starting Module 5 (V3.8 - Narrow Key Deduplication Sync)...")
-    sys.stdout.flush()
-    global_start = time.time()
+def ensure_indexes(cursor):
+    logging.info("Verifying persistent indexes on source tables...")
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
+    if cursor.fetchone()[0] == 0:
+        raise RuntimeError(
+            "NegativeList_New1 does not exist. "
+            "Please run Module4_Consolidation.py first to build the source table."
+        )
 
-    # Step 1: Detect Load State (Robust State tracking for safe crash recovery)
-    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_LoadState'")
-    state_table_exists = cursor.fetchone()[0] > 0
-    
-    is_initial_load = True
-    if state_table_exists:
-        cursor.execute("SELECT TOP 1 LoadState FROM NegativeList_LoadState ORDER BY UpdatedDate DESC")
-        row = cursor.fetchone()
-        if row and row[0] == 'COMPLETED':
-            # Double check table actually has rows
-            cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList'")
-            table_exists = cursor.fetchone()[0] > 0
-            if table_exists:
-                cursor.execute("SELECT TOP 1 1 FROM NegativeList WITH (NOLOCK)")
-                if cursor.fetchone():
-                    is_initial_load = False
-
-    # Step 2: Ensure permanent indexes exist on source tables (Self-healing, created once)
-    print("Verifying persistent indexes on source tables...")
-    sys.stdout.flush()
-    cursor.execute("""
-        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_New1_EntityGUID_ReferenceID' AND object_id = OBJECT_ID('dbo.NegativeList_New1'))
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_New1_EntityGUID_ReferenceID'
+                       AND object_id = OBJECT_ID('dbo.NegativeList_New1'))
         BEGIN
-            CREATE NONCLUSTERED INDEX IX_NegativeList_New1_EntityGUID_ReferenceID ON dbo.NegativeList_New1(EntityGUID, ReferenceID);
+            CREATE NONCLUSTERED INDEX IX_NegativeList_New1_EntityGUID_ReferenceID
+                ON dbo.NegativeList_New1(EntityGUID, ReferenceID);
         END
-    """)
-    cursor.execute("""
-        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EntityAlias_EntityGUID_AliasGUID' AND object_id = OBJECT_ID('EntityAlias'))
+        """
+    )
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EntityAlias_EntityGUID_Filter'
+                       AND object_id = OBJECT_ID('EntityAlias'))
         BEGIN
-            CREATE NONCLUSTERED INDEX IX_EntityAlias_EntityGUID_AliasGUID ON EntityAlias(EntityGUID, EntityAliasGUID)
-            INCLUDE (AliasTypeDesc, FirstName, MiddleName, LastName, Name)
+            CREATE NONCLUSTERED INDEX IX_EntityAlias_EntityGUID_Filter
+                ON EntityAlias(EntityGUID, AliasTypeDesc)
+                INCLUDE (EntityAliasGUID, FirstName, MiddleName, LastName, Name);
         END
-    """)
-    conn.commit()
+        """
+    )
 
-    # Step 3: Build narrow #BaseKeys (No tempdb sorting of wide columns, index-supported scan)
-    print("Building narrow #BaseKeys...")
-    sys.stdout.flush()
-    basekeys_start = time.time()
+def build_basekeys(cursor):
+    start = time.time()
+    logging.info("Building narrow #BaseKeys (MAXDOP 8 parallel)...")
     cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE #BaseKeys (
             EntityGUID NVARCHAR(50) NOT NULL,
-            ReferenceID NVARCHAR(50) NULL
+            ReferenceID NVARCHAR(50) NULL,
+            RowRID VARBINARY(8) NOT NULL
+        );
+        """
+    )
+    cursor.execute(
+        """
+        ;WITH KeyRows AS (
+            SELECT
+                EntityGUID,
+                ReferenceID,
+                CONVERT(VARBINARY(8), %%physloc%%) AS RowRID,
+                ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY ReferenceID,
+                    CONVERT(VARBINARY(8), %%physloc%%)) AS rn
+            FROM dbo.NegativeList_New1 WITH (READUNCOMMITTED)
+        )
+        INSERT INTO #BaseKeys (EntityGUID, ReferenceID, RowRID)
+        SELECT EntityGUID, ReferenceID, RowRID
+        FROM KeyRows
+        WHERE rn = 1
+        OPTION (MAXDOP 8);
+        """
+    )
+    cursor.execute("CREATE UNIQUE CLUSTERED INDEX CX_BaseKeys_EntityGUID ON #BaseKeys(EntityGUID);")
+    cursor.connection.commit()
+    logging.info("#BaseKeys created in %.2f seconds.", time.time() - start)
+    return time.time() - start
+
+def build_basesource(cursor, is_initial_load):
+    if is_initial_load:
+        logging.info("Initial load - #BaseSource not required (full scan will use #BaseKeys).")
+        return 0
+    start = time.time()
+    logging.info("Building #BaseSource for incremental sync (MAXDOP 8)...")
+    cursor.execute("DROP TABLE IF EXISTS #BaseSource")
+    cursor.execute(
+        """
+        SELECT
+            A.ReferenceID, A.EntityType, A.Gender, A.FirstName, A.LastName, A.SecondName, A.Title,
+            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, A.AddressLine1, A.AddressLine2,
+            A.City, A.Country, A.WLType, A.OriginalSource, A.Remark,
+            A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3,
+            A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+            A.EntityGUID, A.Nationality, A.Citizenship, A.POB
+        INTO #BaseSource
+        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+        INNER JOIN #BaseKeys AS K
+            ON K.EntityGUID = A.EntityGUID
+           AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+        OPTION (MAXDOP 8);
+        """
+    )
+    cursor.connection.commit()
+    logging.info("#BaseSource created in %.2f seconds.", time.time() - start)
+    return time.time() - start
+
+def recreate_negativelist_with_pk(cursor):
+    start = time.time()
+    step1_time = datetime.now().strftime("%H:%M:%S")
+    logging.info("[1/6] Recreating NegativeList table WITH PRIMARY KEY at %s (0-cost PK!)...", step1_time)
+
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList'")
+    table_exists = cursor.fetchone()[0] > 0
+
+    if table_exists:
+        cursor.execute("""
+            DECLARE @sql NVARCHAR(MAX) = '';
+            SELECT @sql = @sql + 'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(parent_object_id)) + '.' +
+                   QUOTENAME(OBJECT_NAME(parent_object_id)) + ' DROP CONSTRAINT ' + QUOTENAME(name) + ';'
+            FROM sys.foreign_keys WHERE referenced_object_id = OBJECT_ID('NegativeList');
+            IF @sql <> '' EXEC sp_executesql @sql;
+        """)
+        cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
+        cursor.connection.commit()
+
+    cursor.execute("""
+        CREATE TABLE dbo.NegativeList (
+            ID                  INT IDENTITY(1,1) NOT NULL,
+            ReferenceID         NVARCHAR(255)  NULL,
+            EntityType          NVARCHAR(50)   NULL,
+            Gender              NVARCHAR(10)   NULL,
+            FirstName           NVARCHAR(300)  NULL,
+            LastName            NVARCHAR(255)  NULL,
+            SecondName          NVARCHAR(500)  NULL,
+            Title               NVARCHAR(255)  NULL,
+            DOB                 NVARCHAR(100)  NULL,
+            ALTDOB1             DATETIME       NULL,
+            ALTDOB2             DATETIME       NULL,
+            ALTDOB3             DATETIME       NULL,
+            AddressLine1        NVARCHAR(500)  NULL,
+            AddressLine2        NVARCHAR(500)  NULL,
+            City                NVARCHAR(255)  NULL,
+            Country             NVARCHAR(255)  NULL,
+            WLType              NVARCHAR(100)  NULL,
+            OriginalSource      NVARCHAR(MAX)  NULL,
+            Remark              NVARCHAR(MAX)  NULL,
+            NationalIDInfo      NVARCHAR(MAX)  NULL,
+            NationalIDNo        NVARCHAR(255)  NULL,
+            IdOtherInfo1        NVARCHAR(MAX)  NULL,
+            IdNo1               NVARCHAR(255)  NULL,
+            IdOtherInfo2        NVARCHAR(MAX)  NULL,
+            IdNo2               NVARCHAR(255)  NULL,
+            IdOtherInfo3        NVARCHAR(MAX)  NULL,
+            IdNo3               NVARCHAR(255)  NULL,
+            IdOtherInfo4        NVARCHAR(MAX)  NULL,
+            IdNo4               NVARCHAR(255)  NULL,
+            IdOtherInfo5        NVARCHAR(MAX)  NULL,
+            IdNo5               NVARCHAR(255)  NULL,
+            EntityGUID          NVARCHAR(50)   NULL,
+            EntityAliasGUID     NVARCHAR(50)   NULL,
+            Nationality         NVARCHAR(255)  NULL,
+            Citizenship         NVARCHAR(100)  NULL,
+            POB                 NVARCHAR(500)  NULL,
+            Alias               NVARCHAR(500)  NULL,
+            VersionID           NVARCHAR(50)   NULL,
+            Action              NVARCHAR(10)   NULL,
+            FileName            NVARCHAR(100)  NULL,
+            CreationDate        DATETIME       NULL,
+            LastUpdatedBy       INT            NULL,
+            LastUpdatedDate     DATETIME       NULL,
+            CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID)
         );
     """)
-    cursor.execute("""
-        INSERT INTO #BaseKeys (EntityGUID, ReferenceID)
-        SELECT EntityGUID, MIN(ReferenceID) AS ReferenceID
-        FROM dbo.NegativeList_New1 WITH (READUNCOMMITTED)
-        GROUP BY EntityGUID
-        OPTION (MAXDOP 2);
-    """)
-    cursor.execute("""
-        CREATE UNIQUE CLUSTERED INDEX CX_BaseKeys_EntityGUID ON #BaseKeys(EntityGUID);
-    """)
-    conn.commit()
-    print(f"#BaseKeys created in {time.time() - basekeys_start:.2f} seconds.")
-    sys.stdout.flush()
+    cursor.connection.commit()
+    logging.info("[1/6] NegativeList recreated WITH PK in %.2f seconds.", time.time() - start)
+    return time.time() - start
 
-    # Step 4: Build #BaseSource (Relational pre-filtered deduplication)
-    print("Building #BaseSource...")
-    sys.stdout.flush()
-    basesource_start = time.time()
-    cursor.execute("DROP TABLE IF EXISTS #BaseSource")
-    cursor.execute("""
-        WITH FilteredSource AS (
-            SELECT A.ReferenceID, A.EntityType, A.Gender, A.FirstName, A.LastName, A.SecondName, A.Title,
-                   A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, A.AddressLine1, A.AddressLine2, A.City, A.Country,
-                   A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
-                   A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
-                   A.EntityGUID, A.Nationality, A.Citizenship, A.POB,
-                   ROW_NUMBER() OVER (PARTITION BY A.EntityGUID ORDER BY A.ReferenceID) AS rn
-            FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
-            INNER JOIN #BaseKeys AS K ON K.EntityGUID = A.EntityGUID
-               AND K.ReferenceID = A.ReferenceID
-        )
-        SELECT
+def set_recovery_model(config: dict, model: str):
+    try:
+        db = config["database"]
+        trusted = "yes" if db["trusted_connection"] else "no"
+        admin_conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=master;Trusted_Connection={trusted};"
+        admin_conn = pyodbc.connect(admin_conn_str, autocommit=True)
+        admin_conn.cursor().execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY {model}")
+        admin_conn.close()
+        logging.info("Recovery model set to %s.", model)
+    except Exception as e:
+        logging.warning("Could not set recovery model to %s: %s", model, e)
+
+def bulk_insert_base(cursor, run_version_id):
+    start = time.time()
+    step2_time = datetime.now().strftime("%H:%M:%S")
+    logging.info("[2/6] Started inserting Base records into NegativeList at %s (MAXDOP 8 parallel)...", step2_time)
+    cursor.execute(
+        """
+        INSERT INTO dbo.NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            EntityGUID, Nationality, Citizenship, POB
-        INTO #BaseSource
-        FROM FilteredSource
-        WHERE rn = 1
-        OPTION (MAXDOP 2);
-    """)
-    cursor.execute("""
-        CREATE UNIQUE CLUSTERED INDEX CX_BaseSource_EntityGUID ON #BaseSource(EntityGUID);
-    """)
-    
-    # Drop #BaseKeys early to save tempdb space
-    cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
-    conn.commit()
-    print(f"#BaseSource created in {time.time() - basesource_start:.2f} seconds.")
-    sys.stdout.flush()
+            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+        )
+        SELECT
+            A.ReferenceID,
+            CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
+            SUBSTRING(A.Gender, 1, 7),
+            A.FirstName,
+            SUBSTRING(A.LastName, 1, 150),
+            SUBSTRING(A.SecondName, 1, 300),
+            SUBSTRING(A.Title, 1, 255),
+            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
+            SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200),
+            A.City, A.Country,
+            A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+            A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
+            ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
+        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+        INNER JOIN #BaseKeys AS K
+            ON K.EntityGUID = A.EntityGUID
+           AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
+        OPTION (MAXDOP 8);
+        """,
+        (run_version_id,)
+    )
+    inserted = cursor.rowcount
+    cursor.connection.commit()
+    logging.info("[2/6] Completed loading %d base records in %.2f seconds.", inserted, time.time() - start)
+    return inserted, time.time() - start
 
-    if is_initial_load:
-        print("\n==============================================")
-        print("--- RUNNING PATH: INITIAL FULL LOAD ---")
-        print("==============================================")
-        sys.stdout.flush()
+def bulk_insert_alias(cursor, run_version_id):
+    start = time.time()
+    step3_time = datetime.now().strftime("%H:%M:%S")
+    logging.info("[3/6] Started inserting ALL Alias records into NegativeList at %s (MAXDOP 8 parallel)...", step3_time)
 
-        # Initialize LoadState to STARTED (prevents subsequent runs from entering incremental path if crashed)
-        cursor.execute("IF OBJECT_ID('NegativeList_LoadState', 'U') IS NULL BEGIN CREATE TABLE NegativeList_LoadState (LoadState VARCHAR(50) NOT NULL, UpdatedDate DATETIME DEFAULT GETDATE()) END")
-        cursor.execute("TRUNCATE TABLE NegativeList_LoadState")
-        cursor.execute("INSERT INTO NegativeList_LoadState (LoadState) VALUES ('STARTED')")
-        conn.commit()
+    cursor.execute(
+        """
+        INSERT INTO dbo.NegativeList WITH (TABLOCK) (
+            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
+            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+        )
+        SELECT
+            A.ReferenceID,
+            CASE WHEN A.EntityType='Individual'  THEN 3
+                 WHEN A.EntityType='Country'      THEN 1
+                 WHEN A.EntityType='Organization' THEN 9
+                 WHEN A.EntityType='Vessel'       THEN 4
+                 ELSE 6 END,
+            SUBSTRING(A.Gender,1,7),
+            CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''),1,300) AS NVARCHAR(300)),
+            CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)),
+            CAST(SUBSTRING(B.Name,1,500)     AS NVARCHAR(500)),
+            SUBSTRING(A.Title,1,255),
+            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
+            SUBSTRING(A.AddressLine1,1,200),
+            SUBSTRING(A.AddressLine2,1,200),
+            A.City, A.Country,
+            A.WLType, A.OriginalSource, A.Remark,
+            A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2,
+            A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4,
+            A.IdOtherInfo5, A.IdNo5,
+            A.EntityGUID,
+            B.EntityAliasGUID,
+            A.Nationality,
+            SUBSTRING(A.Citizenship,1,70),
+            A.POB,
+            SUBSTRING(B.Name,1,500),
+            ?,
+            'add',
+            CONVERT(char(10),GETDATE(),126),
+            GETDATE()
+        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+        INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED)
+            ON A.EntityGUID = B.EntityGUID
+        WHERE B.AliasTypeDesc NOT IN (
+              'Acronym','Call Sign','Chinese Commercial Code (CCC)',
+              'Native Script For Alias','Native Script For Entity')
+        OPTION (MAXDOP 8);
+        """,
+        (run_version_id,)
+    )
+    inserted = cursor.rowcount
+    if inserted < 0:
+        cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WHERE EntityAliasGUID IS NOT NULL")
+        inserted = cursor.fetchone()[0]
 
-        # Drop and recreate target table as a HEAP (no clustered/non-clustered indexes for fast bulk insert)
-        print("Recreating NegativeList as a HEAP...")
-        cursor.execute("DROP TABLE IF EXISTS NegativeList")
-        cursor.execute("""
-            CREATE TABLE [dbo].[NegativeList](
-                [ID] [int] IDENTITY(1,1) NOT NULL,
-                [ReferenceID] [nvarchar](50) NULL,
-                [EntityType] [nvarchar](50) NULL,
-                [Gender] [nvarchar](50) NULL,
-                [FirstName] [nvarchar](300) NULL,
-                [LastName] [nvarchar](255) NULL,
-                [SecondName] [nvarchar](500) NULL,
-                [Title] [nvarchar](500) NULL,
-                [DOB] [nvarchar](92) NULL,
-                [ALTDOB1] [datetime] NULL,
-                [ALTDOB2] [datetime] NULL,
-                [ALTDOB3] [datetime] NULL,
-                [AddressLine1] [nvarchar](255) NULL,
-                [AddressLine2] [nvarchar](255) NULL,
-                [City] [nvarchar](50) NULL,
-                [Country] [nvarchar](100) NULL,
-                [WLType] [nvarchar](200) NULL,
-                [OriginalSource] [nvarchar](MAX) NULL,
-                [Remark] [nvarchar](4000) NULL,
-                [NationalIDInfo] [nvarchar](250) NULL,
-                [NationalIDNo] [nvarchar](50) NULL,
-                [IdOtherInfo1] [nvarchar](250) NULL,
-                [IdNo1] [nvarchar](250) NULL,
-                [IdOtherInfo2] [nvarchar](250) NULL,
-                [IdNo2] [nvarchar](250) NULL,
-                [IdOtherInfo3] [nvarchar](250) NULL,
-                [IdNo3] [nvarchar](250) NULL,
-                [IdOtherInfo4] [nvarchar](250) NULL,
-                [IdNo4] [nvarchar](250) NULL,
-                [IdOtherInfo5] [nvarchar](250) NULL,
-                [IdNo5] [nvarchar](250) NULL,
-                [EntityGUID] [nvarchar](50) NULL,
-                [EntityAliasGUID] [nvarchar](50) NULL,
-                [Nationality] [nvarchar](100) NULL,
-                [Citizenship] [nvarchar](100) NULL,
-                [POB] [nvarchar](50) NULL,
-                [Alias] [nvarchar](300) NULL,
-                [VersionID] [nvarchar](15) NULL,
-                [Action] [nchar](3) NULL,
-                [FileName] [nvarchar](100) NULL,
-                [LastUpdatedBy] [int] NULL,
-                [LastUpdatedDate] [datetime] NULL,
-                [CreationDate] [datetime] DEFAULT GETDATE()
-            )
-        """)
-        conn.commit()
+    cursor.connection.commit()
+    logging.info("[3/6] Completed loading %d alias records in %.2f seconds.", inserted, time.time() - start)
+    return inserted, time.time() - start
 
-        # Recreate supporting tables if not exist
-        cursor.execute("""
-            IF OBJECT_ID('NegativeList_History', 'U') IS NULL
-            BEGIN
-                CREATE TABLE NegativeList_History (
-                    ID INT NULL, ReferenceID NVARCHAR(100) NULL, WLType NVARCHAR(255) NULL, FileName NVARCHAR(100) NULL,
-                    VersionID NVARCHAR(15) NULL, EntityType NUMERIC(2,0) NULL, Source NVARCHAR(255) NULL, OriginalSource NVARCHAR(MAX) NULL,
-                    Action NCHAR(3) NULL, Gender NVARCHAR(7) NULL, Deceased NCHAR(3) NULL, LastName NVARCHAR(150) NULL,
-                    FirstName NVARCHAR(300) NULL, SecondName NVARCHAR(300) NULL, ThirdName NVARCHAR(150) NULL, FourthName NVARCHAR(150) NULL,
-                    POB NVARCHAR(255) NULL, ALTPOB NVARCHAR(50) NULL, DOB NVARCHAR(255) NULL, ALTDOB1 DATETIME NULL,
-                    ALTDOB2 DATETIME NULL, ALTDOB3 DATETIME NULL, Nationality NVARCHAR(255) NULL, Citizenship NVARCHAR(70) NULL,
-                    Alias4 NVARCHAR(255) NULL, Alias3 NVARCHAR(255) NULL, Alias2 NVARCHAR(255) NULL, Alias1 NVARCHAR(255) NULL,
-                    Alias NVARCHAR(300) NULL, AliasType NVARCHAR(25) NULL, Title NVARCHAR(255) NULL, Designation NVARCHAR(500) NULL,
-                    AddressLine1 NVARCHAR(200) NULL, AddressLine2 NVARCHAR(200) NULL, City NVARCHAR(255) NULL, IdNo1 NVARCHAR(255) NULL,
-                    IdOtherInfo1 NVARCHAR(255) NULL, IdNo2 NVARCHAR(255) NULL, IdOtherInfo2 NVARCHAR(255) NULL, IdNo3 NVARCHAR(255) NULL,
-                    IdOtherInfo3 NVARCHAR(255) NULL, IdNo4 NVARCHAR(255) NULL, IdOtherInfo4 NVARCHAR(255) NULL, IdNo5 NVARCHAR(255) NULL,
-                    IdOtherInfo5 NVARCHAR(255) NULL, NationalIDNo NVARCHAR(50) NULL, NationalIDInfo NVARCHAR(255) NULL,
-                    Program NVARCHAR(150) NULL, OtherInfo TEXT NULL, Sdf NVARCHAR(255) NULL, SdfName NVARCHAR(255) NULL,
-                    Basis NVARCHAR(50) NULL, Remarks TEXT NULL, Status TINYINT NULL, Country NVARCHAR(255) NULL, SystemSource NCHAR(1) NULL,
-                    CreatedBy INT NULL, ApprovedBy INT NULL, CreationDate DATETIME NULL, ApprovalDate DATETIME NULL,
-                    LastUpdatedBy INT NULL, LastUpdatedDate DATETIME NULL, LastApprovedBy INT NULL, LastApprovalDate DATETIME NULL
-                )
-            END
-        """)
-        cursor.execute("""
-            IF OBJECT_ID('NegativeList_Master', 'U') IS NULL
-            BEGIN
-                CREATE TABLE NegativeList_Master (
-                    ID INT NULL, ReferenceID NVARCHAR(100) NULL, WLType NVARCHAR(255) NULL, FileName NVARCHAR(100) NULL,
-                    VersionID NVARCHAR(15) NULL, EntityType NUMERIC(2,0) NULL, Source NVARCHAR(255) NULL, OriginalSource NVARCHAR(MAX) NULL,
-                    Action NCHAR(3) NULL, Gender NVARCHAR(7) NULL, Deceased NCHAR(3) NULL, LastName NVARCHAR(150) NULL,
-                    FirstName NVARCHAR(300) NULL, SecondName NVARCHAR(300) NULL, ThirdName NVARCHAR(150) NULL, FourthName NVARCHAR(150) NULL,
-                    POB NVARCHAR(255) NULL, ALTPOB NVARCHAR(50) NULL, DOB NVARCHAR(255) NULL, ALTDOB1 DATETIME NULL,
-                    ALTDOB2 DATETIME NULL, ALTDOB3 DATETIME NULL, Nationality NVARCHAR(255) NULL, Citizenship NVARCHAR(70) NULL,
-                    Alias4 NVARCHAR(255) NULL, Alias3 NVARCHAR(255) NULL, Alias2 NVARCHAR(255) NULL, Alias1 NVARCHAR(255) NULL,
-                    Alias NVARCHAR(300) NULL, AliasType NVARCHAR(25) NULL, Title NVARCHAR(255) NULL, Designation NVARCHAR(500) NULL,
-                    AddressLine1 NVARCHAR(200) NULL, AddressLine2 NVARCHAR(200) NULL, City NVARCHAR(255) NULL, IdNo1 NVARCHAR(255) NULL,
-                    IdOtherInfo1 NVARCHAR(255) NULL, IdNo2 NVARCHAR(255) NULL, IdOtherInfo2 NVARCHAR(255) NULL, IdNo3 NVARCHAR(255) NULL,
-                    IdOtherInfo3 NVARCHAR(255) NULL, IdNo4 NVARCHAR(255) NULL, IdOtherInfo4 NVARCHAR(255) NULL, IdNo5 NVARCHAR(255) NULL,
-                    IdOtherInfo5 NVARCHAR(255) NULL, NationalIDNo NVARCHAR(50) NULL, NationalIDInfo NVARCHAR(255) NULL,
-                    Program NVARCHAR(150) NULL, OtherInfo TEXT NULL, Sdf NVARCHAR(255) NULL, SdfName NVARCHAR(255) NULL,
-                    Basis NVARCHAR(50) NULL, Remarks TEXT NULL, Status TINYINT NULL, Country NVARCHAR(255) NULL, SystemSource NCHAR(1) NULL,
-                    CreatedBy INT NULL, ApprovedBy INT NULL, CreationDate DATETIME NULL, ApprovalDate DATETIME NULL,
-                    LastUpdatedBy INT NULL, LastUpdatedDate DATETIME NULL, LastApprovedBy INT NULL, LastApprovalDate DATETIME NULL
-                )
-            END
-        """)
-        cursor.execute("IF OBJECT_ID('NegativeListFilter', 'U') IS NULL BEGIN CREATE TABLE NegativeListFilter (ID INT PRIMARY KEY, FirstName NVARCHAR(1000) NULL, LastName NVARCHAR(1000) NULL, Nationality NVARCHAR(255) NULL) END")
-        conn.commit()
+def create_nonclustered_indexes(cursor):
+    start = time.time()
+    step4_time = datetime.now().strftime("%H:%M:%S")
+    logging.info("[4/6] Started creating Non-Clustered Indexes at %s (MAXDOP 8 parallel)...", step4_time)
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
+    cursor.connection.commit()
+    logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - start)
 
-        # Sequence generation for versioning
-        cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq') SELECT 1 ELSE SELECT 0")
-        seq_exists = cursor.fetchone()[0] == 0
-        if not seq_exists:
-            cursor.execute("CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1")
-            conn.commit()
-        cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
-        run_version_id = str(cursor.fetchone()[0])
+    t2 = time.time()
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
+    cursor.connection.commit()
+    logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t2)
 
-        # Bulk Insert Base Entities (loaded directly from deduplicated #BaseSource)
-        print("Inserting base records from #BaseSource into NegativeList HEAP...")
-        sys.stdout.flush()
-        base_start = time.time()
-        cursor.execute("""
-            INSERT INTO dbo.NegativeList WITH (TABLOCK) (
-                ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
-            )
-            SELECT 
-                ReferenceID, 
-                CASE WHEN EntityType='Individual' THEN 3 WHEN EntityType='Country' THEN 1 WHEN EntityType='Organization' THEN 9 WHEN EntityType='Vessel' THEN 4 ELSE 6 END,
-                SUBSTRING(Gender, 1, 7), FirstName, SUBSTRING(LastName, 1, 150), SUBSTRING(SecondName, 1, 300), SUBSTRING(Title, 1, 255),
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, SUBSTRING(AddressLine1, 1, 200), SUBSTRING(AddressLine2, 1, 200), City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, NULL, Nationality, SUBSTRING(Citizenship, 1, 70), POB, NULL, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM #BaseSource;
-            
-            SELECT @@ROWCOUNT;
-        """, (run_version_id,))
-        inserted_base = cursor.fetchone()[0]
-        conn.commit()
-        print(f"Loaded {inserted_base} base records into HEAP in {time.time() - base_start:.2f} seconds.")
-        sys.stdout.flush()
+    t3 = time.time()
+    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
+    cursor.connection.commit()
+    logging.info("  IX_NegativeList_SyncKey created in %.2f sec", time.time() - t3)
 
-        # Bulk Insert Alias Entities (using indexed joins with EntityAlias)
-        print("Inserting alias records using #BaseSource join into NegativeList HEAP...")
-        sys.stdout.flush()
-        alias_start = time.time()
-        cursor.execute("""
-            INSERT INTO dbo.NegativeList WITH (TABLOCK) (
-                ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
-            )
-            SELECT 
-                A.ReferenceID, 
-                CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
-                SUBSTRING(A.Gender, 1, 7), 
-                CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300)),
-                CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
-                CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
-                SUBSTRING(A.Title, 1, 255),
-                A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200), A.City, A.Country,
-                A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
-                A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
-                A.EntityGUID, B.EntityAliasGUID, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, B.Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM #BaseSource A
-            INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID
-            WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-            OPTION (MAXDOP 2);
-            
-            SELECT @@ROWCOUNT;
-        """, (run_version_id,))
-        inserted_alias = cursor.fetchone()[0]
-        conn.commit()
-        print(f"Loaded {inserted_alias} alias records into HEAP in {time.time() - alias_start:.2f} seconds.")
-        sys.stdout.flush()
+    logging.info("[4/6] Completed non-clustered indexes in %.2f seconds.", time.time() - start)
+    return time.time() - start
 
-        # Build Clustered Index and Primary Key Constraint (SORT_IN_TEMPDB = OFF to save tempdb space)
-        print("Building Primary Key Clustered Index (ID)...")
-        sys.stdout.flush()
-        idx_start = time.time()
-        cursor.execute("""
-            ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (SORT_IN_TEMPDB = OFF)
-        """)
-        conn.commit()
-        print("Building Non-Clustered Indexes on NegativeList...")
-        sys.stdout.flush()
-        cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = OFF)")
-        cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
-        cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_Alias ON NegativeList(Alias) WITH (SORT_IN_TEMPDB = OFF)")
-        cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_SyncKey ON NegativeList(EntityGUID, EntityAliasGUID) WITH (SORT_IN_TEMPDB = OFF)")
-        conn.commit()
-        print(f"All Indexes created in {time.time() - idx_start:.2f} seconds.")
-        sys.stdout.flush()
+def populate_master_and_filter(cursor, inserted_total):
+    start = time.time()
+    step5_time = datetime.now().strftime("%H:%M:%S")
+    logging.info("[5/6] Started populating NegativeList_Master & Filter at %s (MAXDOP 8 parallel)...", step5_time)
+    cursor.execute("TRUNCATE TABLE NegativeList_Master")
+    cursor.execute(
+        """
+        INSERT INTO NegativeList_Master WITH (TABLOCK) (
+            ID, ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender,
+            LastName, FirstName, SecondName, POB, DOB, ALTDOB1, ALTDOB2, ALTDOB3, Nationality, Citizenship,
+            Alias, Title, AddressLine1, AddressLine2, City, IdNo1, IdOtherInfo1, IdNo2, IdOtherInfo2, IdNo3,
+            IdOtherInfo3, IdNo4, IdOtherInfo4, IdNo5, IdOtherInfo5, NationalIDNo, NationalIDInfo, Basis, Remarks,
+            Country, CreationDate, LastUpdatedBy, LastUpdatedDate
+        )
+        SELECT
+            A.ID, A.ReferenceID, A.WLType, A.FileName, A.VersionID,
+            CASE WHEN ISNUMERIC(A.EntityType)=1 THEN CAST(A.EntityType AS NUMERIC(2,0))
+                 WHEN A.EntityType='Individual' THEN 3
+                 WHEN A.EntityType='Country' THEN 1
+                 WHEN A.EntityType='Organization' THEN 9
+                 WHEN A.EntityType='Vessel' THEN 4
+                 ELSE 6 END,
+            NULL, A.OriginalSource, A.Action,
+            CAST(SUBSTRING(A.Gender,1,7) AS NVARCHAR(7)),
+            CAST(SUBSTRING(A.LastName,1,150) AS NVARCHAR(150)),
+            A.FirstName,
+            CAST(SUBSTRING(A.SecondName,1,300) AS NVARCHAR(300)),
+            A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
+            A.Nationality,
+            CAST(SUBSTRING(A.Citizenship,1,70) AS NVARCHAR(70)),
+            A.Alias,
+            CAST(SUBSTRING(A.Title,1,255) AS NVARCHAR(255)),
+            CAST(SUBSTRING(A.AddressLine1,1,200) AS NVARCHAR(200)),
+            CAST(SUBSTRING(A.AddressLine2,1,200) AS NVARCHAR(200)),
+            A.City,
+            A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3,
+            A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5,
+            A.NationalIDNo, A.NationalIDInfo,
+            A.EntityGUID, A.Remark, A.Country,
+            A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
+        FROM NegativeList A
+        OPTION (MAXDOP 8);
+        """
+    )
+    cursor.connection.commit()
+    logging.info("  NegativeList_Master populated in %.2f sec", time.time() - start)
 
-        # Bulk Populate NegativeList_Master & NegativeListFilter
-        print("Populating NegativeList_Master & NegativeListFilter (Bulk Initial Load)...")
-        sys.stdout.flush()
-        bulk_dest_start = time.time()
-        cursor.execute("TRUNCATE TABLE NegativeList_Master")
-        cursor.execute("""
-            INSERT INTO NegativeList_Master WITH (TABLOCK) (
-                ID, ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender, 
-                LastName, FirstName, SecondName, POB, DOB, ALTDOB1, ALTDOB2, ALTDOB3, Nationality, Citizenship, 
-                Alias, Title, AddressLine1, AddressLine2, City, IdNo1, IdOtherInfo1, IdNo2, IdOtherInfo2, IdNo3, 
-                IdOtherInfo3, IdNo4, IdOtherInfo4, IdNo5, IdOtherInfo5, NationalIDNo, NationalIDInfo, Basis, Remarks, 
-                Country, CreationDate, LastUpdatedBy, LastUpdatedDate
-            )
-            SELECT 
-                A.ID, A.ReferenceID, A.WLType, A.FileName, A.VersionID, 
-                CASE 
-                    WHEN ISNUMERIC(A.EntityType) = 1 THEN CAST(A.EntityType AS NUMERIC(2,0))
-                    WHEN A.EntityType = 'Individual' THEN 3
-                    WHEN A.EntityType = 'Country' THEN 1
-                    WHEN A.EntityType = 'Organization' THEN 9
-                    WHEN A.EntityType = 'Vessel' THEN 4
-                    ELSE 6 
-                END, 
-                NULL, A.OriginalSource, A.Action, CAST(SUBSTRING(A.Gender, 1, 7) AS NVARCHAR(7)), CAST(SUBSTRING(A.LastName, 1, 150) AS NVARCHAR(150)), 
-                A.FirstName, CAST(SUBSTRING(A.SecondName, 1, 300) AS NVARCHAR(300)), A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, 
-                A.Nationality, CAST(SUBSTRING(A.Citizenship, 1, 70) AS NVARCHAR(70)), A.Alias, CAST(SUBSTRING(A.Title, 1, 255) AS NVARCHAR(255)), 
-                CAST(SUBSTRING(A.AddressLine1, 1, 200) AS NVARCHAR(200)), CAST(SUBSTRING(A.AddressLine2, 1, 200) AS NVARCHAR(200)), 
-                A.City, A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3, A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5, 
-                A.NationalIDNo, A.NationalIDInfo, A.EntityGUID, A.Remark, A.Country, A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-            FROM NegativeList A
-        """)
+    t2 = time.time()
+    cursor.execute("TRUNCATE TABLE NegativeListFilter")
+    cursor.execute(
+        """
+        INSERT INTO NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
+        SELECT
+            i.ID,
+            UPPER(RTRIM(LTRIM(ISNULL(i.FirstName,'')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.LastName,'')))),
+            UPPER(RTRIM(LTRIM(ISNULL(i.LastName,'')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.FirstName,'')))),
+            i.Nationality
+        FROM NegativeList i
+        OPTION (MAXDOP 8);
+        """
+    )
+    cursor.connection.commit()
+    logging.info("  NegativeListFilter populated in %.2f sec", time.time() - t2)
 
-        cursor.execute("TRUNCATE TABLE NegativeListFilter")
-        cursor.execute("""
-            INSERT INTO NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
-            SELECT i.ID, 
-                   UPPER(RTRIM(LTRIM(ISNULL(i.FirstName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.LastName, '')))), 
-                   UPPER(RTRIM(LTRIM(ISNULL(i.LastName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.FirstName, '')))), 
-                   i.Nationality
-            FROM NegativeList i
-        """)
+    cursor.execute("IF OBJECT_ID('NegativeList_History_Summary','U') IS NULL CREATE TABLE NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
+    cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
+    cursor.execute(
+        """
+        INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
+        VALUES
+            ('New Negative List Records', ?, GETDATE()),
+            ('Updated Negative List Records', 0, GETDATE()),
+            ('Total Negative List Records', ?, GETDATE());
+        """,
+        (inserted_total, inserted_total),
+    )
+    cursor.connection.commit()
+    logging.info("[5/6] Master & Filter populated in %.2f seconds.", time.time() - start)
+    return time.time() - start
 
-        cursor.execute("IF OBJECT_ID('NegativeList_History_Summary', 'U') IS NULL BEGIN CREATE TABLE [NegativeList_History_Summary] ([Type] varchar(29), [Count] int, [RunDate] datetime) END")
-        cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
-        cursor.execute("""
-            INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
-            VALUES 
-                ('New Negative List Records', ?, GETDATE()),
-                ('Updated Negative List Records', 0, GETDATE()),
-                ('Total Negative List Records', ?, GETDATE())
-        """, (inserted_base + inserted_alias, inserted_base + inserted_alias))
+def detect_changes(cursor):
+    start = time.time()
+    logging.info("Detecting changes between source and target...")
+    cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
+    cursor.execute(
+        """
+        CREATE TABLE #ChangeSet (
+            ID INT NOT NULL PRIMARY KEY,
+            ChangeType CHAR(3) NOT NULL
+        );
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO #ChangeSet (ID, ChangeType)
+        SELECT N.ID, 'chg'
+        FROM NegativeList N
+        INNER JOIN #BaseSource NT ON N.EntityGUID = NT.EntityGUID
+        WHERE N.EntityAliasGUID IS NULL
+          AND (
+            ISNULL(N.ReferenceID,'') <> ISNULL(NT.ReferenceID,'') OR
+            ISNULL(N.EntityType,0) <> CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END OR
+            ISNULL(N.Gender,'') <> CAST(SUBSTRING(ISNULL(NT.Gender,''),1,7) AS NVARCHAR(7)) OR
+            ISNULL(N.FirstName,'') <> ISNULL(NT.FirstName,'') OR
+            ISNULL(N.LastName,'') <> CAST(SUBSTRING(ISNULL(NT.LastName,''),1,150) AS NVARCHAR(150)) OR
+            ISNULL(N.SecondName,'') <> CAST(SUBSTRING(ISNULL(NT.SecondName,''),1,300) AS NVARCHAR(300)) OR
+            ISNULL(N.Title,'') <> CAST(SUBSTRING(ISNULL(NT.Title,''),1,255) AS NVARCHAR(255)) OR
+            ISNULL(N.DOB,'') <> ISNULL(NT.DOB,'') OR
+            ISNULL(N.ALTDOB1,'1900-01-01') <> ISNULL(NT.ALTDOB1,'1900-01-01') OR
+            ISNULL(N.ALTDOB2,'1900-01-01') <> ISNULL(NT.ALTDOB2,'1900-01-01') OR
+            ISNULL(N.ALTDOB3,'1900-01-01') <> ISNULL(NT.ALTDOB3,'1900-01-01') OR
+            ISNULL(N.AddressLine1,'') <> CAST(SUBSTRING(ISNULL(NT.AddressLine1,''),1,200) AS NVARCHAR(200)) OR
+            ISNULL(N.AddressLine2,'') <> CAST(SUBSTRING(ISNULL(NT.AddressLine2,''),1,200) AS NVARCHAR(200)) OR
+            ISNULL(N.City,'') <> ISNULL(NT.City,'') OR
+            ISNULL(N.Country,'') <> ISNULL(NT.Country,'') OR
+            ISNULL(N.WLType,'') <> ISNULL(NT.WLType,'') OR
+            ISNULL(N.OriginalSource,'') <> ISNULL(NT.OriginalSource,'') OR
+            ISNULL(N.Remark,'') <> ISNULL(NT.Remark,'') OR
+            ISNULL(N.NationalIDInfo,'') <> ISNULL(NT.NationalIDInfo,'') OR
+            ISNULL(N.NationalIDNo,'') <> ISNULL(NT.NationalIDNo,'') OR
+            ISNULL(N.IdOtherInfo1,'') <> ISNULL(NT.IdOtherInfo1,'') OR
+            ISNULL(N.IdNo1,'') <> ISNULL(NT.IdNo1,'') OR
+            ISNULL(N.IdOtherInfo2,'') <> ISNULL(NT.IdOtherInfo2,'') OR
+            ISNULL(N.IdNo2,'') <> ISNULL(NT.IdNo2,'') OR
+            ISNULL(N.IdOtherInfo3,'') <> ISNULL(NT.IdOtherInfo3,'') OR
+            ISNULL(N.IdNo3,'') <> ISNULL(NT.IdNo3,'') OR
+            ISNULL(N.IdOtherInfo4,'') <> ISNULL(NT.IdOtherInfo4,'') OR
+            ISNULL(N.IdNo4,'') <> ISNULL(NT.IdNo4,'') OR
+            ISNULL(N.IdOtherInfo5,'') <> ISNULL(NT.IdOtherInfo5,'') OR
+            ISNULL(N.IdNo5,'') <> ISNULL(NT.IdNo5,'') OR
+            ISNULL(N.Nationality,'') <> ISNULL(NT.Nationality,'') OR
+            ISNULL(N.Citizenship,'') <> CAST(SUBSTRING(ISNULL(NT.Citizenship,''),1,70) AS NVARCHAR(70)) OR
+            ISNULL(N.POB,'') <> ISNULL(NT.POB,'') OR
+            N.Alias IS NOT NULL
+          );
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO #ChangeSet (ID, ChangeType)
+        SELECT N.ID, 'chg'
+        FROM NegativeList N
+        INNER JOIN #BaseSource A ON N.EntityGUID = A.EntityGUID
+        INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID AND N.EntityAliasGUID = B.EntityAliasGUID
+        WHERE N.EntityAliasGUID IS NOT NULL
+          AND B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
+          AND NOT EXISTS (SELECT 1 FROM #ChangeSet C WHERE C.ID = N.ID)
+          AND (
+            ISNULL(N.ReferenceID,'') <> ISNULL(A.ReferenceID,'') OR
+            ISNULL(N.EntityType,0) <> CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END OR
+            ISNULL(N.Gender,'') <> CAST(SUBSTRING(ISNULL(A.Gender,''),1,7) AS NVARCHAR(7)) OR
+            ISNULL(N.FirstName,'') <> CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''),1,300) AS NVARCHAR(300)) OR
+            ISNULL(N.LastName,'') <> CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)) OR
+            ISNULL(N.SecondName,'') <> CAST(SUBSTRING(B.Name,1,500) AS NVARCHAR(500)) OR
+            ISNULL(N.Title,'') <> CAST(SUBSTRING(ISNULL(A.Title,''),1,255) AS NVARCHAR(255)) OR
+            ISNULL(N.DOB,'') <> ISNULL(A.DOB,'') OR
+            ISNULL(N.ALTDOB1,'1900-01-01') <> ISNULL(A.ALTDOB1,'1900-01-01') OR
+            ISNULL(N.ALTDOB2,'1900-01-01') <> ISNULL(A.ALTDOB2,'1900-01-01') OR
+            ISNULL(N.ALTDOB3,'1900-01-01') <> ISNULL(A.ALTDOB3,'1900-01-01') OR
+            ISNULL(N.AddressLine1,'') <> CAST(SUBSTRING(ISNULL(A.AddressLine1,''),1,200) AS NVARCHAR(200)) OR
+            ISNULL(N.AddressLine2,'') <> CAST(SUBSTRING(ISNULL(A.AddressLine2,''),1,200) AS NVARCHAR(200)) OR
+            ISNULL(N.City,'') <> ISNULL(A.City,'') OR
+            ISNULL(N.Country,'') <> ISNULL(A.Country,'') OR
+            ISNULL(N.WLType,'') <> ISNULL(A.WLType,'') OR
+            ISNULL(N.OriginalSource,'') <> ISNULL(A.OriginalSource,'') OR
+            ISNULL(N.Remark,'') <> ISNULL(A.Remark,'') OR
+            ISNULL(N.NationalIDInfo,'') <> ISNULL(A.NationalIDInfo,'') OR
+            ISNULL(N.NationalIDNo,'') <> ISNULL(A.NationalIDNo,'') OR
+            ISNULL(N.IdOtherInfo1,'') <> ISNULL(A.IdOtherInfo1,'') OR
+            ISNULL(N.IdNo1,'') <> ISNULL(A.IdNo1,'') OR
+            ISNULL(N.IdOtherInfo2,'') <> ISNULL(A.IdOtherInfo2,'') OR
+            ISNULL(N.IdNo2,'') <> ISNULL(A.IdNo2,'') OR
+            ISNULL(N.IdOtherInfo3,'') <> ISNULL(A.IdOtherInfo3,'') OR
+            ISNULL(N.IdNo3,'') <> ISNULL(A.IdNo3,'') OR
+            ISNULL(N.IdOtherInfo4,'') <> ISNULL(A.IdOtherInfo4,'') OR
+            ISNULL(N.IdNo4,'') <> ISNULL(A.IdNo4,'') OR
+            ISNULL(N.IdOtherInfo5,'') <> ISNULL(A.IdOtherInfo5,'') OR
+            ISNULL(N.IdNo5,'') <> ISNULL(A.IdNo5,'') OR
+            ISNULL(N.Nationality,'') <> ISNULL(A.Nationality,'') OR
+            ISNULL(N.Citizenship,'') <> CAST(SUBSTRING(ISNULL(A.Citizenship,''),1,70) AS NVARCHAR(70)) OR
+            ISNULL(N.POB,'') <> ISNULL(A.POB,'') OR
+            ISNULL(N.Alias,'') <> ISNULL(B.Name,'')
+          );
+        """
+    )
+    cursor.connection.commit()
+    cnt = cursor.execute("SELECT COUNT(*) FROM #ChangeSet").fetchone()[0]
+    logging.info("Change detection completed in %.2f seconds (changeset rows: %d).", time.time() - start, cnt)
+    return time.time() - start
 
-        # Commit initial data load and mark status as COMPLETED
-        cursor.execute("TRUNCATE TABLE NegativeList_LoadState")
-        cursor.execute("INSERT INTO NegativeList_LoadState (LoadState) VALUES ('COMPLETED')")
-        conn.commit()
-        print(f"Master/Filter bulk sync completed in {time.time() - bulk_dest_start:.2f} seconds.")
-        sys.stdout.flush()
+def cleanup(cursor):
+    start = time.time()
+    logging.info("Dropping temporary tables...")
+    cursor.execute("DROP TABLE IF EXISTS #BaseSource")
+    cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
+    cursor.execute("DROP TABLE IF EXISTS #NewIDs")
+    cursor.execute("DROP TABLE IF EXISTS #AffectedIDs")
+    cursor.connection.commit()
+    logging.info("Cleanup finished in %.2f seconds.", time.time() - start)
+    return time.time() - start
 
-        # Update Statistics
-        print("Updating Database Statistics...")
-        sys.stdout.flush()
-        cursor.execute("UPDATE STATISTICS dbo.NegativeList")
-        cursor.execute("UPDATE STATISTICS dbo.NegativeList_New1")
-        cursor.execute("UPDATE STATISTICS dbo.EntityAlias")
-        conn.commit()
+def pre_sync_cleanup(cursor):
+    start = time.time()
+    logging.info("Pre-sync cleanup: removing unreferenced temp staging tables...")
+    tables_to_drop = [
+        "NegativeList_Staging",
+        "AssociatedEntity",
+        "ConsolidatedSanction",
+        "EntityAdverseMedia",
+        "EntityAdverseMediaSubCategory",
+    ]
+    for table in tables_to_drop:
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS dbo.[{table}]")
+            cursor.connection.commit()
+        except Exception:
+            pass
+    logging.info("Pre-sync cleanup completed in %.2f seconds.", time.time() - start)
 
-        print(f"\n==============================================")
-        print(f"INITIAL FULL LOAD COMPLETED SUCCESSFULLY!")
-        print(f"Total rows inserted: {inserted_base + inserted_alias} records.")
-        print(f"Execution Duration: {time.time() - global_start:.2f} seconds.")
-        print("==============================================")
-        sys.stdout.flush()
-
-    else:
-        print("\n==============================================")
-        print("--- RUNNING PATH: INCREMENTAL SYNC ---")
-        print("==============================================")
-        sys.stdout.flush()
-
-        # Change detection
-        print("--- Phase B: Change Detection ---")
-        sys.stdout.flush()
-        phase_b_start = time.time()
-
-        cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
-        cursor.execute("""
-            CREATE TABLE #ChangeSet (
-                ID INT NOT NULL PRIMARY KEY,
-                ChangeType CHAR(3) NOT NULL
-            )
-        """)
-
-        # Non-alias change detection directly matching against pre-deduplicated #BaseSource
-        cursor.execute("""
-            INSERT INTO #ChangeSet (ID, ChangeType)
-            SELECT N.ID, 'chg'
-            FROM NegativeList N
-            INNER JOIN #BaseSource NT ON N.EntityGUID = NT.EntityGUID 
-            WHERE N.EntityAliasGUID IS NULL
-              AND (
-                (ISNULL(N.ReferenceID, '') <> ISNULL(NT.ReferenceID, '')) OR
-                (ISNULL(N.EntityType, 0) <> CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END) OR
-                (ISNULL(N.Gender, '') <> CAST(SUBSTRING(ISNULL(NT.Gender, ''), 1, 7) AS NVARCHAR(7))) OR
-                (ISNULL(N.FirstName, '') <> ISNULL(NT.FirstName, '')) OR
-                (ISNULL(N.LastName, '') <> CAST(SUBSTRING(ISNULL(NT.LastName, ''), 1, 150) AS NVARCHAR(150))) OR
-                (ISNULL(N.SecondName, '') <> CAST(SUBSTRING(ISNULL(NT.SecondName, ''), 1, 300) AS NVARCHAR(300))) OR
-                (ISNULL(N.Title, '') <> CAST(SUBSTRING(ISNULL(NT.Title, ''), 1, 255) AS NVARCHAR(255))) OR
-                (ISNULL(N.DOB, '') <> ISNULL(NT.DOB, '')) OR
-                (ISNULL(N.ALTDOB1, '1900-01-01') <> ISNULL(NT.ALTDOB1, '1900-01-01')) OR
-                (ISNULL(N.ALTDOB2, '1900-01-01') <> ISNULL(NT.ALTDOB2, '1900-01-01')) OR
-                (ISNULL(N.ALTDOB3, '1900-01-01') <> ISNULL(NT.ALTDOB3, '1900-01-01')) OR
-                (ISNULL(N.AddressLine1, '') <> CAST(SUBSTRING(ISNULL(NT.AddressLine1, ''), 1, 200) AS NVARCHAR(200))) OR
-                (ISNULL(N.AddressLine2, '') <> CAST(SUBSTRING(ISNULL(NT.AddressLine2, ''), 1, 200) AS NVARCHAR(200))) OR
-                (ISNULL(N.City, '') <> ISNULL(NT.City, '')) OR
-                (ISNULL(N.Country, '') <> ISNULL(NT.Country, '')) OR
-                (ISNULL(N.WLType, '') <> ISNULL(NT.WLType, '')) OR
-                (ISNULL(N.OriginalSource, '') <> ISNULL(NT.OriginalSource, '')) OR
-                (ISNULL(N.Remark, '') <> ISNULL(NT.Remark, '')) OR
-                (ISNULL(N.NationalIDInfo, '') <> ISNULL(NT.NationalIDInfo, '')) OR
-                (ISNULL(N.NationalIDNo, '') <> ISNULL(NT.NationalIDNo, '')) OR
-                (ISNULL(N.IdOtherInfo1, '') <> ISNULL(NT.IdOtherInfo1, '')) OR
-                (ISNULL(N.IdNo1, '') <> ISNULL(NT.IdNo1, '')) OR
-                (ISNULL(N.IdOtherInfo2, '') <> ISNULL(NT.IdOtherInfo2, '')) OR
-                (ISNULL(N.IdNo2, '') <> ISNULL(NT.IdNo2, '')) OR
-                (ISNULL(N.IdOtherInfo3, '') <> ISNULL(NT.IdOtherInfo3, '')) OR
-                (ISNULL(N.IdNo3, '') <> ISNULL(NT.IdNo3, '')) OR
-                (ISNULL(N.IdOtherInfo4, '') <> ISNULL(NT.IdOtherInfo4, '')) OR
-                (ISNULL(N.IdNo4, '') <> ISNULL(NT.IdNo4, '')) OR
-                (ISNULL(N.IdOtherInfo5, '') <> ISNULL(NT.IdOtherInfo5, '')) OR
-                (ISNULL(N.IdNo5, '') <> ISNULL(NT.IdNo5, '')) OR
-                (ISNULL(N.Nationality, '') <> ISNULL(NT.Nationality, '')) OR
-                (ISNULL(N.Citizenship, '') <> CAST(SUBSTRING(ISNULL(NT.Citizenship, ''), 1, 70) AS NVARCHAR(70))) OR
-                (ISNULL(N.POB, '') <> ISNULL(NT.POB, '')) OR
-                N.Alias IS NOT NULL
-              )
-        """)
-
-        # Alias change detection matching against pre-deduplicated #BaseSource joined with EntityAlias
-        cursor.execute("""
-            INSERT INTO #ChangeSet (ID, ChangeType)
-            SELECT N.ID, 'chg'
-            FROM NegativeList N
-            INNER JOIN #BaseSource A ON N.EntityGUID = A.EntityGUID 
-            INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID AND N.EntityAliasGUID = B.EntityAliasGUID
-            WHERE N.EntityAliasGUID IS NOT NULL
-              AND B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-              AND NOT EXISTS (SELECT 1 FROM #ChangeSet C WHERE C.ID = N.ID)
-              AND (
-                (ISNULL(N.ReferenceID, '') <> ISNULL(A.ReferenceID, '')) OR
-                (ISNULL(N.EntityType, 0) <> CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END) OR
-                (ISNULL(N.Gender, '') <> CAST(SUBSTRING(ISNULL(A.Gender, ''), 1, 7) AS NVARCHAR(7))) OR
-                (ISNULL(N.FirstName, '') <> CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300))) OR
-                (ISNULL(N.LastName, '') <> CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255))) OR
-                (ISNULL(N.SecondName, '') <> CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500))) OR
-                (ISNULL(N.Title, '') <> CAST(SUBSTRING(ISNULL(A.Title, ''), 1, 255) AS NVARCHAR(255))) OR
-                (ISNULL(N.DOB, '') <> ISNULL(A.DOB, '')) OR
-                (ISNULL(N.ALTDOB1, '1900-01-01') <> ISNULL(A.ALTDOB1, '1900-01-01')) OR
-                (ISNULL(N.ALTDOB2, '1900-01-01') <> ISNULL(A.ALTDOB2, '1900-01-01')) OR
-                (ISNULL(N.ALTDOB3, '1900-01-01') <> ISNULL(A.ALTDOB3, '1900-01-01')) OR
-                (ISNULL(N.AddressLine1, '') <> CAST(SUBSTRING(ISNULL(A.AddressLine1, ''), 1, 200) AS NVARCHAR(200))) OR
-                (ISNULL(N.AddressLine2, '') <> CAST(SUBSTRING(ISNULL(A.AddressLine2, ''), 1, 200) AS NVARCHAR(200))) OR
-                (ISNULL(N.City, '') <> ISNULL(A.City, '')) OR
-                (ISNULL(N.Country, '') <> ISNULL(A.Country, '')) OR
-                (ISNULL(N.WLType, '') <> ISNULL(A.WLType, '')) OR
-                (ISNULL(N.OriginalSource, '') <> ISNULL(A.OriginalSource, '')) OR
-                (ISNULL(N.Remark, '') <> ISNULL(A.Remark, '')) OR
-                (ISNULL(N.NationalIDInfo, '') <> ISNULL(A.NationalIDInfo, '')) OR
-                (ISNULL(N.NationalIDNo, '') <> ISNULL(A.NationalIDNo, '')) OR
-                (ISNULL(N.IdOtherInfo1, '') <> ISNULL(A.IdOtherInfo1, '')) OR
-                (ISNULL(N.IdNo1, '') <> ISNULL(A.IdNo1, '')) OR
-                (ISNULL(N.IdOtherInfo2, '') <> ISNULL(A.IdOtherInfo2, '')) OR
-                (ISNULL(N.IdNo2, '') <> ISNULL(A.IdNo2, '')) OR
-                (ISNULL(N.IdOtherInfo3, '') <> ISNULL(A.IdOtherInfo3, '')) OR
-                (ISNULL(N.IdNo3, '') <> ISNULL(A.IdNo3, '')) OR
-                (ISNULL(N.IdOtherInfo4, '') <> ISNULL(A.IdOtherInfo4, '')) OR
-                (ISNULL(N.IdNo4, '') <> ISNULL(A.IdNo4, '')) OR
-                (ISNULL(N.IdOtherInfo5, '') <> ISNULL(A.IdOtherInfo5, '')) OR
-                (ISNULL(N.IdNo5, '') <> ISNULL(A.IdNo5, '')) OR
-                (ISNULL(N.Nationality, '') <> ISNULL(A.Nationality, '')) OR
-                (ISNULL(N.Citizenship, '') <> CAST(SUBSTRING(ISNULL(A.Citizenship, ''), 1, 70) AS NVARCHAR(70))) OR
-                (ISNULL(N.POB, '') <> ISNULL(A.POB, '')) OR
-                (ISNULL(N.Alias, '') <> ISNULL(B.Name, ''))
-              )
-        """)
-
-        conn.commit()
-        print(f"Phase B completed in {time.time() - phase_b_start:.2f} seconds.")
-        sys.stdout.flush()
-
-        print("--- Phase C: Atomic Data Sync & History Backup ---")
-        sys.stdout.flush()
-        phase_c_start = time.time()
-
-        cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
-        run_version_id = str(cursor.fetchone()[0])
-
-        cursor.execute("DROP TABLE IF EXISTS #NewIDs")
-        cursor.execute("CREATE TABLE #NewIDs (ID INT NOT NULL PRIMARY KEY)")
-
-        # Backup changed entities
-        cursor.execute("""
-            INSERT INTO NegativeList_History (
-                ID, ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender, 
-                LastName, FirstName, SecondName, POB, DOB, ALTDOB1, ALTDOB2, ALTDOB3, Nationality, Citizenship, 
-                Alias, Title, AddressLine1, AddressLine2, City, IdNo1, IdOtherInfo1, IdNo2, IdOtherInfo2, IdNo3, 
-                IdOtherInfo3, IdNo4, IdOtherInfo4, IdNo5, IdOtherInfo5, NationalIDNo, NationalIDInfo, Basis, Remarks, 
-                Country, CreationDate, LastUpdatedBy, LastUpdatedDate
-            )
-            SELECT 
-                A.ID, A.ReferenceID, A.WLType, A.FileName, A.VersionID, 
-                CASE 
-                    WHEN ISNUMERIC(A.EntityType) = 1 THEN CAST(A.EntityType AS NUMERIC(2,0))
-                    WHEN A.EntityType = 'Individual' THEN 3
-                    WHEN A.EntityType = 'Country' THEN 1
-                    WHEN A.EntityType = 'Organization' THEN 9
-                    WHEN A.EntityType = 'Vessel' THEN 4
-                    ELSE 6 
-                END, 
-                NULL, A.OriginalSource, A.Action, CAST(SUBSTRING(A.Gender, 1, 7) AS NVARCHAR(7)), CAST(SUBSTRING(A.LastName, 1, 150) AS NVARCHAR(150)), 
-                A.FirstName, CAST(SUBSTRING(A.SecondName, 1, 300) AS NVARCHAR(300)), A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, 
-                A.Nationality, CAST(SUBSTRING(A.Citizenship, 1, 70) AS NVARCHAR(70)), A.Alias, CAST(SUBSTRING(A.Title, 1, 255) AS NVARCHAR(255)), 
-                CAST(SUBSTRING(A.AddressLine1, 1, 200) AS NVARCHAR(200)), CAST(SUBSTRING(A.AddressLine2, 1, 200) AS NVARCHAR(200)), 
-                A.City, A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3, A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5, 
-                A.NationalIDNo, A.NationalIDInfo, A.EntityGUID, A.Remark, A.Country, A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-            FROM NegativeList A
-            INNER JOIN #ChangeSet C ON A.ID = C.ID
-        """)
-
-        # Update base entities from pre-deduplicated #BaseSource
-        cursor.execute("""
-            UPDATE N 
-            SET N.ReferenceID = NT.ReferenceID, 
-                N.EntityType = CASE WHEN NT.EntityType='Individual' THEN 3 WHEN NT.EntityType='Country' THEN 1 WHEN NT.EntityType='Organization' THEN 9 WHEN NT.EntityType='Vessel' THEN 4 ELSE 6 END,
-                N.Gender = SUBSTRING(NT.Gender,1,7),
-                N.FirstName = NT.FirstName,
-                N.LastName = SUBSTRING(NT.LastName,1,150),
-                N.SecondName = SUBSTRING(NT.SecondName,1,300),
-                N.Title = SUBSTRING(NT.Title,1,255),
-                N.DOB = NT.DOB,
-                N.ALTDOB1 = NT.ALTDOB1,
-                N.ALTDOB2 = NT.ALTDOB2,
-                N.ALTDOB3 = NT.ALTDOB3, 
-                N.AddressLine1 = SUBSTRING(NT.AddressLine1,1,200),
-                N.AddressLine2 = SUBSTRING(NT.AddressLine2,1,200),
-                N.City = NT.City,
-                N.Country = NT.Country,
-                N.WLType = NT.WLType,
-                N.OriginalSource = NT.OriginalSource,
-                N.Remark = NT.Remark,
-                N.NationalIDInfo = NT.NationalIDInfo,
-                N.NationalIDNo = NT.NationalIDNo,
-                N.IdOtherInfo1 = NT.IdOtherInfo1,
-                N.IdNo1 = NT.IdNo1,
-                N.IdOtherInfo2 = NT.IdOtherInfo2,
-                N.IdNo2 = NT.IdNo2,
-                N.IdOtherInfo3 = NT.IdOtherInfo3,
-                N.IdNo3 = NT.IdNo3,
-                N.IdOtherInfo4 = NT.IdOtherInfo4,
-                N.IdNo4 = NT.IdNo4,
-                N.IdOtherInfo5 = NT.IdOtherInfo5,
-                N.IdNo5 = NT.IdNo5,
-                N.Nationality = NT.Nationality,
-                N.Citizenship = SUBSTRING(NT.Citizenship,1,70),
-                N.POB = NT.POB,
-                N.Alias = NULL,
-                N.FileName = CONVERT(char(10), GETDATE(), 126),
-                N.LastUpdatedBy = 3,
-                N.LastUpdatedDate = GETDATE(),
-                N.Action = 'chg',
-                N.VersionID = ?
-            FROM NegativeList N
-            INNER JOIN #ChangeSet C ON N.ID = C.ID
-            INNER JOIN #BaseSource NT ON N.EntityGUID = NT.EntityGUID 
-            WHERE N.EntityAliasGUID IS NULL;
-            
-            SELECT @@ROWCOUNT;
-        """, (run_version_id,))
-        total_updated = cursor.fetchone()[0]
-
-        # Update alias records from #BaseSource joined with EntityAlias
-        cursor.execute("""
-            UPDATE N 
-            SET N.ReferenceID = A.ReferenceID, 
-                N.EntityType = CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
-                N.Gender = SUBSTRING(A.Gender,1,7),
-                N.FirstName = CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300)),
-                N.LastName = CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
-                N.SecondName = CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
-                N.Title = SUBSTRING(A.Title,1,255),
-                N.DOB = A.DOB,
-                N.ALTDOB1 = A.ALTDOB1,
-                N.ALTDOB2 = A.ALTDOB2,
-                N.ALTDOB3 = A.ALTDOB3, 
-                N.AddressLine1 = SUBSTRING(A.AddressLine1,1,200),
-                N.AddressLine2 = SUBSTRING(A.AddressLine2,1,200),
-                N.City = A.City,
-                N.Country = A.Country,
-                N.WLType = A.WLType,
-                N.OriginalSource = A.OriginalSource,
-                N.Remark = A.Remark,
-                N.NationalIDInfo = A.NationalIDInfo,
-                N.NationalIDNo = A.NationalIDNo,
-                N.IdOtherInfo1 = A.IdOtherInfo1,
-                N.IdNo1 = A.IdNo1,
-                N.IdOtherInfo2 = A.IdOtherInfo2,
-                N.IdNo2 = A.IdNo2,
-                N.IdOtherInfo3 = A.IdOtherInfo3,
-                N.IdNo3 = A.IdNo3,
-                N.IdOtherInfo4 = A.IdOtherInfo4,
-                N.IdNo4 = A.IdNo4,
-                N.IdOtherInfo5 = A.IdOtherInfo5,
-                N.IdNo5 = A.IdNo5,
-                N.Nationality = A.Nationality,
-                N.Citizenship = SUBSTRING(A.Citizenship,1,70),
-                N.POB = A.POB,
-                N.Alias = B.Name,
-                N.FileName = CONVERT(char(10), GETDATE(), 126),
-                N.LastUpdatedBy = 3,
-                N.LastUpdatedDate = GETDATE(),
-                N.Action = 'chg',
-                N.VersionID = ?
-            FROM NegativeList N
-            INNER JOIN #ChangeSet C ON N.ID = C.ID
-            INNER JOIN #BaseSource A ON N.EntityGUID = A.EntityGUID
-            INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID AND N.EntityAliasGUID = B.EntityAliasGUID
-            WHERE N.EntityAliasGUID IS NOT NULL
-              AND B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity');
-    
-            SELECT @@ROWCOUNT;
-        """, (run_version_id,))
-        total_updated += cursor.fetchone()[0]
-
-        # Insert new base entities from #BaseSource
-        cursor.execute("""
-            INSERT INTO NegativeList WITH (TABLOCK) (
-                ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
-            )
-            OUTPUT INSERTED.ID INTO #NewIDs(ID)
-            SELECT 
-                ReferenceID, 
-                CASE WHEN EntityType='Individual' THEN 3 WHEN EntityType='Country' THEN 1 WHEN EntityType='Organization' THEN 9 WHEN EntityType='Vessel' THEN 4 ELSE 6 END,
-                SUBSTRING(Gender, 1, 7), FirstName, SUBSTRING(LastName, 1, 150), SUBSTRING(SecondName, 1, 300), SUBSTRING(Title, 1, 255),
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, SUBSTRING(AddressLine1, 1, 200), SUBSTRING(AddressLine2, 1, 200), City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, NULL, Nationality, SUBSTRING(Citizenship, 1, 70), POB, NULL, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM #BaseSource A
-            WHERE NOT EXISTS (
-                SELECT 1 FROM NegativeList N
-                WHERE N.EntityGUID = A.EntityGUID 
-                  AND N.EntityAliasGUID IS NULL
-            );
-    
-            SELECT @@ROWCOUNT;
-        """, (run_version_id,))
-        total_inserted = cursor.fetchone()[0]
-
-        # Insert new alias records from #BaseSource joined with EntityAlias
-        cursor.execute("""
-            INSERT INTO NegativeList WITH (TABLOCK) (
-                ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-                DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
-                WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-                IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-                EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
-            )
-            OUTPUT INSERTED.ID INTO #NewIDs(ID)
-            SELECT 
-                A.ReferenceID, 
-                CASE WHEN A.EntityType='Individual' THEN 3 WHEN A.EntityType='Country' THEN 1 WHEN A.EntityType='Organization' THEN 9 WHEN A.EntityType='Vessel' THEN 4 ELSE 6 END,
-                SUBSTRING(A.Gender, 1, 7), 
-                CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''), 1, 300) AS NVARCHAR(300)),
-                CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
-                CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
-                SUBSTRING(A.Title, 1, 255),
-                A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200), A.City, A.Country,
-                A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
-                A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
-                A.EntityGUID, B.EntityAliasGUID, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, B.Name, ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-            FROM #BaseSource A
-            INNER JOIN EntityAlias B WITH (READUNCOMMITTED) ON A.EntityGUID = B.EntityGUID
-            WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity')
-              AND NOT EXISTS (
-                  SELECT 1 FROM NegativeList N
-                  WHERE N.EntityGUID = A.EntityGUID 
-                    AND N.EntityAliasGUID = B.EntityAliasGUID
-              );
-    
-            SELECT @@ROWCOUNT;
-        """, (run_version_id,))
-        total_inserted += cursor.fetchone()[0]
-
-        cursor.execute("DROP TABLE IF EXISTS #AffectedIDs")
-        cursor.execute("CREATE TABLE #AffectedIDs (ID INT NOT NULL PRIMARY KEY)")
-        cursor.execute("INSERT INTO #AffectedIDs (ID) SELECT ID FROM #ChangeSet UNION SELECT ID FROM #NewIDs")
-        conn.commit()
-        print(f"Phase C completed in {time.time() - phase_c_start:.2f} seconds.")
-        sys.stdout.flush()
-
-        print("--- Phase D: Master Sync & Filter Sync ---")
-        sys.stdout.flush()
-        phase_d_start = time.time()
-
-        cursor.execute("""
-            DELETE M
-            FROM NegativeList_Master M
-            INNER JOIN #AffectedIDs Aff ON M.ID = Aff.ID
-        """)
-
-        cursor.execute("""
-            INSERT INTO NegativeList_Master (
-                ID, ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender, 
-                LastName, FirstName, SecondName, POB, DOB, ALTDOB1, ALTDOB2, ALTDOB3, Nationality, Citizenship, 
-                Alias, Title, AddressLine1, AddressLine2, City, IdNo1, IdOtherInfo1, IdNo2, IdOtherInfo2, IdNo3, 
-                IdOtherInfo3, IdNo4, IdOtherInfo4, IdNo5, IdOtherInfo5, NationalIDNo, NationalIDInfo, Basis, Remarks, 
-                Country, CreationDate, LastUpdatedBy, LastUpdatedDate
-            )
-            SELECT 
-                A.ID, A.ReferenceID, A.WLType, A.FileName, A.VersionID, 
-                CASE 
-                    WHEN ISNUMERIC(A.EntityType) = 1 THEN CAST(A.EntityType AS NUMERIC(2,0))
-                    WHEN A.EntityType = 'Individual' THEN 3
-                    WHEN A.EntityType = 'Country' THEN 1
-                    WHEN A.EntityType = 'Organization' THEN 9
-                    WHEN A.EntityType = 'Vessel' THEN 4
-                    ELSE 6 
-                END, 
-                NULL, A.OriginalSource, A.Action, CAST(SUBSTRING(A.Gender, 1, 7) AS NVARCHAR(7)), CAST(SUBSTRING(A.LastName, 1, 150) AS NVARCHAR(150)), 
-                A.FirstName, CAST(SUBSTRING(A.SecondName, 1, 300) AS NVARCHAR(300)), A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3, 
-                A.Nationality, CAST(SUBSTRING(A.Citizenship, 1, 70) AS NVARCHAR(70)), A.Alias, CAST(SUBSTRING(A.Title, 1, 255) AS NVARCHAR(255)), 
-                CAST(SUBSTRING(A.AddressLine1, 1, 200) AS NVARCHAR(200)), CAST(SUBSTRING(A.AddressLine2, 1, 200) AS NVARCHAR(200)), 
-                A.City, A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3, A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5, 
-                A.NationalIDNo, A.NationalIDInfo, A.EntityGUID, A.Remark, A.Country, A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-            FROM NegativeList A
-            INNER JOIN #AffectedIDs Aff ON A.ID = Aff.ID
-        """)
-
-        cursor.execute("""
-            INSERT INTO NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
-            SELECT i.ID, 
-                   UPPER(RTRIM(LTRIM(ISNULL(i.FirstName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.LastName, '')))), 
-                   UPPER(RTRIM(LTRIM(ISNULL(i.LastName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(i.FirstName, '')))), 
-                   i.Nationality
-            FROM NegativeList i
-            INNER JOIN #NewIDs n ON i.ID = n.ID
-            WHERE NOT EXISTS (
-                SELECT 1 FROM NegativeListFilter nf WHERE nf.ID = i.ID
-            );
-        """)
-
-        cursor.execute("""
-            UPDATE N 
-            SET FirstName = UPPER(RTRIM(LTRIM(ISNULL(NT.FirstName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(NT.LastName, '')))), 
-                LastName = UPPER(RTRIM(LTRIM(ISNULL(NT.LastName, '')))) + ' ' + UPPER(RTRIM(LTRIM(ISNULL(NT.FirstName, '')))), 
-                Nationality = NT.Nationality
-            FROM NegativeListFilter N
-            INNER JOIN NegativeList NT ON N.ID = NT.ID
-            INNER JOIN #ChangeSet C ON NT.ID = C.ID
-        """)
-
-        cursor.execute("IF OBJECT_ID('NegativeList_History_Summary', 'U') IS NULL BEGIN CREATE TABLE [NegativeList_History_Summary] ([Type] varchar(29), [Count] int, [RunDate] datetime) END")
-        cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
-        cursor.execute("""
-            INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
-            VALUES 
-                ('New Negative List Records', ?, GETDATE()),
-                ('Updated Negative List Records', ?, GETDATE()),
-                ('Total Negative List Records', ?, GETDATE())
-        """, (total_inserted, total_updated, total_inserted + total_updated))
-
-        conn.commit()
-        print(f"Phase D completed in {time.time() - phase_d_start:.2f} seconds.")
-        sys.stdout.flush()
-
-        print("--- Phase E: Cleanup Operations ---")
-        sys.stdout.flush()
-        phase_e_start = time.time()
-
-        cursor.execute("DROP TABLE IF EXISTS #BaseSource")
-        cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
-        cursor.execute("DROP TABLE IF EXISTS #ChangeSet")
-        cursor.execute("DROP TABLE IF EXISTS #NewIDs")
-        cursor.execute("DROP TABLE IF EXISTS #AffectedIDs")
-        
-        conn.commit()
-        print(f"Phase E completed in {time.time() - phase_e_start:.2f} seconds.")
-        print(f"Module 5 V3.8 Incremental Sync completed successfully! Total Time: {time.time() - global_start:.2f} seconds.")
-        sys.stdout.flush()
-
-except KeyboardInterrupt:
-    print("\nCancellation requested by user. Rolling back active transaction...")
-    sys.stdout.flush()
+def post_sync_cleanup(cursor, config):
+    start = time.time()
+    step6_time = datetime.now().strftime("%H:%M:%S")
+    logging.info("[6/6] Started post-sync cleanup & DB shrink at %s...", step6_time)
     try:
-        conn.rollback()
-    except Exception:
-        pass
-    raise
+        cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
+        cursor.connection.commit()
+        logging.info("  Reclaimed space: dropped consumed source table NegativeList_New1.")
+    except Exception as ex:
+        logging.warning("Could not drop NegativeList_New1: %s", ex)
 
-except Exception as ex:
-    print(f"\nModule 5 execution failed! Rolling back active transaction. Error: {ex}")
-    sys.stdout.flush()
     try:
-        conn.rollback()
-    except Exception:
-        pass
-    raise ex
-    
-finally:
-    cursor.close()
-    conn.close()
+        db_name = config["database"]["name"]
+        set_recovery_model(config, "SIMPLE")
+        admin_conn_str = f"DRIVER={{{config['database']['driver']}}};SERVER={config['database']['server']};DATABASE={db_name};Trusted_Connection=yes;"
+        admin_conn = pyodbc.connect(admin_conn_str, autocommit=True)
+        admin_cursor = admin_conn.cursor()
+        admin_cursor.execute("CHECKPOINT")
+        admin_cursor.execute(f"DBCC SHRINKFILE ([{db_name}_log], 512)")
+        admin_cursor.execute(f"DBCC SHRINKDATABASE ([{db_name}])")
+        admin_conn.close()
+        logging.info("  Database file & log shrink completed. Space released to OS!")
+    except Exception as ex:
+        logging.warning("Shrink warning: %s", ex)
 
+    logging.info("[6/6] Completed post-sync cleanup in %.2f seconds.", time.time() - start)
+
+def main():
+    args = parse_args()
+    setup_logging(args.log_level)
+    start_time_str = datetime.now().strftime("%H:%M:%S")
+    logging.info("=== Starting Module 5: Database Sync [Started at %s] ===", start_time_str)
+    global_start = time.time()
+
+    config = load_config(args.config)
+    conn = get_connection(config)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
+        conn.commit()
+
+        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_LoadState'")
+        state_table_exists = cursor.fetchone()[0] > 0
+        is_initial_load = True
+        if state_table_exists:
+            cursor.execute("SELECT TOP 1 LoadState FROM NegativeList_LoadState ORDER BY UpdatedDate DESC")
+            row = cursor.fetchone()
+            if row and row[0] == 'COMPLETED':
+                cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList'")
+                if cursor.fetchone()[0] > 0:
+                    cursor.execute("SELECT TOP 1 1 FROM NegativeList WITH (NOLOCK)")
+                    if cursor.fetchone():
+                        is_initial_load = False
+        logging.info("Load state: %s", "INITIAL" if is_initial_load else "INCREMENTAL")
+
+        pre_sync_cleanup(cursor)
+        ensure_indexes(cursor)
+        build_basekeys(cursor)
+        build_basesource(cursor, is_initial_load)
+
+        if is_initial_load:
+            cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
+            run_version_id = str(cursor.fetchone()[0])
+
+            # STEP 1: Recreate NegativeList WITH PK clustered from start
+            recreate_negativelist_with_pk(cursor)
+
+            # STEP 2: Switch to SIMPLE recovery model
+            set_recovery_model(config, 'SIMPLE')
+
+            # STEP 3: Insert base + alias directly into pre-indexed table
+            inserted_base, _ = bulk_insert_base(cursor, run_version_id)
+            inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
+
+            # STEP 4: PK already exists! 0-cost PK
+            logging.info("Primary Key clustered index pre-indexed - SKIPPED ALTER TABLE (0.00 seconds!).")
+
+            # STEP 5: Create non-clustered indexes (MAXDOP 8)
+            create_nonclustered_indexes(cursor)
+
+            # STEP 6: Populate master & filter (MAXDOP 8)
+            populate_master_and_filter(cursor, inserted_base + inserted_alias)
+        else:
+            detect_changes(cursor)
+            cleanup(cursor)
+
+        post_sync_cleanup(cursor, config)
+        elapsed_min = (time.time() - global_start) / 60
+        end_time_str = datetime.now().strftime("%H:%M:%S")
+        logging.info("=== Module 5 completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+    except Exception as e:
+        logging.error("Execution failed: %s", e)
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+if __name__ == "__main__":
+    main()
 
 
