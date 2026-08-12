@@ -12,7 +12,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    parser.add_argument("--batch-size", type=int, default=10000)
+    parser.add_argument("--batch-size", type=int, default=500000)
     return parser.parse_args()
 
 def setup_logging(level: str):
@@ -132,8 +132,8 @@ def build_basesource(cursor, is_initial_load):
            AND K.RowRID = CONVERT(VARBINARY(8), A.%%physloc%%)
         OPTION (MAXDOP 2);
         """
-    )
-    cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
+)
+# cursor.execute("DROP TABLE IF EXISTS #BaseKeys")
     cursor.connection.commit()
     logging.info("#BaseSource created in %.2f seconds", time.time() - start)
     return time.time() - start
@@ -272,69 +272,224 @@ def bulk_insert_base(cursor, run_version_id):
     cursor.connection.commit()
     logging.info("Loaded %d base records in %.2f seconds", inserted, time.time() - start)
     return inserted, time.time() - start
-
 def bulk_insert_alias(cursor, run_version_id):
     start = time.time()
-    logging.info("Inserting alias records into NegativeList (pre-indexed clustered PK, minimal-log)...")
 
-    cursor.execute(
-        """
-        INSERT INTO dbo.NegativeList WITH (TABLOCK) (
-            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
-            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
-        )
-        SELECT
-            A.ReferenceID,
-            CASE WHEN A.EntityType='Individual'  THEN 3
-                 WHEN A.EntityType='Country'      THEN 1
-                 WHEN A.EntityType='Organization' THEN 9
-                 WHEN A.EntityType='Vessel'       THEN 4
-                 ELSE 6 END,
-            SUBSTRING(A.Gender,1,7),
-            CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''),1,300) AS NVARCHAR(300)),
-            CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)),
-            CAST(SUBSTRING(B.Name,1,500)     AS NVARCHAR(500)),
-            SUBSTRING(A.Title,1,255),
-            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
-            SUBSTRING(A.AddressLine1,1,200),
-            SUBSTRING(A.AddressLine2,1,200),
-            A.City, A.Country,
-            A.WLType, A.OriginalSource, A.Remark,
-            A.NationalIDInfo, A.NationalIDNo,
-            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2,
-            A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4,
-            A.IdOtherInfo5, A.IdNo5,
-            A.EntityGUID,
-            B.EntityAliasGUID,
-            A.Nationality,
-            SUBSTRING(A.Citizenship,1,70),
-            A.POB,
-            SUBSTRING(B.Name,1,500),
-            ?,
-            'add',
-            CONVERT(char(10),GETDATE(),126),
-            GETDATE()
-        FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
-        INNER JOIN dbo.EntityAlias B WITH (READUNCOMMITTED)
-            ON A.EntityGUID = B.EntityGUID
-        WHERE B.AliasTypeDesc NOT IN (
-              'Acronym','Call Sign','Chinese Commercial Code (CCC)',
-              'Native Script For Alias','Native Script For Entity')
-        OPTION (MAXDOP 4);
-        """,
-        (run_version_id,)
+    batch_size = 500000
+    total_inserted = 0
+    last_row_rid = None
+    last_alias_guid = None
+    batch_counter = 0
+    max_batches = 10000
+
+    logging.info(
+        "Inserting alias records in batches of %d...",
+        batch_size
     )
-    inserted = cursor.rowcount
-    if inserted < 0:
-        cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WHERE EntityAliasGUID IS NOT NULL")
-        inserted = cursor.fetchone()[0]
 
-    cursor.connection.commit()
-    logging.info("Loaded %d alias records in %.2f seconds", inserted, time.time() - start)
-    return inserted, time.time() - start
+    while True:
+
+        batch_counter += 1
+
+        if batch_counter > max_batches:
+            raise RuntimeError(
+                "Alias batch limit exceeded - possible infinite loop"
+            )
+
+        cursor.execute("""
+            INSERT INTO dbo.NegativeList WITH (TABLOCK) (
+                ReferenceID, EntityType, Gender, FirstName, LastName,
+                SecondName, Title, DOB, ALTDOB1, ALTDOB2, ALTDOB3,
+                AddressLine1, AddressLine2, City, Country,
+                WLType, OriginalSource, Remark, NationalIDInfo,
+                NationalIDNo, IdOtherInfo1, IdNo1, IdOtherInfo2,
+                IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4,
+                IdOtherInfo5, IdNo5, EntityGUID, EntityAliasGUID,
+                Nationality, Citizenship, POB, Alias, VersionID,
+                Action, FileName, CreationDate
+            )
+            SELECT TOP (?)
+                A.ReferenceID,
+
+                CASE
+                    WHEN A.EntityType = 'Individual' THEN 3
+                    WHEN A.EntityType = 'Country' THEN 1
+                    WHEN A.EntityType = 'Organization' THEN 9
+                    WHEN A.EntityType = 'Vessel' THEN 4
+                    ELSE 6
+                END,
+
+                SUBSTRING(A.Gender, 1, 7),
+
+                CAST(
+                    SUBSTRING(
+                        ISNULL(B.FirstName, '') + ' ' +
+                        ISNULL(B.MiddleName, ''),
+                        1, 300
+                    ) AS NVARCHAR(300)
+                ),
+
+                CAST(SUBSTRING(B.LastName, 1, 255) AS NVARCHAR(255)),
+                CAST(SUBSTRING(B.Name, 1, 500) AS NVARCHAR(500)),
+                SUBSTRING(A.Title, 1, 255),
+
+                A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
+
+                SUBSTRING(A.AddressLine1, 1, 200),
+                SUBSTRING(A.AddressLine2, 1, 200),
+
+                A.City, A.Country,
+
+                A.WLType, A.OriginalSource, A.Remark,
+                A.NationalIDInfo, A.NationalIDNo,
+
+                A.IdOtherInfo1, A.IdNo1,
+                A.IdOtherInfo2, A.IdNo2,
+                A.IdOtherInfo3, A.IdNo3,
+                A.IdOtherInfo4, A.IdNo4,
+                A.IdOtherInfo5, A.IdNo5,
+
+                A.EntityGUID,
+                B.EntityAliasGUID,
+
+                A.Nationality,
+                SUBSTRING(A.Citizenship, 1, 70),
+                A.POB,
+                SUBSTRING(B.Name, 1, 500),
+
+                ?,
+                'add',
+                CONVERT(char(10), GETDATE(), 126),
+                GETDATE()
+
+            FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+
+            INNER JOIN dbo.EntityAlias AS B WITH (READUNCOMMITTED)
+                ON A.EntityGUID = B.EntityGUID
+
+            INNER JOIN #BaseKeys AS K
+                ON K.EntityGUID = A.EntityGUID
+
+            WHERE B.AliasTypeDesc NOT IN (
+                'Acronym',
+                'Call Sign',
+                'Chinese Commercial Code (CCC)',
+                'Native Script For Alias',
+                'Native Script For Entity'
+            )
+
+            AND (
+                ? IS NULL
+                OR K.RowRID > ?
+                OR (
+                    K.RowRID = ?
+                    AND B.EntityAliasGUID > ?
+                )
+            )
+
+            ORDER BY K.RowRID, B.EntityAliasGUID
+
+            OPTION (MAXDOP 4);
+        """,
+        (
+            batch_size,
+            run_version_id,
+            last_row_rid,
+            last_row_rid,
+            last_row_rid,
+            last_alias_guid
+        ))
+
+        inserted = cursor.rowcount
+
+        # pyodbc can return -1 for INSERT ... SELECT.
+        # Get the actual number of rows inserted.
+        if inserted < 0:
+            inserted = cursor.execute("""
+                SELECT COUNT(*)
+                FROM dbo.NegativeList
+                WHERE VersionID = ?
+                  AND Action = 'add'
+                  AND EntityAliasGUID IS NOT NULL
+            """, (run_version_id,)).fetchone()[0] - total_inserted
+
+        # Commit THIS batch.
+        cursor.connection.commit()
+
+        if inserted == 0:
+            break
+
+        total_inserted += inserted
+
+        # Get the pagination key for the next batch.
+        row = cursor.execute("""
+            SELECT TOP 1
+                K.RowRID,
+                B.EntityAliasGUID
+            FROM dbo.NegativeList_New1 AS A WITH (READUNCOMMITTED)
+            INNER JOIN dbo.EntityAlias AS B WITH (READUNCOMMITTED)
+                ON A.EntityGUID = B.EntityGUID
+            INNER JOIN #BaseKeys AS K
+                ON K.EntityGUID = A.EntityGUID
+            WHERE B.AliasTypeDesc NOT IN (
+                'Acronym',
+                'Call Sign',
+                'Chinese Commercial Code (CCC)',
+                'Native Script For Alias',
+                'Native Script For Entity'
+            )
+            AND (
+                ? IS NULL
+                OR K.RowRID > ?
+                OR (
+                    K.RowRID = ?
+                    AND B.EntityAliasGUID > ?
+                )
+            )
+            ORDER BY K.RowRID DESC, B.EntityAliasGUID DESC
+        """, (
+            last_row_rid,
+            last_row_rid,
+            last_row_rid,
+            last_alias_guid
+        )).fetchone()
+
+        if row is None:
+            break
+
+        new_row_rid = row[0]
+        new_alias_guid = row[1]
+
+        # Safety: make sure pagination moves forward.
+        if last_row_rid is not None:
+            if (
+                new_row_rid < last_row_rid
+                or (
+                    new_row_rid == last_row_rid
+                    and new_alias_guid <= last_alias_guid
+                )
+            ):
+                raise RuntimeError(
+                    "Alias keyset did not advance - aborting"
+                )
+
+        last_row_rid = new_row_rid
+        last_alias_guid = new_alias_guid
+
+        logging.info(
+            "Alias batch %d: inserted %d rows, total %d",
+            batch_counter,
+            inserted,
+            total_inserted
+        )
+
+    logging.info(
+        "Loaded %d alias records in %.2f seconds",
+        total_inserted,
+        time.time() - start
+    )
+
+    return total_inserted, time.time() - start
 
 def create_nonclustered_indexes(cursor):
     start = time.time()
