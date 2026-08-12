@@ -59,7 +59,7 @@ def main():
         logging.warning("Maintenance warning: %s", ex)
 
     step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/4] Started indexing staging tables at %s...", step1_time)
+    logging.info("[1/4] Started indexing staging tables at %s (MAXDOP 8 parallel)...", step1_time)
     index_start = time.time()
 
     raw_index_queries = [
@@ -76,9 +76,9 @@ def main():
             cursor.execute(f"SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1")
             existing_clustered = cursor.fetchone()
             if existing_clustered:
-                cursor.execute(f"CREATE NONCLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name})")
+                cursor.execute(f"CREATE NONCLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
             else:
-                cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name})")
+                cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
         except Exception as ex:
             logging.warning("Index alert on %s: %s", tbl_name, ex)
 
@@ -102,7 +102,7 @@ def main():
             if row:
                 cursor.execute(f"DROP INDEX [{row[0]}] ON [{tbl_name}]")
                 
-            cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name})")
+            cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
         except Exception as ex:
             logging.warning("Index alert on %s: %s", tbl_name, ex)
 
@@ -206,7 +206,7 @@ def main():
 
     # Stage 1: Non-PEP Profiles
     stage1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("  [3/4] [Stage 1/2] Started consolidating Non-PEP Watchlist profiles at %s...", stage1_time)
+    logging.info("  [3/4] [Stage 1/2] Started consolidating Non-PEP Watchlist profiles at %s (MAXDOP 8)...", stage1_time)
     stage1_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -255,7 +255,7 @@ def main():
 
     # Stage 2: PEP Profiles
     stage2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("  [3/4] [Stage 2/2] Started consolidating PEP Watchlist profiles at %s...", stage2_time)
+    logging.info("  [3/4] [Stage 2/2] Started consolidating PEP Watchlist profiles at %s (MAXDOP 8)...", stage2_time)
     stage2_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
