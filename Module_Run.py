@@ -13,6 +13,16 @@ def setup_logging():
         datefmt="%H:%M:%S",
     )
 
+def resolve_script(script_dir: str, candidates: list) -> str:
+    for name in candidates:
+        p1 = os.path.join(script_dir, name)
+        if os.path.exists(p1):
+            return p1
+        p2 = os.path.join(os.getcwd(), name)
+        if os.path.exists(p2):
+            return p2
+    return os.path.join(script_dir, candidates[0])
+
 def main():
     setup_logging()
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -25,24 +35,21 @@ def main():
     logging.info("=========================================================")
 
     modules = [
-        ("Module 1: Bulk Ingestion", os.path.join(script_dir, "Module1.py")),
-        ("Module 2: Source URI Merging", os.path.join(script_dir, "Module2.py")),
-        ("Module 3: Field Formatting", os.path.join(script_dir, "Module3_Formatting.py")),
-        ("Module 4: Watchlist Consolidation", os.path.join(script_dir, "Module4_Consolidation.py")),
-        ("Module 5: Database Sync", os.path.join(script_dir, "Module5_Sync.py")),
+        ("Module 1: Bulk Ingestion", ["Module1.py"]),
+        ("Module 2: Source URI Merging", ["Module2_SourceItem.py", "Module2.py"]),
+        ("Module 3: Field Formatting", ["Module3_Formatting.py", "Module3.py"]),
+        ("Module 4: Watchlist Consolidation", ["Module4_Consolidation.py", "Module4.py"]),
+        ("Module 5: Database Sync", ["Module5.py", "Module5_Sync.py"]),
     ]
 
     summary = []
 
-    for name, script_path in modules:
-        if not os.path.exists(script_path):
-            # Fallback to current working directory if script path is relative
-            script_path = os.path.basename(script_path)
-
+    for name, candidates in modules:
+        script_path = resolve_script(script_dir, candidates)
         mod_start = time.time()
         mod_time_str = datetime.now().strftime("%H:%M:%S")
         logging.info("\n---------------------------------------------------------")
-        logging.info(">>> [%s] Launching %s...", mod_time_str, name)
+        logging.info(">>> [%s] Launching %s (%s)...", mod_time_str, name, os.path.basename(script_path))
         logging.info("---------------------------------------------------------")
 
         try:
