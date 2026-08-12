@@ -32,10 +32,10 @@ def get_connection(config: dict) -> pyodbc.Connection:
 
 def optimize_db(cursor, db_name):
     try:
-        logging.info("Setting database recovery model to SIMPLE & shrinking log...")
+        logging.info("Setting database recovery model to SIMPLE & optimizing file growth...")
         cursor.execute(f"ALTER DATABASE [{db_name}] SET RECOVERY SIMPLE")
-        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}], FILEGROWTH = 512MB)")
-        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}_log], FILEGROWTH = 512MB, MAXSIZE = UNLIMITED)")
+        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}], FILEGROWTH = 1024MB)")
+        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}_log], FILEGROWTH = 1024MB, MAXSIZE = UNLIMITED)")
         cursor.execute(f"USE [{db_name}]")
         cursor.execute("CHECKPOINT")
         cursor.execute(f"DBCC SHRINKFILE ([{db_name}_log], 64)")
@@ -54,6 +54,22 @@ def optimize_db(cursor, db_name):
         logging.info("Database maintenance completed.")
     except Exception as e:
         logging.warning("Database maintenance alert: %s", e)
+
+def ensure_table_exists(cursor, tablename, filepath):
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = ? AND schema_id = SCHEMA_ID('dbo')", tablename)
+    if cursor.fetchone()[0] == 0:
+        logging.info("  Table dbo.[%s] does not exist. Auto-creating table schema from %s...", tablename, os.path.basename(filepath))
+        try:
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                header = f.readline().strip()
+            cols = [c.strip().strip('\ufeff') for c in header.split("|") if c.strip()]
+            if cols:
+                col_defs = ", ".join([f"[{col}] NVARCHAR(MAX) NULL" for col in cols])
+                create_sql = f"CREATE TABLE dbo.[{tablename}] ({col_defs})"
+                cursor.execute(create_sql)
+                logging.info("  Created table dbo.[%s] (%d columns).", tablename, len(cols))
+        except Exception as e:
+            logging.warning("  Could not auto-create table dbo.[%s]: %s", tablename, e)
 
 def main():
     setup_logging()
@@ -96,9 +112,10 @@ def main():
             file_start_str = datetime.now().strftime("%H:%M:%S")
             logging.info("[%d/%d] Started loading %s -> %s at %s...", idx, total_files, filename, tablename, file_start_str)
             try:
-                cursor.execute(f"TRUNCATE TABLE [{tablename}]")
+                ensure_table_exists(cursor, tablename, filepath)
+                cursor.execute(f"TRUNCATE TABLE dbo.[{tablename}]")
                 bulk_query = f"""
-                    BULK INSERT [{tablename}]
+                    BULK INSERT dbo.[{tablename}]
                     FROM '{filepath}'
                     WITH (
                         FIELDTERMINATOR = '|',
@@ -110,7 +127,7 @@ def main():
                     );
                 """
                 cursor.execute(bulk_query)
-                cursor.execute(f"SELECT COUNT(*) FROM [{tablename}]")
+                cursor.execute(f"SELECT COUNT(*) FROM dbo.[{tablename}]")
                 row_count = cursor.fetchone()[0]
                 logging.info("[%d/%d] Completed %s (%d rows) in %.2f seconds.", idx, total_files, tablename, row_count, time.time() - file_start)
             except Exception as ex:
