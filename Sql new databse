@@ -13,8 +13,10 @@ GO
 CREATE DATABASE LexisNexis_Staging;
 GO
 
--- 3. Set recovery model to SIMPLE to prevent log files from growing
+-- 3. Set recovery model to SIMPLE & optimize file growth to 1GB chunks
 ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 1024MB);
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 1024MB);
 GO
 
 -- 4. Switch to new database to create tables
@@ -200,13 +202,3 @@ CREATE TABLE EntitySourceItem (
     LastUpdated DATETIME
 );
 GO
-
-
-USE LexisNexis_Staging;
-GO
-
--- 1. Entity table me data row count check (Should be 0)
-SELECT COUNT(*) AS EntityRowCount FROM Entity WITH (NOLOCK);
-
--- 2. Total tables list (Should show exactly 16 raw tables)
-SELECT name AS TableName FROM sys.tables ORDER BY name;
