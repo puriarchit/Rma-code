@@ -32,17 +32,13 @@ def get_connection(config: dict) -> pyodbc.Connection:
 
 def optimize_db(cursor, db_name):
     try:
-        logging.info("Setting SIMPLE recovery & optimizing database file growth...")
+        logging.info("Setting SIMPLE recovery & standard database file growth...")
         cursor.execute(f"ALTER DATABASE [{db_name}] SET RECOVERY SIMPLE")
-        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}], FILEGROWTH = 1024MB)")
-        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}_log], FILEGROWTH = 1024MB, MAXSIZE = UNLIMITED)")
+        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}], FILEGROWTH = 256MB)")
+        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}_log], FILEGROWTH = 256MB, MAXSIZE = UNLIMITED)")
         cursor.execute(f"USE [{db_name}]")
         cursor.execute("CHECKPOINT")
         cursor.execute(f"DBCC SHRINKFILE ([{db_name}_log], 64)")
-        try:
-            cursor.execute("DBCC TRACEON (610, -1)")
-        except Exception:
-            pass
         
         raw_indexes = [
             ("IX_Entity_EntityGUID", "Entity"),
@@ -150,4 +146,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
