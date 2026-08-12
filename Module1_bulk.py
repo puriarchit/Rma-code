@@ -32,10 +32,10 @@ def get_connection(config: dict) -> pyodbc.Connection:
 
 def optimize_db(cursor, db_name):
     try:
-        logging.info("Setting SIMPLE recovery, pre-allocating 25GB data space & optimizing I/O...")
+        logging.info("Setting SIMPLE recovery & optimizing database file growth...")
         cursor.execute(f"ALTER DATABASE [{db_name}] SET RECOVERY SIMPLE")
-        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}], SIZE = 25GB, FILEGROWTH = 2048MB)")
-        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}_log], SIZE = 1GB, FILEGROWTH = 1024MB)")
+        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}], FILEGROWTH = 1024MB)")
+        cursor.execute(f"ALTER DATABASE [{db_name}] MODIFY FILE (NAME = [{db_name}_log], FILEGROWTH = 1024MB, MAXSIZE = UNLIMITED)")
         cursor.execute(f"USE [{db_name}]")
         cursor.execute("CHECKPOINT")
         cursor.execute(f"DBCC SHRINKFILE ([{db_name}_log], 64)")
@@ -125,10 +125,9 @@ def main():
                         FIELDTERMINATOR = '|',
                         ROWTERMINATOR = '0x0a',
                         FIRSTROW = 2,
-                        CODEPAGE = 'RAW',
+                        CODEPAGE = '65001',
                         TABLOCK,
-                        BATCHSIZE = 200000,
-                        ROWS_PER_BATCH = 200000
+                        BATCHSIZE = 200000
                     );
                 """
                 cursor.execute(bulk_query)
