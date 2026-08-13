@@ -31,104 +31,77 @@ def main():
     conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
     
     conn = pyodbc.connect(conn_str)
+    conn.autocommit = True
     cursor = conn.cursor()
-
-    conn_insert = pyodbc.connect(conn_str)
-    insert_cursor = conn_insert.cursor()
-    insert_cursor.fast_executemany = True
 
     step1_start = datetime.now().strftime("%H:%M:%S")
     logging.info("[1/2] Resetting target table EntitySourceItem_New at %s...", step1_start)
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL)")
+    cursor.execute("""
+        CREATE TABLE [dbo].[EntitySourceItem_New](
+            [EntityGUID] [nvarchar](50) NULL,
+            [SourceURI] [nvarchar](max) NULL
+        ) WITH (DATA_COMPRESSION = PAGE)
+    """)
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
-    conn.commit()
     logging.info("[1/2] Target table reset completed in %.2f seconds.", time.time() - step_start)
 
     step2_start = datetime.now().strftime("%H:%M:%S")
-    logging.info("[2/2] Started merging SourceURI records into EntitySourceItem_New at %s...", step2_start)
+    logging.info("[2/2] Started merging SourceURI records into EntitySourceItem_New at %s (Ultra-Fast SQL Engine)...", step2_start)
     step_start = time.time()
 
-    cursor.execute("""
-        SELECT EntityGUID, SourceURI 
-        FROM EntitySourceItem WITH (INDEX(0))
-        ORDER BY EntityGUID
-    """)
-
-    current_guid = None
-    current_uris = []
-    batch_to_insert = []
-    batch_size = 100000
-    processed_count = 0
-
-    while True:
-        rows = cursor.fetchmany(batch_size)
-        if not rows:
-            break
-            
-        for guid, uri in rows:
-            if guid != current_guid:
-                if current_guid is not None:
-                    unique_uris = list(dict.fromkeys(current_uris))
-                    merged_links = "; ".join(unique_uris)
-                    batch_to_insert.append((current_guid, merged_links))
-                    processed_count += 1
-                    
-                    if len(batch_to_insert) >= batch_size:
-                        insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 0, 0)])
-                        insert_cursor.executemany("""
-                            INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
-                            VALUES (?, ?)
-                        """, batch_to_insert)
-                        conn_insert.commit()
-                        logging.info("  Merged %d entity profiles...", processed_count)
-                        batch_to_insert = []
-                
-                current_guid = guid
-                current_uris = [uri] if uri else [""]
-            else:
-                if uri:
-                    current_uris.append(uri)
-                else:
-                    current_uris.append("")
-
-    if current_guid is not None:
-        unique_uris = list(dict.fromkeys(current_uris))
-        merged_links = "; ".join(unique_uris)
-        batch_to_insert.append((current_guid, merged_links))
-        processed_count += 1
-
-    if batch_to_insert:
-        insert_cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 0, 0)])
-        insert_cursor.executemany("""
-            INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
-            VALUES (?, ?)
-        """, batch_to_insert)
-        conn_insert.commit()
-
-    conn_insert.close()
-
-    logging.info("[2/2] SourceURI records merged in %.2f seconds.", time.time() - step_start)
-
+    # Try ultra-fast set-based STRING_AGG first
     try:
-        logging.info("Reclaiming raw EntitySourceItem space...")
-        cursor.execute("TRUNCATE TABLE EntitySourceItem")
-        conn.commit()
+        logging.info("Executing set-based parallel aggregation in SQL Server...")
+        cursor.execute("""
+            INSERT INTO EntitySourceItem_New WITH (TABLOCK) (EntityGUID, SourceURI)
+            SELECT 
+                EntityGUID,
+                STRING_AGG(CAST(SourceURI AS NVARCHAR(MAX)), '; ') WITHIN GROUP (ORDER BY SourceURI) AS SourceURI
+            FROM EntitySourceItem WITH (NOLOCK)
+            WHERE SourceURI IS NOT NULL AND SourceURI <> ''
+            GROUP BY EntityGUID
+            OPTION (MAXDOP 8, RECOMPILE);
+        """)
+        logging.info("Set-based aggregation completed successfully.")
     except Exception as ex:
-        logging.warning("Could not truncate EntitySourceItem: %s", ex)
+        logging.warning("Set-based aggregation fallback: %s. Using chunked merge...", ex)
+        # Fallback XML STUFF chunked insert
+        cursor.execute("""
+            INSERT INTO EntitySourceItem_New WITH (TABLOCK) (EntityGUID, SourceURI)
+            SELECT 
+                EntityGUID,
+                STUFF((
+                    SELECT '; ' + SourceURI
+                    FROM EntitySourceItem s WITH (NOLOCK)
+                    WHERE s.EntityGUID = e.EntityGUID AND s.SourceURI IS NOT NULL AND s.SourceURI <> ''
+                    FOR XML PATH(''), TYPE
+                ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS SourceURI
+            FROM EntitySourceItem e WITH (NOLOCK)
+            GROUP BY EntityGUID
+            OPTION (MAXDOP 8);
+        """)
 
-    final_count = cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_New").fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_New WITH (NOLOCK)")
+    row_count = cursor.fetchone()[0]
+
+    # Reclaim raw space immediately
+    try:
+        cursor.execute("TRUNCATE TABLE EntitySourceItem")
+        logging.info("Reclaimed raw space: truncated EntitySourceItem.")
+    except Exception as e:
+        logging.warning("Could not truncate EntitySourceItem: %s", e)
+
     cursor.close()
     conn.close()
 
     elapsed_min = (time.time() - global_start) / 60
     end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 2 completed in %.2f minutes [Finished at %s] (Total Merged Profiles: %d) ===", elapsed_min, end_time_str, final_count)
+    logging.info("=== Module 2 completed in %.2f minutes [Finished at %s] (Merged Unique Profiles: %d) ===", elapsed_min, end_time_str, row_count)
 
 if __name__ == "__main__":
     main()
-
 
 
