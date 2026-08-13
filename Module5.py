@@ -36,6 +36,15 @@ def get_connection(config: dict) -> pyodbc.Connection:
     )
     return pyodbc.connect(conn_str, autocommit=True)
 
+def pre_sync_cleanup(cursor):
+    t0 = time.time()
+    logging.info("Pre-sync cleanup: removing unreferenced temp staging tables...")
+    try:
+        cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1_Temp]")
+    except Exception:
+        pass
+    logging.info("Pre-sync cleanup completed in %.2f seconds.", time.time() - t0)
+
 def ensure_sequence(cursor):
     cursor.execute(
         """
@@ -439,4 +448,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
