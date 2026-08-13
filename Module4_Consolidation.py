@@ -88,8 +88,8 @@ def main():
     logging.info("[2/4] Started creating target NegativeList_New1 at %s...", step2_time)
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](<
-            [EntityGUID] [nvarchar](50>) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](
+            [EntityGUID] [nvarchar](50) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -123,7 +123,7 @@ def main():
             [IdNo5] [nvarchar](250) NULL,
             [Nationality] [nvarchar](4000) NULL,
             [Citizenship] [nvarchar](100) NULL
-        ) WITH (DATA_COMPRESSION = PAGE)
+        )
     """)
 
     try:
@@ -310,3 +310,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
