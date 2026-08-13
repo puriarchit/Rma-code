@@ -82,67 +82,65 @@ def ensure_indexes(cursor):
     )
 
 def ensure_master_and_filter_tables(cursor):
+    # Re-create NegativeList_Master with PAGE COMPRESSION (5x space savings)
+    cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_Master")
     cursor.execute("""
-        IF OBJECT_ID('dbo.NegativeList_Master', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.NegativeList_Master (
-                ID                  INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-                ReferenceID         NVARCHAR(255)  NULL,
-                WLType              NVARCHAR(100)  NULL,
-                FileName            NVARCHAR(100)  NULL,
-                VersionID           NVARCHAR(50)   NULL,
-                EntityType          NUMERIC(2,0)   NULL,
-                Source              NVARCHAR(255)  NULL,
-                OriginalSource      NVARCHAR(MAX)  NULL,
-                Action              NVARCHAR(10)   NULL,
-                Gender              NVARCHAR(7)    NULL,
-                LastName            NVARCHAR(150)  NULL,
-                FirstName           NVARCHAR(300)  NULL,
-                SecondName          NVARCHAR(300)  NULL,
-                POB                 NVARCHAR(500)  NULL,
-                DOB                 NVARCHAR(100)  NULL,
-                ALTDOB1             DATETIME       NULL,
-                ALTDOB2             DATETIME       NULL,
-                ALTDOB3             DATETIME       NULL,
-                Nationality         NVARCHAR(255)  NULL,
-                Citizenship         NVARCHAR(70)   NULL,
-                Alias               NVARCHAR(500)  NULL,
-                Title               NVARCHAR(255)  NULL,
-                AddressLine1        NVARCHAR(200)  NULL,
-                AddressLine2        NVARCHAR(200)  NULL,
-                City                NVARCHAR(255)  NULL,
-                IdNo1               NVARCHAR(255)  NULL,
-                IdOtherInfo1        NVARCHAR(MAX)  NULL,
-                IdNo2               NVARCHAR(255)  NULL,
-                IdOtherInfo2        NVARCHAR(MAX)  NULL,
-                IdNo3               NVARCHAR(255)  NULL,
-                IdOtherInfo3        NVARCHAR(MAX)  NULL,
-                IdNo4               NVARCHAR(255)  NULL,
-                IdOtherInfo4        NVARCHAR(MAX)  NULL,
-                IdNo5               NVARCHAR(255)  NULL,
-                IdOtherInfo5        NVARCHAR(MAX)  NULL,
-                NationalIDNo        NVARCHAR(255)  NULL,
-                NationalIDInfo      NVARCHAR(MAX)  NULL,
-                Basis               NVARCHAR(50)   NULL,
-                Remarks             NVARCHAR(MAX)  NULL,
-                Country             NVARCHAR(255)  NULL,
-                CreationDate        DATETIME       NULL,
-                LastUpdatedBy       INT            NULL,
-                LastUpdatedDate     DATETIME       NULL
-            );
-        END
+        CREATE TABLE dbo.NegativeList_Master (
+            ID                  INT IDENTITY(1,1) NOT NULL PRIMARY KEY NONCLUSTERED,
+            ReferenceID         NVARCHAR(255)  NULL,
+            WLType              NVARCHAR(100)  NULL,
+            FileName            NVARCHAR(100)  NULL,
+            VersionID           NVARCHAR(50)   NULL,
+            EntityType          NUMERIC(2,0)   NULL,
+            Source              NVARCHAR(255)  NULL,
+            OriginalSource      NVARCHAR(MAX)  NULL,
+            Action              NVARCHAR(10)   NULL,
+            Gender              NVARCHAR(7)    NULL,
+            LastName            NVARCHAR(150)  NULL,
+            FirstName           NVARCHAR(300)  NULL,
+            SecondName          NVARCHAR(300)  NULL,
+            POB                 NVARCHAR(500)  NULL,
+            DOB                 NVARCHAR(100)  NULL,
+            ALTDOB1             DATETIME       NULL,
+            ALTDOB2             DATETIME       NULL,
+            ALTDOB3             DATETIME       NULL,
+            Nationality         NVARCHAR(255)  NULL,
+            Citizenship         NVARCHAR(70)   NULL,
+            Alias               NVARCHAR(500)  NULL,
+            Title               NVARCHAR(255)  NULL,
+            AddressLine1        NVARCHAR(200)  NULL,
+            AddressLine2        NVARCHAR(200)  NULL,
+            City                NVARCHAR(255)  NULL,
+            IdNo1               NVARCHAR(255)  NULL,
+            IdOtherInfo1        NVARCHAR(MAX)  NULL,
+            IdNo2               NVARCHAR(255)  NULL,
+            IdOtherInfo2        NVARCHAR(MAX)  NULL,
+            IdNo3               NVARCHAR(255)  NULL,
+            IdOtherInfo3        NVARCHAR(MAX)  NULL,
+            IdNo4               NVARCHAR(255)  NULL,
+            IdOtherInfo4        NVARCHAR(MAX)  NULL,
+            IdNo5               NVARCHAR(255)  NULL,
+            IdOtherInfo5        NVARCHAR(MAX)  NULL,
+            NationalIDNo        NVARCHAR(255)  NULL,
+            NationalIDInfo      NVARCHAR(MAX)  NULL,
+            Basis               NVARCHAR(50)   NULL,
+            Remarks             NVARCHAR(MAX)  NULL,
+            Country             NVARCHAR(255)  NULL,
+            CreationDate        DATETIME       NULL,
+            LastUpdatedBy       INT            NULL,
+            LastUpdatedDate     DATETIME       NULL
+        ) WITH (DATA_COMPRESSION = PAGE);
     """)
 
+    # Re-create NegativeListFilter with PAGE COMPRESSION
+    cursor.execute("DROP TABLE IF EXISTS dbo.NegativeListFilter")
     cursor.execute("""
-        IF OBJECT_ID('dbo.NegativeListFilter', 'U') IS NULL
-        BEGIN
-            CREATE TABLE dbo.NegativeListFilter (
-                ID          INT NOT NULL,
-                FirstName   NVARCHAR(500) NULL,
-                LastName    NVARCHAR(500) NULL,
-                Nationality NVARCHAR(255) NULL
-            );
-        END
+        CREATE TABLE dbo.NegativeListFilter (
+            ID          INT NOT NULL,
+            FirstName   NVARCHAR(500) NULL,
+            LastName    NVARCHAR(500) NULL,
+            Nationality NVARCHAR(255) NULL
+        ) WITH (DATA_COMPRESSION = PAGE);
     """)
 
 def prepare_page_compressed_heap(cursor):
@@ -352,6 +350,7 @@ def populate_master_and_filter(cursor, inserted_total):
 
     ensure_master_and_filter_tables(cursor)
 
+    t_m = time.time()
     cursor.execute("TRUNCATE TABLE dbo.NegativeList_Master")
     cursor.execute(
         """
@@ -391,7 +390,7 @@ def populate_master_and_filter(cursor, inserted_total):
         FROM dbo.NegativeList A WITH (NOLOCK);
         """
     )
-    logging.info("  NegativeList_Master populated in %.2f sec", time.time() - start)
+    logging.info("  NegativeList_Master populated in %.2f sec", time.time() - t_m)
 
     t2 = time.time()
     cursor.execute("TRUNCATE TABLE dbo.NegativeListFilter")
@@ -457,7 +456,7 @@ def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (Smart Auto-Table Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync (PAGE-Compressed Master Engine) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -503,7 +502,7 @@ def main():
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (Smart Auto-Table Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5 (PAGE-Compressed Master Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
@@ -513,4 +512,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
