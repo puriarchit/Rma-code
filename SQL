@@ -76,3 +76,32 @@ GO
 -- Step 3: Transaction Log File ko 10 MB par Shrink karo
 DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
 GO
+
+
+
+
+
+
+
+USE master;
+GO
+
+-- 1. All Orphaned Active Locks ko Instant Rollback / Kill karo
+ALTER DATABASE [LexisNexis_Staging] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+
+-- 2. Recovery Model to SIMPLE
+ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE;
+GO
+
+-- 3. Restore Multi User Access
+ALTER DATABASE [LexisNexis_Staging] SET MULTI_USER;
+GO
+
+-- 4. Flush Checkpoint and Shrink Log File
+USE [LexisNexis_Staging];
+GO
+CHECKPOINT;
+GO
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
