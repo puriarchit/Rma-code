@@ -261,23 +261,29 @@ def build_post_load_indexes(cursor):
     step4_time = datetime.now().strftime("%H:%M:%S")
     logging.info("[4/6] Building Primary Key & Production Non-Clustered Indexes at %s...", step4_time)
     
-    # 1. Create Clustered Primary Key AFTER all base + alias data is loaded into PAGE-COMPRESSED HEAP
+    # 1. Create Primary Key with SORT_IN_TEMPDB = ON to utilize 88 GB free C: drive TempDB space
     t1 = time.time()
     cursor.execute("SELECT COUNT(*) FROM sys.indexes WHERE name = 'PK_NegativeList' AND object_id = OBJECT_ID('dbo.NegativeList')")
     if cursor.fetchone()[0] == 0:
-        logging.info("  Building Clustered Primary Key PK_NegativeList WITH (DATA_COMPRESSION = PAGE)...")
-        cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (DATA_COMPRESSION = PAGE)")
-        logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
+        logging.info("  Building Clustered Primary Key PK_NegativeList WITH (DATA_COMPRESSION = PAGE, SORT_IN_TEMPDB = ON)...")
+        try:
+            cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (DATA_COMPRESSION = PAGE, SORT_IN_TEMPDB = ON)")
+            logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
+        except Exception as ex:
+            logging.warning("Clustered PK build with SORT_IN_TEMPDB failed: %s. Falling back to NONCLUSTERED PK...", ex)
+            t_fb = time.time()
+            cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID)")
+            logging.info("  Nonclustered PK_NegativeList created in %.2f sec", time.time() - t_fb)
     else:
         logging.info("  PK_NegativeList already exists, skipping.")
 
     # 2. Non-Clustered Indexes directly in 1 pass
     t2 = time.time()
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = ON)")
     logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - t2)
 
     t3 = time.time()
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = ON)")
     logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t3)
 
     logging.info("[4/6] Completed post-load indexes in %.2f seconds.", time.time() - start)
