@@ -54,3 +54,25 @@ SELECT
     total_elapsed_time / 1000 AS SecondsRunning
 FROM sys.dm_exec_requests 
 WHERE session_id > 50 AND command <> 'SELECT';
+
+
+
+
+
+
+USE master;
+GO
+
+-- Step 1: Database ko SIMPLE Recovery Model par switch karo
+ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE;
+GO
+
+-- Step 2: Active Transactions Flush karo
+USE [LexisNexis_Staging];
+GO
+CHECKPOINT;
+GO
+
+-- Step 3: Transaction Log File ko 10 MB par Shrink karo
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
