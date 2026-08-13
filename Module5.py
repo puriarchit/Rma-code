@@ -68,12 +68,12 @@ def ensure_indexes(cursor):
         """
     )
 
-def prepare_heap_negativelist(cursor):
+def prepare_page_compressed_heap(cursor):
     start = time.time()
     step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/6] Preparing NegativeList table as UNINDEXED HEAP at %s...", step1_time)
+    logging.info("[1/6] Preparing NegativeList as PAGE-COMPRESSED HEAP (Test C Engine) at %s...", step1_time)
 
-    # FIX 1: Genuinely DROP existing table so it is recreated as a 100% Pure Unindexed HEAP!
+    # TEST C: Genuine DROP so table is created as PAGE-COMPRESSED HEAP without PK or NC indexes
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
     cursor.execute("""
         CREATE TABLE dbo.NegativeList (
@@ -120,9 +120,9 @@ def prepare_heap_negativelist(cursor):
             CreationDate        DATETIME       NULL,
             LastUpdatedBy       INT            NULL,
             LastUpdatedDate     DATETIME       NULL
-        );
+        ) WITH (DATA_COMPRESSION = PAGE);
     """)
-    logging.info("[1/6] NegativeList Pure HEAP prepared in %.2f seconds.", time.time() - start)
+    logging.info("[1/6] NegativeList PAGE-COMPRESSED HEAP prepared in %.2f seconds.", time.time() - start)
     return time.time() - start
 
 def set_recovery_model(config: dict, model: str):
@@ -140,7 +140,7 @@ def set_recovery_model(config: dict, model: str):
 def bulk_insert_base(cursor, run_version_id):
     start = time.time()
     step2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[2/6] Started inserting Base records into Pure HEAP NegativeList at %s...", step2_time)
+    logging.info("[2/6] Started inserting Base records into PAGE-COMPRESSED HEAP at %s...", step2_time)
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -170,13 +170,13 @@ def bulk_insert_base(cursor, run_version_id):
         (run_version_id,)
     )
     inserted = cursor.rowcount
-    logging.info("[2/6] Completed loading base records into Pure HEAP in %.2f seconds.", time.time() - start)
+    logging.info("[2/6] Completed loading base records into PAGE-COMPRESSED HEAP in %.2f seconds.", time.time() - start)
     return inserted, time.time() - start
 
 def bulk_insert_alias(cursor, run_version_id):
     start = time.time()
     step3_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[3/6] Started inserting ALL Alias records into Pure HEAP NegativeList at %s...", step3_time)
+    logging.info("[3/6] Started inserting ALL Alias records into PAGE-COMPRESSED HEAP at %s...", step3_time)
 
     cursor.execute(
         """
@@ -232,7 +232,7 @@ def bulk_insert_alias(cursor, run_version_id):
         cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WITH (NOLOCK) WHERE EntityAliasGUID IS NOT NULL")
         inserted = cursor.fetchone()[0]
 
-    logging.info("[3/6] Completed loading alias records into Pure HEAP in %.2f seconds.", time.time() - start)
+    logging.info("[3/6] Completed loading alias records into PAGE-COMPRESSED HEAP in %.2f seconds.", time.time() - start)
     return inserted, time.time() - start
 
 def build_post_load_indexes(cursor):
@@ -240,13 +240,13 @@ def build_post_load_indexes(cursor):
     step4_time = datetime.now().strftime("%H:%M:%S")
     logging.info("[4/6] Building Primary Key & Production Non-Clustered Indexes at %s...", step4_time)
     
-    # 1. Create Clustered Primary Key AFTER all data is loaded
+    # 1. Create Clustered Primary Key AFTER all base + alias data is loaded into PAGE-COMPRESSED HEAP
     t1 = time.time()
     logging.info("  Building Clustered Primary Key PK_NegativeList WITH (DATA_COMPRESSION = PAGE)...")
     cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (DATA_COMPRESSION = PAGE)")
     logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
 
-    # 2. Non-Clustered Indexes directly in-memory (SORT_IN_TEMPDB = OFF)
+    # 2. Non-Clustered Indexes directly in 1 pass
     t2 = time.time()
     cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
     logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - t2)
@@ -361,19 +361,14 @@ def post_sync_cleanup(cursor, config):
     except Exception as ex:
         logging.warning("Could not drop NegativeList_New1: %s", ex)
 
-    # FIX 2 & 3: Corrected server connection string and disabled DBCC SHRINKFILE to prevent disk I/O auto-growth penalties!
-    db = config["database"]
-    db_name = db["name"]
     set_recovery_model(config, "SIMPLE")
-    logging.info("  Post-sync cleanup completed (DBCC SHRINKFILE disabled for benchmark stability).")
-
     logging.info("[6/6] Completed post-sync cleanup in %.2f seconds.", time.time() - start)
 
 def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (Version B - Pure HEAP Benchmark Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync (Test C - PAGE-COMPRESSED HEAP Engine) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -390,13 +385,13 @@ def main():
         cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
         run_version_id = str(cursor.fetchone()[0])
 
-        # STEP 1: Genuinely DROP & recreate unindexed HEAP table (100% Pure HEAP Mode)
-        prepare_heap_negativelist(cursor)
+        # STEP 1: Prepare PAGE-COMPRESSED HEAP table (Test C)
+        prepare_page_compressed_heap(cursor)
 
         # STEP 2: Switch to SIMPLE recovery model
         set_recovery_model(config, 'SIMPLE')
 
-        # STEP 3: Bulk insert base + alias into Pure HEAP table with minimal logging
+        # STEP 3: Bulk insert base + alias into PAGE-COMPRESSED HEAP table with minimal logging
         inserted_base, _ = bulk_insert_base(cursor, run_version_id)
         inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
 
@@ -406,12 +401,12 @@ def main():
         # STEP 5: Populate master & filter
         populate_master_and_filter(cursor, inserted_base + inserted_alias)
 
-        # STEP 6: Post-sync cleanup (without shrink penalties)
+        # STEP 6: Post-sync cleanup
         post_sync_cleanup(cursor, config)
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (Version B Pure HEAP Benchmark) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5 (Test C - PAGE-COMPRESSED HEAP Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
@@ -421,5 +416,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
