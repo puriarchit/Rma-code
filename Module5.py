@@ -81,12 +81,16 @@ def ensure_indexes(cursor):
         """
     )
 
-def ensure_master_and_filter_tables(cursor):
-    # Re-create NegativeList_Master with PAGE COMPRESSION (5x space savings)
+def ensure_master_and_filter_tables_heap(cursor):
+    """
+    TEST D OPTIMIZATION: Create NegativeList_Master and NegativeListFilter as PAGE-Compressed HEAPs
+    WITHOUT any pre-existing Primary Key or Non-Clustered indexes.
+    Enables minimally logged bulk loading under applicable SQL Server conditions.
+    """
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_Master")
     cursor.execute("""
         CREATE TABLE dbo.NegativeList_Master (
-            ID                  INT IDENTITY(1,1) NOT NULL PRIMARY KEY NONCLUSTERED,
+            ID                  INT IDENTITY(1,1) NOT NULL,
             ReferenceID         NVARCHAR(255)  NULL,
             WLType              NVARCHAR(100)  NULL,
             FileName            NVARCHAR(100)  NULL,
@@ -132,7 +136,7 @@ def ensure_master_and_filter_tables(cursor):
         ) WITH (DATA_COMPRESSION = PAGE);
     """)
 
-    # Re-create NegativeListFilter with PAGE COMPRESSION
+    # Create NegativeListFilter as PAGE-Compressed HEAP without indexes
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeListFilter")
     cursor.execute("""
         CREATE TABLE dbo.NegativeListFilter (
@@ -344,14 +348,24 @@ def build_post_load_indexes(cursor):
     return time.time() - start
 
 def populate_master_and_filter(cursor, inserted_total):
+    """
+    TEST D OPTIMIZATION: HEAP -> TABLOCK BULK LOAD -> POST-LOAD PK BUILD
+    1. Create PAGE-compressed HEAPs for Master & Filter (No PK indexes initially).
+    2. TABLOCK Bulk Insert 10.9M rows into Master.
+    3. Post-load PK build on NegativeList_Master.
+    4. TABLOCK Bulk Insert 10.9M rows into NegativeListFilter.
+    5. Post-load PK build on NegativeListFilter.
+    """
     start = time.time()
     step5_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[5/6] Started populating NegativeList_Master & Filter at %s...", step5_time)
+    logging.info("[5/6] Started TEST D (HEAP -> TABLOCK Bulk Load -> Post-Load PKs) at %s...", step5_time)
 
-    ensure_master_and_filter_tables(cursor)
+    # Step D1: Create target tables as PAGE-Compressed HEAPs without indexes
+    ensure_master_and_filter_tables_heap(cursor)
 
-    t_m = time.time()
-    cursor.execute("TRUNCATE TABLE dbo.NegativeList_Master")
+    # Step D2: TABLOCK Bulk Insert into NegativeList_Master (Minimally Logged HEAP)
+    t_m_insert = time.time()
+    logging.info("  [Test D Step 1] Bulk inserting 10.9M rows into NegativeList_Master (PAGE-Compressed HEAP)...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList_Master WITH (TABLOCK) (
@@ -390,10 +404,19 @@ def populate_master_and_filter(cursor, inserted_total):
         FROM dbo.NegativeList A WITH (NOLOCK);
         """
     )
-    logging.info("  NegativeList_Master populated in %.2f sec", time.time() - t_m)
+    master_insert_sec = time.time() - t_m_insert
+    logging.info("  ⚡ EMPIRICAL METRIC 1: NegativeList_Master HEAP Bulk Insert: %.2f seconds (%.2f mins)!", master_insert_sec, master_insert_sec / 60)
 
-    t2 = time.time()
-    cursor.execute("TRUNCATE TABLE dbo.NegativeListFilter")
+    # Step D3: Post-Load Primary Key Nonclustered Build on NegativeList_Master
+    t_m_pk = time.time()
+    logging.info("  [Test D Step 2] Building Post-Load Primary Key (PK_NegativeList_Master NONCLUSTERED)...")
+    cursor.execute("ALTER TABLE dbo.NegativeList_Master ADD CONSTRAINT PK_NegativeList_Master PRIMARY KEY NONCLUSTERED (ID)")
+    master_pk_sec = time.time() - t_m_pk
+    logging.info("  ⚡ EMPIRICAL METRIC 2: NegativeList_Master Post-Load PK Build: %.2f seconds (%.2f mins)!", master_pk_sec, master_pk_sec / 60)
+
+    # Step D4: TABLOCK Bulk Insert into NegativeListFilter (Minimally Logged HEAP)
+    t_f_insert = time.time()
+    logging.info("  [Test D Step 3] Bulk inserting 10.9M rows into NegativeListFilter (PAGE-Compressed HEAP)...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
@@ -405,7 +428,18 @@ def populate_master_and_filter(cursor, inserted_total):
         FROM dbo.NegativeList i WITH (NOLOCK);
         """
     )
-    logging.info("  NegativeListFilter populated in %.2f sec", time.time() - t2)
+    filter_insert_sec = time.time() - t_f_insert
+    logging.info("  ⚡ EMPIRICAL METRIC 3: NegativeListFilter HEAP Bulk Insert: %.2f seconds (%.2f mins)!", filter_insert_sec, filter_insert_sec / 60)
+
+    # Step D5: Post-Load Primary Key / Index Build on NegativeListFilter
+    t_f_pk = time.time()
+    logging.info("  [Test D Step 4] Building Post-Load Index / PK on NegativeListFilter...")
+    try:
+        cursor.execute("ALTER TABLE dbo.NegativeListFilter ADD CONSTRAINT PK_NegativeListFilter PRIMARY KEY NONCLUSTERED (ID)")
+    except Exception as ex:
+        logging.warning("  NegativeListFilter Post-Load PK creation note: %s", ex)
+    filter_pk_sec = time.time() - t_f_pk
+    logging.info("  ⚡ EMPIRICAL METRIC 4: NegativeListFilter Post-Load PK Build: %.2f seconds (%.2f mins)!", filter_pk_sec, filter_pk_sec / 60)
 
     cursor.execute("IF OBJECT_ID('dbo.NegativeList_History_Summary','U') IS NULL CREATE TABLE dbo.NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
     cursor.execute("TRUNCATE TABLE dbo.NegativeList_History_Summary")
@@ -419,8 +453,15 @@ def populate_master_and_filter(cursor, inserted_total):
         """,
         (inserted_total, inserted_total),
     )
-    logging.info("[5/6] Master & Filter populated in %.2f seconds.", time.time() - start)
-    return time.time() - start
+
+    total_step5_sec = time.time() - start
+    logging.info("🏆 EMPIRICAL TEST D COMPLETE SUMMARY:")
+    logging.info("  1. Master HEAP Bulk Insert  : %.2f sec (%.2f mins)", master_insert_sec, master_insert_sec / 60)
+    logging.info("  2. Master Post-Load PK Build: %.2f sec (%.2f mins)", master_pk_sec, master_pk_sec / 60)
+    logging.info("  3. Filter HEAP Bulk Insert  : %.2f sec (%.2f mins)", filter_insert_sec, filter_insert_sec / 60)
+    logging.info("  4. Filter Post-Load PK Build: %.2f sec (%.2f mins)", filter_pk_sec, filter_pk_sec / 60)
+    logging.info("  🎯 Step 5 Total Runtime     : %.2f seconds (%.2f mins) [Old Runtime: ~22-25 mins]!", total_step5_sec, total_step5_sec / 60)
+    return total_step5_sec
 
 def post_sync_cleanup(cursor, config):
     start = time.time()
@@ -456,7 +497,7 @@ def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (PAGE-Compressed Master Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync (Test D: Post-Load Master & Filter PK Engine) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -494,7 +535,7 @@ def main():
         # STEP 4: Build Primary Key Nonclustered Index + Non-Clustered Indexes in 1 fast pass AFTER data is loaded
         build_post_load_indexes(cursor)
 
-        # STEP 5: Populate master & filter
+        # STEP 5: Populate master & filter (Test D Engine)
         populate_master_and_filter(cursor, inserted_total)
 
         # STEP 6: Post-sync cleanup
@@ -502,7 +543,7 @@ def main():
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (PAGE-Compressed Master Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5 (Test D: Post-Load Master & Filter PK Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
