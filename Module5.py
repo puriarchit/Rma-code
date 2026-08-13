@@ -81,6 +81,70 @@ def ensure_indexes(cursor):
         """
     )
 
+def ensure_master_and_filter_tables(cursor):
+    cursor.execute("""
+        IF OBJECT_ID('dbo.NegativeList_Master', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.NegativeList_Master (
+                ID                  INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                ReferenceID         NVARCHAR(255)  NULL,
+                WLType              NVARCHAR(100)  NULL,
+                FileName            NVARCHAR(100)  NULL,
+                VersionID           NVARCHAR(50)   NULL,
+                EntityType          NUMERIC(2,0)   NULL,
+                Source              NVARCHAR(255)  NULL,
+                OriginalSource      NVARCHAR(MAX)  NULL,
+                Action              NVARCHAR(10)   NULL,
+                Gender              NVARCHAR(7)    NULL,
+                LastName            NVARCHAR(150)  NULL,
+                FirstName           NVARCHAR(300)  NULL,
+                SecondName          NVARCHAR(300)  NULL,
+                POB                 NVARCHAR(500)  NULL,
+                DOB                 NVARCHAR(100)  NULL,
+                ALTDOB1             DATETIME       NULL,
+                ALTDOB2             DATETIME       NULL,
+                ALTDOB3             DATETIME       NULL,
+                Nationality         NVARCHAR(255)  NULL,
+                Citizenship         NVARCHAR(70)   NULL,
+                Alias               NVARCHAR(500)  NULL,
+                Title               NVARCHAR(255)  NULL,
+                AddressLine1        NVARCHAR(200)  NULL,
+                AddressLine2        NVARCHAR(200)  NULL,
+                City                NVARCHAR(255)  NULL,
+                IdNo1               NVARCHAR(255)  NULL,
+                IdOtherInfo1        NVARCHAR(MAX)  NULL,
+                IdNo2               NVARCHAR(255)  NULL,
+                IdOtherInfo2        NVARCHAR(MAX)  NULL,
+                IdNo3               NVARCHAR(255)  NULL,
+                IdOtherInfo3        NVARCHAR(MAX)  NULL,
+                IdNo4               NVARCHAR(255)  NULL,
+                IdOtherInfo4        NVARCHAR(MAX)  NULL,
+                IdNo5               NVARCHAR(255)  NULL,
+                IdOtherInfo5        NVARCHAR(MAX)  NULL,
+                NationalIDNo        NVARCHAR(255)  NULL,
+                NationalIDInfo      NVARCHAR(MAX)  NULL,
+                Basis               NVARCHAR(50)   NULL,
+                Remarks             NVARCHAR(MAX)  NULL,
+                Country             NVARCHAR(255)  NULL,
+                CreationDate        DATETIME       NULL,
+                LastUpdatedBy       INT            NULL,
+                LastUpdatedDate     DATETIME       NULL
+            );
+        END
+    """)
+
+    cursor.execute("""
+        IF OBJECT_ID('dbo.NegativeListFilter', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.NegativeListFilter (
+                ID          INT NOT NULL,
+                FirstName   NVARCHAR(500) NULL,
+                LastName    NVARCHAR(500) NULL,
+                Nationality NVARCHAR(255) NULL
+            );
+        END
+    """)
+
 def prepare_page_compressed_heap(cursor):
     start = time.time()
     step1_time = datetime.now().strftime("%H:%M:%S")
@@ -261,29 +325,21 @@ def build_post_load_indexes(cursor):
     step4_time = datetime.now().strftime("%H:%M:%S")
     logging.info("[4/6] Building Primary Key & Production Non-Clustered Indexes at %s...", step4_time)
     
-    # 1. Create Primary Key with SORT_IN_TEMPDB = ON to utilize 88 GB free C: drive TempDB space
     t1 = time.time()
     cursor.execute("SELECT COUNT(*) FROM sys.indexes WHERE name = 'PK_NegativeList' AND object_id = OBJECT_ID('dbo.NegativeList')")
     if cursor.fetchone()[0] == 0:
-        logging.info("  Building Clustered Primary Key PK_NegativeList WITH (DATA_COMPRESSION = PAGE, SORT_IN_TEMPDB = ON)...")
-        try:
-            cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (DATA_COMPRESSION = PAGE, SORT_IN_TEMPDB = ON)")
-            logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
-        except Exception as ex:
-            logging.warning("Clustered PK build with SORT_IN_TEMPDB failed: %s. Falling back to NONCLUSTERED PK...", ex)
-            t_fb = time.time()
-            cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID)")
-            logging.info("  Nonclustered PK_NegativeList created in %.2f sec", time.time() - t_fb)
+        logging.info("  Building Primary Key PK_NegativeList (Fast Nonclustered Engine)...")
+        cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID)")
+        logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
     else:
         logging.info("  PK_NegativeList already exists, skipping.")
 
-    # 2. Non-Clustered Indexes directly in 1 pass
     t2 = time.time()
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = ON)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
     logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - t2)
 
     t3 = time.time()
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = ON)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
     logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t3)
 
     logging.info("[4/6] Completed post-load indexes in %.2f seconds.", time.time() - start)
@@ -293,18 +349,21 @@ def populate_master_and_filter(cursor, inserted_total):
     start = time.time()
     step5_time = datetime.now().strftime("%H:%M:%S")
     logging.info("[5/6] Started populating NegativeList_Master & Filter at %s...", step5_time)
-    cursor.execute("TRUNCATE TABLE NegativeList_Master")
+
+    ensure_master_and_filter_tables(cursor)
+
+    cursor.execute("TRUNCATE TABLE dbo.NegativeList_Master")
     cursor.execute(
         """
-        INSERT INTO NegativeList_Master WITH (TABLOCK) (
-            ID, ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender,
+        INSERT INTO dbo.NegativeList_Master WITH (TABLOCK) (
+            ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender,
             LastName, FirstName, SecondName, POB, DOB, ALTDOB1, ALTDOB2, ALTDOB3, Nationality, Citizenship,
             Alias, Title, AddressLine1, AddressLine2, City, IdNo1, IdOtherInfo1, IdNo2, IdOtherInfo2, IdNo3,
             IdOtherInfo3, IdNo4, IdOtherInfo4, IdNo5, IdOtherInfo5, NationalIDNo, NationalIDInfo, Basis, Remarks,
             Country, CreationDate, LastUpdatedBy, LastUpdatedDate
         )
         SELECT
-            A.ID, A.ReferenceID, A.WLType, A.FileName, A.VersionID,
+            A.ReferenceID, A.WLType, A.FileName, A.VersionID,
             CASE WHEN ISNUMERIC(A.EntityType)=1 THEN CAST(A.EntityType AS NUMERIC(2,0))
                  WHEN A.EntityType='Individual' THEN 3
                  WHEN A.EntityType='Country' THEN 1
@@ -329,31 +388,31 @@ def populate_master_and_filter(cursor, inserted_total):
             A.NationalIDNo, A.NationalIDInfo,
             A.EntityGUID, A.Remark, A.Country,
             A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-        FROM NegativeList A WITH (NOLOCK);
+        FROM dbo.NegativeList A WITH (NOLOCK);
         """
     )
     logging.info("  NegativeList_Master populated in %.2f sec", time.time() - start)
 
     t2 = time.time()
-    cursor.execute("TRUNCATE TABLE NegativeListFilter")
+    cursor.execute("TRUNCATE TABLE dbo.NegativeListFilter")
     cursor.execute(
         """
-        INSERT INTO NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
+        INSERT INTO dbo.NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
         SELECT
             i.ID,
             UPPER(ISNULL(i.FirstName,'')) + ' ' + UPPER(ISNULL(i.LastName,'')),
             UPPER(ISNULL(i.LastName,'')) + ' ' + UPPER(ISNULL(i.FirstName,'')),
             i.Nationality
-        FROM NegativeList i WITH (NOLOCK);
+        FROM dbo.NegativeList i WITH (NOLOCK);
         """
     )
     logging.info("  NegativeListFilter populated in %.2f sec", time.time() - t2)
 
-    cursor.execute("IF OBJECT_ID('NegativeList_History_Summary','U') IS NULL CREATE TABLE NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
-    cursor.execute("TRUNCATE TABLE NegativeList_History_Summary")
+    cursor.execute("IF OBJECT_ID('dbo.NegativeList_History_Summary','U') IS NULL CREATE TABLE dbo.NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
+    cursor.execute("TRUNCATE TABLE dbo.NegativeList_History_Summary")
     cursor.execute(
         """
-        INSERT INTO NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
+        INSERT INTO dbo.NegativeList_History_Summary WITH (TABLOCK) (Type, Count, RunDate)
         VALUES
             ('New Negative List Records', ?, GETDATE()),
             ('Updated Negative List Records', 0, GETDATE()),
@@ -398,7 +457,7 @@ def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (Smart Resumable Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync (Smart Auto-Table Engine) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -433,7 +492,7 @@ def main():
             inserted_total = existing_rows
             set_recovery_model(config, 'SIMPLE')
 
-        # STEP 4: Build Primary Key Clustered Index + Non-Clustered Indexes in 1 fast pass AFTER data is loaded
+        # STEP 4: Build Primary Key Nonclustered Index + Non-Clustered Indexes in 1 fast pass AFTER data is loaded
         build_post_load_indexes(cursor)
 
         # STEP 5: Populate master & filter
@@ -444,7 +503,7 @@ def main():
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (Smart Resumable Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5 (Smart Auto-Table Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
@@ -454,3 +513,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
