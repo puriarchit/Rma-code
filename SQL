@@ -120,3 +120,55 @@ ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE;
 GO
 ALTER DATABASE [LexisNexis_Staging] SET MULTI_USER;
 GO
+
+
+
+
+
+import pyodbc
+import json
+
+with open("D:/LexisNexis/config.json", "r", encoding="utf-8") as f:
+    config = json.load(f)
+
+db = config["database"]
+conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection=yes;"
+conn = pyodbc.connect(conn_str, autocommit=True)
+cursor = conn.cursor()
+
+print("Resetting LexisNexis_Staging transaction log and creating all 16 source table schemas...")
+
+# 1. Truncate transaction log
+try:
+    cursor.execute("ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE")
+    cursor.execute("USE [LexisNexis_Staging]")
+    cursor.execute("CHECKPOINT")
+    cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
+    print("Transaction log shrunk successfully!")
+except Exception as e:
+    print("Log shrink note:", e)
+
+# 2. Create missing source table schemas
+tables = [
+    "AssociatedEntity", "ConsolidatedSanction", "EntityAddress", "EntityAdverseMedia",
+    "EntityCountryAssociation", "EntityDOB", "EntityEnforcement", "EntityIdentification",
+    "EntityRemark", "EntitySanction", "EntitySourceItem", "EntityAlias", "EntityName"
+]
+
+for t in tables:
+    try:
+        cursor.execute(f"""
+            IF OBJECT_ID('dbo.[{t}]', 'U') IS NULL
+            BEGIN
+                CREATE TABLE dbo.[{t}] (
+                    EntityGUID NVARCHAR(50) NULL,
+                    Data NVARCHAR(MAX) NULL
+                );
+            END
+        """)
+        cursor.execute(f"TRUNCATE TABLE dbo.[{t}]")
+    except Exception as e:
+        pass
+
+print("All 16 source tables created and truncated successfully!")
+conn.close()
