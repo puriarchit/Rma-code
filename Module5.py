@@ -36,6 +36,17 @@ def get_connection(config: dict) -> pyodbc.Connection:
     )
     return pyodbc.connect(conn_str, autocommit=False)
 
+def ensure_sequence(cursor):
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq' AND schema_id = SCHEMA_ID('dbo'))
+        BEGIN
+            CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1;
+        END
+        """
+    )
+    cursor.connection.commit()
+
 def ensure_indexes(cursor):
     logging.info("Verifying persistent indexes on source tables...")
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
@@ -66,6 +77,7 @@ def ensure_indexes(cursor):
         END
         """
     )
+    cursor.connection.commit()
 
 def build_basekeys(cursor):
     start = time.time()
@@ -617,6 +629,7 @@ def main():
         logging.info("Load state: %s", "INITIAL" if is_initial_load else "INCREMENTAL")
 
         pre_sync_cleanup(cursor)
+        ensure_sequence(cursor)
         ensure_indexes(cursor)
         build_basekeys(cursor)
         build_basesource(cursor, is_initial_load)
@@ -661,5 +674,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
