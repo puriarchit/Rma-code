@@ -4,3 +4,12 @@ GO
 SELECT name, type_desc 
 FROM sys.indexes 
 WHERE object_id = OBJECT_ID('dbo.NegativeList');
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT COUNT(*) AS Step3_Exact_Alias_Rows_Target
+FROM dbo.NegativeList_New1 A WITH (NOLOCK)
+INNER JOIN dbo.EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity');
