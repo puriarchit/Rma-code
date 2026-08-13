@@ -50,6 +50,10 @@ def ensure_indexes(cursor):
     logging.info("Verifying persistent indexes on source tables...")
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
     if cursor.fetchone()[0] == 0:
+        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
+        if cursor.fetchone()[0] > 0:
+            logging.info("Source table NegativeList_New1 already consumed, NegativeList target exists.")
+            return
         raise RuntimeError(
             "NegativeList_New1 does not exist. "
             "Please run Module4_Consolidation.py first to build the source table."
@@ -71,9 +75,8 @@ def ensure_indexes(cursor):
 def prepare_page_compressed_heap(cursor):
     start = time.time()
     step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/6] Preparing NegativeList as PAGE-COMPRESSED HEAP (Test C Engine) at %s...", step1_time)
+    logging.info("[1/6] Preparing NegativeList as PAGE-COMPRESSED HEAP at %s...", step1_time)
 
-    # TEST C: Genuine DROP so table is created as PAGE-COMPRESSED HEAP without PK or NC indexes
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
     cursor.execute("""
         CREATE TABLE dbo.NegativeList (
@@ -233,6 +236,15 @@ def bulk_insert_alias(cursor, run_version_id):
         inserted = cursor.fetchone()[0]
 
     logging.info("[3/6] Completed loading alias records into PAGE-COMPRESSED HEAP in %.2f seconds.", time.time() - start)
+
+    # RECLAIM DISK SPACE BEFORE STEP 4 INDEX BUILD: Drop consumed staging table NegativeList_New1 right after Step 3!
+    logging.info("  Reclaiming disk space before Step 4 Index Build (Dropping consumed staging table NegativeList_New1)...")
+    try:
+        cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_New1;")
+        cursor.execute("CHECKPOINT;")
+    except Exception as ex:
+        logging.warning("Could not drop NegativeList_New1 after Step 3: %s", ex)
+
     return inserted, time.time() - start
 
 def build_post_load_indexes(cursor):
@@ -242,17 +254,21 @@ def build_post_load_indexes(cursor):
     
     # 1. Create Clustered Primary Key AFTER all base + alias data is loaded into PAGE-COMPRESSED HEAP
     t1 = time.time()
-    logging.info("  Building Clustered Primary Key PK_NegativeList WITH (DATA_COMPRESSION = PAGE)...")
-    cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (DATA_COMPRESSION = PAGE)")
-    logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
+    cursor.execute("SELECT COUNT(*) FROM sys.indexes WHERE name = 'PK_NegativeList' AND object_id = OBJECT_ID('dbo.NegativeList')")
+    if cursor.fetchone()[0] == 0:
+        logging.info("  Building Clustered Primary Key PK_NegativeList WITH (DATA_COMPRESSION = PAGE)...")
+        cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID) WITH (DATA_COMPRESSION = PAGE)")
+        logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
+    else:
+        logging.info("  PK_NegativeList already exists, skipping.")
 
     # 2. Non-Clustered Indexes directly in 1 pass
     t2 = time.time()
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
     logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - t2)
 
     t3 = time.time()
-    cursor.execute("CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
     logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t3)
 
     logging.info("[4/6] Completed post-load indexes in %.2f seconds.", time.time() - start)
@@ -333,23 +349,6 @@ def populate_master_and_filter(cursor, inserted_total):
     logging.info("[5/6] Master & Filter populated in %.2f seconds.", time.time() - start)
     return time.time() - start
 
-def pre_sync_cleanup(cursor):
-    start = time.time()
-    logging.info("Pre-sync cleanup: removing unreferenced temp staging tables...")
-    tables_to_drop = [
-        "NegativeList_Staging",
-        "AssociatedEntity",
-        "ConsolidatedSanction",
-        "EntityAdverseMedia",
-        "EntityAdverseMediaSubCategory",
-    ]
-    for table in tables_to_drop:
-        try:
-            cursor.execute(f"DROP TABLE IF EXISTS dbo.[{table}]")
-        except Exception:
-            pass
-    logging.info("Pre-sync cleanup completed in %.2f seconds.", time.time() - start)
-
 def post_sync_cleanup(cursor, config):
     start = time.time()
     step6_time = datetime.now().strftime("%H:%M:%S")
@@ -357,18 +356,34 @@ def post_sync_cleanup(cursor, config):
     try:
         cursor.execute("TRUNCATE TABLE dbo.[NegativeList_New1]")
         cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
-        logging.info("  Reclaimed space: dropped consumed source table NegativeList_New1.")
-    except Exception as ex:
-        logging.warning("Could not drop NegativeList_New1: %s", ex)
+    except Exception:
+        pass
 
     set_recovery_model(config, "SIMPLE")
     logging.info("[6/6] Completed post-sync cleanup in %.2f seconds.", time.time() - start)
+
+def check_existing_progress(cursor):
+    """
+    Smart Resumable Check: If NegativeList exists and already has 10M+ rows loaded,
+    skip Step 1, Step 2, and Step 3 and resume directly at Step 4!
+    """
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
+    if cursor.fetchone()[0] == 0:
+        return False, 0
+
+    cursor.execute("SELECT SUM(row_count) FROM sys.dm_db_partition_stats WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
+    row_count = cursor.fetchone()[0] or 0
+    if row_count >= 10000000:
+        logging.info("⚡ SMART RESUME DETECTED: NegativeList already contains %d rows (10.9M+ loaded).", row_count)
+        logging.info("  Skipping Step 1, Step 2, and Step 3! Resuming directly at Step 4 (Index Build & Master Sync)...")
+        return True, row_count
+    return False, 0
 
 def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (Test C - PAGE-COMPRESSED HEAP Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync (Smart Resumable Engine) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -385,28 +400,36 @@ def main():
         cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
         run_version_id = str(cursor.fetchone()[0])
 
-        # STEP 1: Prepare PAGE-COMPRESSED HEAP table (Test C)
-        prepare_page_compressed_heap(cursor)
+        # SMART RESUME CHECK:
+        is_resumable, existing_rows = check_existing_progress(cursor)
 
-        # STEP 2: Switch to SIMPLE recovery model
-        set_recovery_model(config, 'SIMPLE')
+        if not is_resumable:
+            # STEP 1: Prepare PAGE-COMPRESSED HEAP table
+            prepare_page_compressed_heap(cursor)
 
-        # STEP 3: Bulk insert base + alias into PAGE-COMPRESSED HEAP table with minimal logging
-        inserted_base, _ = bulk_insert_base(cursor, run_version_id)
-        inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
+            # STEP 2: Switch to SIMPLE recovery model
+            set_recovery_model(config, 'SIMPLE')
+
+            # STEP 3: Bulk insert base + alias into PAGE-COMPRESSED HEAP table
+            inserted_base, _ = bulk_insert_base(cursor, run_version_id)
+            inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
+            inserted_total = inserted_base + inserted_alias
+        else:
+            inserted_total = existing_rows
+            set_recovery_model(config, 'SIMPLE')
 
         # STEP 4: Build Primary Key Clustered Index + Non-Clustered Indexes in 1 fast pass AFTER data is loaded
         build_post_load_indexes(cursor)
 
         # STEP 5: Populate master & filter
-        populate_master_and_filter(cursor, inserted_base + inserted_alias)
+        populate_master_and_filter(cursor, inserted_total)
 
         # STEP 6: Post-sync cleanup
         post_sync_cleanup(cursor, config)
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (Test C - PAGE-COMPRESSED HEAP Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5 (Smart Resumable Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
