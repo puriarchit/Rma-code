@@ -13,3 +13,16 @@ SELECT COUNT(*) AS Step3_Exact_Alias_Rows_Target
 FROM dbo.NegativeList_New1 A WITH (NOLOCK)
 INNER JOIN dbo.EntityAlias B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
 WHERE B.AliasTypeDesc NOT IN ('Acronym','Call Sign','Chinese Commercial Code (CCC)','Native Script For Alias','Native Script For Entity');
+\
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    session_id, 
+    command, 
+    status, 
+    row_count AS Live_Rows_Written_So_Far,
+    total_elapsed_time / 1000 AS SecondsRunning
+FROM sys.dm_exec_requests 
+WHERE session_id > 50 AND command <> 'SELECT';
