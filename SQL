@@ -93,3 +93,20 @@ FROM sys.tables t WITH (NOLOCK)
 INNER JOIN sys.partitions p WITH (NOLOCK) ON t.object_id = p.object_id
 INNER JOIN sys.allocation_units a WITH (NOLOCK) ON p.partition_id = a.container_id
 WHERE t.name = 'NegativeList' AND p.index_id IN (0, 1);
+
+
+
+
+
+USE master;
+GO
+
+SELECT 
+    session_id, 
+    command, 
+    status, 
+    wait_type, 
+    blocking_session_id,
+    total_elapsed_time / 1000 AS SecondsRunning
+FROM sys.dm_exec_requests 
+WHERE session_id > 50 AND command <> 'SELECT';
