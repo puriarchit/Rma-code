@@ -40,3 +40,17 @@ SELECT
     total_elapsed_time / 1000 AS SecondsRunning
 FROM sys.dm_exec_requests 
 WHERE session_id > 50 AND command <> 'SELECT';
+
+
+USE master;
+GO
+
+SELECT 
+    session_id, 
+    command, 
+    status, 
+    percent_complete AS Exact_Percentage_Done,
+    wait_type,
+    total_elapsed_time / 1000 AS SecondsRunning
+FROM sys.dm_exec_requests 
+WHERE session_id > 50 AND command <> 'SELECT';
