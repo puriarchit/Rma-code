@@ -70,3 +70,12 @@ SELECT
     writes AS PagesWrittenToDisk
 FROM sys.dm_exec_requests
 WHERE session_id > 50 AND command <> 'SELECT';
+
+
+
+
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
+GO
