@@ -1,0 +1,21 @@
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    session_id, 
+    command, 
+    status, 
+    wait_type, 
+    total_elapsed_time / 1000 AS TotalSeconds
+FROM sys.dm_exec_requests 
+WHERE session_id > 50 AND command <> 'SELECT';
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    session_id, 
+    internal_objects_alloc_page_count * 8 / 1024 AS TempDB_MB_Used
+FROM sys.dm_db_session_space_usage
+WHERE session_id > 50;
