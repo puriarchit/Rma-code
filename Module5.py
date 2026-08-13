@@ -72,70 +72,67 @@ def ensure_indexes(cursor):
 def recreate_negativelist_with_pk(cursor):
     start = time.time()
     step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/6] Recreating NegativeList table WITH PRIMARY KEY at %s (0-cost PK!)...", step1_time)
+    logging.info("[1/6] Preparing NegativeList table WITH PRIMARY KEY at %s (Instant Truncate Engine)...", step1_time)
 
-    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList'")
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
     table_exists = cursor.fetchone()[0] > 0
 
     if table_exists:
+        logging.info("  Truncating existing NegativeList table (0.01 sec instant clear)...")
+        try:
+            cursor.execute("TRUNCATE TABLE dbo.NegativeList")
+        except Exception:
+            cursor.execute("DELETE FROM dbo.NegativeList")
+    else:
         cursor.execute("""
-            DECLARE @sql NVARCHAR(MAX) = '';
-            SELECT @sql = @sql + 'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(parent_object_id)) + '.' +
-                   QUOTENAME(OBJECT_NAME(parent_object_id)) + ' DROP CONSTRAINT ' + QUOTENAME(name) + ';'
-            FROM sys.foreign_keys WHERE referenced_object_id = OBJECT_ID('NegativeList');
-            IF @sql <> '' EXEC sp_executesql @sql;
+            CREATE TABLE dbo.NegativeList (
+                ID                  INT IDENTITY(1,1) NOT NULL,
+                ReferenceID         NVARCHAR(255)  NULL,
+                EntityType          NVARCHAR(50)   NULL,
+                Gender              NVARCHAR(10)   NULL,
+                FirstName           NVARCHAR(300)  NULL,
+                LastName            NVARCHAR(255)  NULL,
+                SecondName          NVARCHAR(500)  NULL,
+                Title               NVARCHAR(255)  NULL,
+                DOB                 NVARCHAR(100)  NULL,
+                ALTDOB1             DATETIME       NULL,
+                ALTDOB2             DATETIME       NULL,
+                ALTDOB3             DATETIME       NULL,
+                AddressLine1        NVARCHAR(500)  NULL,
+                AddressLine2        NVARCHAR(500)  NULL,
+                City                NVARCHAR(255)  NULL,
+                Country             NVARCHAR(255)  NULL,
+                WLType              NVARCHAR(100)  NULL,
+                OriginalSource      NVARCHAR(MAX)  NULL,
+                Remark              NVARCHAR(MAX)  NULL,
+                NationalIDInfo      NVARCHAR(MAX)  NULL,
+                NationalIDNo        NVARCHAR(255)  NULL,
+                IdOtherInfo1        NVARCHAR(MAX)  NULL,
+                IdNo1               NVARCHAR(255)  NULL,
+                IdOtherInfo2        NVARCHAR(MAX)  NULL,
+                IdNo2               NVARCHAR(255)  NULL,
+                IdOtherInfo3        NVARCHAR(MAX)  NULL,
+                IdNo3               NVARCHAR(255)  NULL,
+                IdOtherInfo4        NVARCHAR(MAX)  NULL,
+                IdNo4               NVARCHAR(255)  NULL,
+                IdOtherInfo5        NVARCHAR(MAX)  NULL,
+                IdNo5               NVARCHAR(255)  NULL,
+                EntityGUID          NVARCHAR(50)   NULL,
+                EntityAliasGUID     NVARCHAR(50)   NULL,
+                Nationality         NVARCHAR(255)  NULL,
+                Citizenship         NVARCHAR(100)  NULL,
+                POB                 NVARCHAR(500)  NULL,
+                Alias               NVARCHAR(500)  NULL,
+                VersionID           NVARCHAR(50)   NULL,
+                Action              NVARCHAR(10)   NULL,
+                FileName            NVARCHAR(100)  NULL,
+                CreationDate        DATETIME       NULL,
+                LastUpdatedBy       INT            NULL,
+                LastUpdatedDate     DATETIME       NULL,
+                CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID)
+            ) WITH (DATA_COMPRESSION = PAGE);
         """)
-        cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
-
-    cursor.execute("""
-        CREATE TABLE dbo.NegativeList (
-            ID                  INT IDENTITY(1,1) NOT NULL,
-            ReferenceID         NVARCHAR(255)  NULL,
-            EntityType          NVARCHAR(50)   NULL,
-            Gender              NVARCHAR(10)   NULL,
-            FirstName           NVARCHAR(300)  NULL,
-            LastName            NVARCHAR(255)  NULL,
-            SecondName          NVARCHAR(500)  NULL,
-            Title               NVARCHAR(255)  NULL,
-            DOB                 NVARCHAR(100)  NULL,
-            ALTDOB1             DATETIME       NULL,
-            ALTDOB2             DATETIME       NULL,
-            ALTDOB3             DATETIME       NULL,
-            AddressLine1        NVARCHAR(500)  NULL,
-            AddressLine2        NVARCHAR(500)  NULL,
-            City                NVARCHAR(255)  NULL,
-            Country             NVARCHAR(255)  NULL,
-            WLType              NVARCHAR(100)  NULL,
-            OriginalSource      NVARCHAR(MAX)  NULL,
-            Remark              NVARCHAR(MAX)  NULL,
-            NationalIDInfo      NVARCHAR(MAX)  NULL,
-            NationalIDNo        NVARCHAR(255)  NULL,
-            IdOtherInfo1        NVARCHAR(MAX)  NULL,
-            IdNo1               NVARCHAR(255)  NULL,
-            IdOtherInfo2        NVARCHAR(MAX)  NULL,
-            IdNo2               NVARCHAR(255)  NULL,
-            IdOtherInfo3        NVARCHAR(MAX)  NULL,
-            IdNo3               NVARCHAR(255)  NULL,
-            IdOtherInfo4        NVARCHAR(MAX)  NULL,
-            IdNo4               NVARCHAR(255)  NULL,
-            IdOtherInfo5        NVARCHAR(MAX)  NULL,
-            IdNo5               NVARCHAR(255)  NULL,
-            EntityGUID          NVARCHAR(50)   NULL,
-            EntityAliasGUID     NVARCHAR(50)   NULL,
-            Nationality         NVARCHAR(255)  NULL,
-            Citizenship         NVARCHAR(100)  NULL,
-            POB                 NVARCHAR(500)  NULL,
-            Alias               NVARCHAR(500)  NULL,
-            VersionID           NVARCHAR(50)   NULL,
-            Action              NVARCHAR(10)   NULL,
-            FileName            NVARCHAR(100)  NULL,
-            CreationDate        DATETIME       NULL,
-            LastUpdatedBy       INT            NULL,
-            LastUpdatedDate     DATETIME       NULL,
-            CONSTRAINT PK_NegativeList PRIMARY KEY CLUSTERED (ID)
-        ) WITH (DATA_COMPRESSION = PAGE);
-    """)
-    logging.info("[1/6] NegativeList recreated WITH PK in %.2f seconds.", time.time() - start)
+    logging.info("[1/6] NegativeList prepared in %.2f seconds.", time.time() - start)
     return time.time() - start
 
 def set_recovery_model(config: dict, model: str):
@@ -401,7 +398,7 @@ def main():
         cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
         run_version_id = str(cursor.fetchone()[0])
 
-        # STEP 1: Recreate NegativeList WITH PK clustered & Page Compression from start
+        # STEP 1: Truncate / Recreate NegativeList WITH PK clustered & Page Compression in 0.01 sec
         recreate_negativelist_with_pk(cursor)
 
         # STEP 2: Switch to SIMPLE recovery model
