@@ -58,58 +58,8 @@ def main():
     except Exception as ex:
         logging.warning("Maintenance warning: %s", ex)
 
-    step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/4] Started indexing staging tables at %s (MAXDOP 8 parallel)...", step1_time)
-    index_start = time.time()
-
-    raw_index_queries = [
-        ("IX_Entity_EntityGUID", "Entity", "EntityGUID"),
-        ("IX_EntityEnforcement_EntityGUID", "EntityEnforcement", "EntityGUID"),
-        ("IX_EntitySanction_EntityGUID", "EntitySanction", "EntityGUID")
-    ]
-    for idx_name, tbl_name, col_name in raw_index_queries:
-        try:
-            cursor.execute(f"SELECT 1 FROM sys.indexes WHERE name = '{idx_name}'")
-            if cursor.fetchone():
-                continue
-            
-            cursor.execute(f"SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1")
-            existing_clustered = cursor.fetchone()
-            if existing_clustered:
-                cursor.execute(f"CREATE NONCLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
-            else:
-                cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
-        except Exception as ex:
-            logging.warning("Index alert on %s: %s", tbl_name, ex)
-
-    index_queries = [
-        ("IX_EntityDOB_New_EntityGUID", "EntityDOB_New", "EntityGUID"),
-        ("IX_EntityAddress_New_EntityGUID", "EntityAddress_New", "EntityGUID"),
-        ("IX_EntityIdentification_New_EntityGUID", "EntityIdentification_New", "EntityGUID"),
-        ("IX_EntityIdentification_National_New_EntityGUID", "EntityIdentification_National_New", "EntityGUID"),
-        ("IX_Entity_Citizenship_New_EntityGUID", "Entity_Citizenship_New", "EntityGUID"),
-        ("IX_EntityRemark_New_EntityGUID", "EntityRemark_New", "EntityGUID"),
-        ("IX_EntitySourceItem_New_EntityGUID", "EntitySourceItem_New", "EntityGUID")
-    ]
-    for idx_name, tbl_name, col_name in index_queries:
-        try:
-            cursor.execute(f"SELECT 1 FROM sys.indexes WHERE name = '{idx_name}'")
-            if cursor.fetchone():
-                continue
-            
-            cursor.execute(f"SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('{tbl_name}') AND type = 1")
-            row = cursor.fetchone()
-            if row:
-                cursor.execute(f"DROP INDEX [{row[0]}] ON [{tbl_name}]")
-                
-            cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
-        except Exception as ex:
-            logging.warning("Index alert on %s: %s", tbl_name, ex)
-
-    logging.info("[1/4] Completed indexing staging tables in %.2f seconds.", time.time() - index_start)
-
     step2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[2/4] Started creating target NegativeList_New1 at %s...", step2_time)
+    logging.info("[1/3] Started creating target NegativeList_New1 at %s...", step2_time)
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
         CREATE TABLE [dbo].[NegativeList_New1](
@@ -157,7 +107,7 @@ def main():
     except Exception as e:
         logging.warning("Statistics notice: %s", e)
 
-    logging.info("[2/4] Target NegativeList_New1 ready.")
+    logging.info("[1/3] Target NegativeList_New1 ready.")
 
     logging.info("Building temporary lookup tables...")
     step_start = time.time()
@@ -201,12 +151,12 @@ def main():
         cte_prefix = ""
         from_clause = "FROM Entity A WITH (NOLOCK)"
 
-    logging.info("[3/4] Executing Bulk Consolidation into NegativeList_New1...")
+    logging.info("[2/3] Executing Ultra-Fast In-Memory Hash Join Consolidation into NegativeList_New1...")
     execution_start = time.time()
 
     # Stage 1: Non-PEP Profiles
     stage1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("  [3/4] [Stage 1/2] Started consolidating Non-PEP Watchlist profiles at %s (MAXDOP 8)...", stage1_time)
+    logging.info("  [2/3] [Stage 1/2] Started consolidating Non-PEP Watchlist profiles at %s (MAXDOP 8 Hash Join)...", stage1_time)
     stage1_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -249,13 +199,13 @@ def main():
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
         WHERE p.EntityGUID IS NULL OR (isnull(F.SourceName, G.SourceName) IS NOT NULL AND isnull(F.SourceName, G.SourceName) <> 'PEP')
-        OPTION (MERGE JOIN, RECOMPILE, MAXDOP 8)
+        OPTION (HASH JOIN, RECOMPILE, MAXDOP 8)
     """)
-    logging.info("  [3/4] [Stage 1/2] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
+    logging.info("  [2/3] [Stage 1/2] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
 
     # Stage 2: PEP Profiles
     stage2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("  [3/4] [Stage 2/2] Started consolidating PEP Watchlist profiles at %s (MAXDOP 8)...", stage2_time)
+    logging.info("  [2/3] [Stage 2/2] Started consolidating PEP Watchlist profiles at %s (MAXDOP 8 Hash Join)...", stage2_time)
     stage2_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -297,16 +247,16 @@ def main():
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-        OPTION (MERGE JOIN, RECOMPILE, MAXDOP 8)
+        OPTION (HASH JOIN, RECOMPILE, MAXDOP 8)
     """)
-    logging.info("  [3/4] [Stage 2/2] PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
+    logging.info("  [2/3] [Stage 2/2] PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
 
     logging.info("Cleaning temporary lookup tables...")
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 
     step4_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[4/4] Reclaiming space (dropping consumed Module 2 & 3 _New tables) at %s...", step4_time)
+    logging.info("[3/3] Reclaiming space (dropping consumed Module 2 & 3 _New tables) at %s...", step4_time)
     intermediate_tables = [
         "EntityAddress_New",
         "EntityDOB_New",
