@@ -46,3 +46,27 @@ SELECT
     writes AS PagesWrittenToDisk
 FROM sys.dm_exec_requests
 WHERE session_id > 50 AND command <> 'SELECT';
+
+
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT SUM(row_count) AS Total_NegativeList_LiveRows
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID('NegativeList') AND index_id IN (0, 1);
+
+
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    session_id, 
+    command, 
+    total_elapsed_time / 1000 AS SecondsRunning,
+    writes AS PagesWrittenToDisk
+FROM sys.dm_exec_requests
+WHERE session_id > 50 AND command <> 'SELECT';
