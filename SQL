@@ -79,3 +79,17 @@ GO
 ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
 ALTER DATABASE LexisNexis_Staging SET MULTI_USER;
 GO
+
+
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    p.rows AS NegativeList_Committed_Rows,
+    (a.total_pages * 8) / 1024 AS Table_Size_MB
+FROM sys.tables t WITH (NOLOCK)
+INNER JOIN sys.partitions p WITH (NOLOCK) ON t.object_id = p.object_id
+INNER JOIN sys.allocation_units a WITH (NOLOCK) ON p.partition_id = a.container_id
+WHERE t.name = 'NegativeList' AND p.index_id IN (0, 1);
