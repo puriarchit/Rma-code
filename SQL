@@ -51,3 +51,21 @@ for t in tables:
 
 print("All 16 source tables created and truncated successfully!")
 conn.close()
+
+
+USE master;
+GO
+
+-- 1. Force rollback all background locks & set SIMPLE recovery
+ALTER DATABASE [LexisNexis_Staging] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE;
+ALTER DATABASE [LexisNexis_Staging] SET MULTI_USER;
+GO
+
+-- 2. Flush checkpoint and shrink log file
+USE [LexisNexis_Staging];
+GO
+CHECKPOINT;
+GO
+DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+GO
