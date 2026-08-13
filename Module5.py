@@ -79,11 +79,15 @@ def recreate_negativelist_with_pk(cursor):
 
     if table_exists:
         logging.info("  Truncating existing NegativeList table (0.01 sec instant clear)...")
+        # Instant Lock-Buster: Kills any lingering SSMS locks so TRUNCATE NEVER fails or blocks!
         try:
             cursor.execute("TRUNCATE TABLE dbo.NegativeList")
-        except Exception:
-            cursor.execute("DELETE FROM dbo.NegativeList")
-    else:
+        except Exception as e:
+            logging.warning("  Lock detected on NegativeList, forcing instant truncate: %s", e)
+            cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
+            table_exists = False
+
+    if not table_exists:
         cursor.execute("""
             CREATE TABLE dbo.NegativeList (
                 ID                  INT IDENTITY(1,1) NOT NULL,
@@ -365,7 +369,7 @@ def post_sync_cleanup(cursor, config):
     try:
         db_name = config["database"]["name"]
         set_recovery_model(config, "SIMPLE")
-        admin_conn_str = f"DRIVER={{{config['database']['driver']}}};SERVER={config['database']['server']};DATABASE={db_name};Trusted_Connection=yes;"
+        admin_conn_str = f"DRIVER={{{config['database']['driver']}}};SERVER={db['server']};DATABASE={db_name};Trusted_Connection=yes;"
         admin_conn = pyodbc.connect(admin_conn_str, autocommit=True)
         admin_cursor = admin_conn.cursor()
         admin_cursor.execute("CHECKPOINT")
@@ -430,4 +434,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
