@@ -19,3 +19,30 @@ SELECT
     internal_objects_alloc_page_count * 8 / 1024 AS TempDB_MB_Used
 FROM sys.dm_db_session_space_usage
 WHERE session_id > 50;
+
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    p.rows AS NegativeList_Committed_Rows,
+    (a.total_pages * 8) / 1024 AS Table_Size_MB
+FROM sys.tables t
+INNER JOIN sys.partitions p ON t.object_id = p.object_id
+INNER JOIN sys.allocation_units a ON p.partition_id = a.container_id
+WHERE t.name = 'NegativeList' AND p.index_id IN (0, 1);
+
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    session_id, 
+    command, 
+    status, 
+    total_elapsed_time / 1000 AS SecondsRunning,
+    writes AS PagesWrittenToDisk
+FROM sys.dm_exec_requests
+WHERE session_id > 50 AND command <> 'SELECT';
