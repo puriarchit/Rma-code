@@ -26,3 +26,16 @@ FROM sys.dm_db_partition_stats
 WHERE object_id = OBJECT_ID('dbo.NegativeList_New1') AND index_id IN (0, 1)
 GROUP BY object_id;
 GO
+
+
+
+USE LexisNexis_Staging_Run;
+GO
+
+SELECT 
+    OBJECT_NAME(object_id) AS [Table_Name], 
+    FORMAT(SUM(row_count), 'N0') AS [Live_Loaded_Rows]
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID('dbo.NegativeList_Master') AND index_id IN (0, 1)
+GROUP BY object_id;
+GO
