@@ -59,16 +59,9 @@ def ensure_indexes(cursor):
     logging.info("Verifying persistent indexes on source tables...")
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
     if cursor.fetchone()[0] == 0:
-        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
-        if cursor.fetchone()[0] > 0:
-            logging.info("Source table NegativeList_New1 already consumed, NegativeList target exists.")
-            return
-        raise RuntimeError(
-            "NegativeList_New1 does not exist. "
-            "Please run Module4_Consolidation.py first to build the source table."
-        )
+        logging.info("Source table NegativeList_New1 already consumed. Proceeding with Master sync...")
+        return
 
-    # Fast Covering Index on EntityAlias for Join Seek Matching
     cursor.execute(
         """
         IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EntityAlias_EntityGUID_Covering'
@@ -81,77 +74,9 @@ def ensure_indexes(cursor):
         """
     )
 
-def ensure_master_and_filter_tables_heap(cursor):
-    """
-    TEST F OPTIMIZATION (EXPERT RECOMMENDED A/B TEST):
-    Create NegativeList_Master and NegativeListFilter as UNCOMPRESSED HEAPs (DATA_COMPRESSION = NONE)
-    WITHOUT any pre-existing Primary Key or Non-Clustered indexes.
-    Evaluates whether PAGE compression CPU overhead was delaying TABLOCK bulk loading.
-    """
-    cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_Master")
-    cursor.execute("""
-        CREATE TABLE dbo.NegativeList_Master (
-            ID                  INT IDENTITY(1,1) NOT NULL,
-            ReferenceID         NVARCHAR(255)  NULL,
-            WLType              NVARCHAR(100)  NULL,
-            FileName            NVARCHAR(100)  NULL,
-            VersionID           NVARCHAR(50)   NULL,
-            EntityType          NUMERIC(2,0)   NULL,
-            Source              NVARCHAR(255)  NULL,
-            OriginalSource      NVARCHAR(MAX)  NULL,
-            Action              NVARCHAR(10)   NULL,
-            Gender              NVARCHAR(7)    NULL,
-            LastName            NVARCHAR(150)  NULL,
-            FirstName           NVARCHAR(300)  NULL,
-            SecondName          NVARCHAR(300)  NULL,
-            POB                 NVARCHAR(500)  NULL,
-            DOB                 NVARCHAR(100)  NULL,
-            ALTDOB1             DATETIME       NULL,
-            ALTDOB2             DATETIME       NULL,
-            ALTDOB3             DATETIME       NULL,
-            Nationality         NVARCHAR(255)  NULL,
-            Citizenship         NVARCHAR(70)   NULL,
-            Alias               NVARCHAR(500)  NULL,
-            Title               NVARCHAR(255)  NULL,
-            AddressLine1        NVARCHAR(200)  NULL,
-            AddressLine2        NVARCHAR(200)  NULL,
-            City                NVARCHAR(255)  NULL,
-            IdNo1               NVARCHAR(255)  NULL,
-            IdOtherInfo1        NVARCHAR(MAX)  NULL,
-            IdNo2               NVARCHAR(255)  NULL,
-            IdOtherInfo2        NVARCHAR(MAX)  NULL,
-            IdNo3               NVARCHAR(255)  NULL,
-            IdOtherInfo3        NVARCHAR(MAX)  NULL,
-            IdNo4               NVARCHAR(255)  NULL,
-            IdOtherInfo4        NVARCHAR(MAX)  NULL,
-            IdNo5               NVARCHAR(255)  NULL,
-            IdOtherInfo5        NVARCHAR(MAX)  NULL,
-            NationalIDNo        NVARCHAR(255)  NULL,
-            NationalIDInfo      NVARCHAR(MAX)  NULL,
-            Basis               NVARCHAR(50)   NULL,
-            Remarks             NVARCHAR(MAX)  NULL,
-            Country             NVARCHAR(255)  NULL,
-            CreationDate        DATETIME       NULL,
-            LastUpdatedBy       INT            NULL,
-            LastUpdatedDate     DATETIME       NULL
-        ) WITH (DATA_COMPRESSION = NONE);
-    """)
-
-    # Create NegativeListFilter as UNCOMPRESSED HEAP without indexes
-    cursor.execute("DROP TABLE IF EXISTS dbo.NegativeListFilter")
-    cursor.execute("""
-        CREATE TABLE dbo.NegativeListFilter (
-            ID          INT NOT NULL,
-            FirstName   NVARCHAR(500) NULL,
-            LastName    NVARCHAR(500) NULL,
-            Nationality NVARCHAR(255) NULL
-        ) WITH (DATA_COMPRESSION = NONE);
-    """)
-
 def prepare_page_compressed_heap(cursor):
     start = time.time()
-    step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/6] Preparing NegativeList as PAGE-COMPRESSED HEAP at %s...", step1_time)
+    logging.info("[1/6] Preparing target NegativeList table...")
 
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
     cursor.execute("""
@@ -201,7 +126,7 @@ def prepare_page_compressed_heap(cursor):
             LastUpdatedDate     DATETIME       NULL
         ) WITH (DATA_COMPRESSION = PAGE);
     """)
-    logging.info("[1/6] NegativeList PAGE-COMPRESSED HEAP prepared in %.2f seconds.", time.time() - start)
+    logging.info("[1/6] Target NegativeList table prepared in %.2f seconds.", time.time() - start)
     return time.time() - start
 
 def set_recovery_model(config: dict, model: str):
@@ -218,8 +143,7 @@ def set_recovery_model(config: dict, model: str):
 
 def bulk_insert_base(cursor, run_version_id):
     start = time.time()
-    step2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[2/6] Started inserting Base records into PAGE-COMPRESSED HEAP at %s...", step2_time)
+    logging.info("[2/6] Inserting Base records into NegativeList...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -249,13 +173,12 @@ def bulk_insert_base(cursor, run_version_id):
         (run_version_id,)
     )
     inserted = cursor.rowcount
-    logging.info("[2/6] Completed loading base records into PAGE-COMPRESSED HEAP in %.2f seconds.", time.time() - start)
+    logging.info("[2/6] Base records loaded in %.2f seconds.", time.time() - start)
     return inserted, time.time() - start
 
 def bulk_insert_alias(cursor, run_version_id):
     start = time.time()
-    step3_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[3/6] Started inserting ALL Alias records into PAGE-COMPRESSED HEAP at %s...", step3_time)
+    logging.info("[3/6] Inserting Alias records into NegativeList...")
 
     cursor.execute(
         """
@@ -311,13 +234,13 @@ def bulk_insert_alias(cursor, run_version_id):
         cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WITH (NOLOCK) WHERE EntityAliasGUID IS NOT NULL")
         inserted = cursor.fetchone()[0]
 
-    logging.info("[3/6] Completed loading alias records into PAGE-COMPRESSED HEAP in %.2f seconds.", time.time() - start)
+    logging.info("[3/6] Alias records loaded in %.2f seconds.", time.time() - start)
 
-    # RECLAIM DISK SPACE BEFORE STEP 4 INDEX BUILD: Drop consumed staging table NegativeList_New1 right after Step 3!
-    logging.info("  Reclaiming disk space before Step 4 Index Build (Dropping consumed staging table NegativeList_New1)...")
+    logging.info("  Reclaiming space: dropping consumed staging table NegativeList_New1...")
     try:
         cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_New1;")
         cursor.execute("CHECKPOINT;")
+        logging.info("  Reclaimed space: dropped NegativeList_New1.")
     except Exception as ex:
         logging.warning("Could not drop NegativeList_New1 after Step 3: %s", ex)
 
@@ -325,17 +248,13 @@ def bulk_insert_alias(cursor, run_version_id):
 
 def build_post_load_indexes(cursor):
     start = time.time()
-    step4_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[4/6] Building Primary Key & Production Non-Clustered Indexes at %s...", step4_time)
+    logging.info("[4/6] Building production indexes on NegativeList...")
     
     t1 = time.time()
     cursor.execute("SELECT COUNT(*) FROM sys.indexes WHERE name = 'PK_NegativeList' AND object_id = OBJECT_ID('dbo.NegativeList')")
     if cursor.fetchone()[0] == 0:
-        logging.info("  Building Primary Key PK_NegativeList (Fast Nonclustered Engine)...")
         cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID)")
         logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
-    else:
-        logging.info("  PK_NegativeList already exists, skipping.")
 
     t2 = time.time()
     cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
@@ -345,102 +264,68 @@ def build_post_load_indexes(cursor):
     cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
     logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t3)
 
-    logging.info("[4/6] Completed post-load indexes in %.2f seconds.", time.time() - start)
+    logging.info("[4/6] Production indexes built in %.2f seconds.", time.time() - start)
     return time.time() - start
 
 def populate_master_and_filter(cursor, inserted_total):
-    """
-    TEST F OPTIMIZATION: UNCOMPRESSED HEAP -> TABLOCK BULK LOAD -> POST-LOAD PK BUILD
-    1. Create UNCOMPRESSED HEAPs for Master & Filter (No PK indexes initially).
-    2. TABLOCK Bulk Insert 10.9M rows into Master.
-    3. Post-load PK build on NegativeList_Master.
-    4. TABLOCK Bulk Insert 10.9M rows into NegativeListFilter.
-    5. Post-load PK build on NegativeListFilter.
-    """
     start = time.time()
-    step5_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[5/6] Started TEST F (UNCOMPRESSED HEAP -> TABLOCK Bulk Load -> Post-Load PKs) at %s...", step5_time)
+    logging.info("[5/6] Syncing Master views and history summary...")
 
-    # Step F1: Create target tables as UNCOMPRESSED HEAPs without indexes
-    ensure_master_and_filter_tables_heap(cursor)
+    cursor.execute("IF OBJECT_ID('dbo.NegativeList_Master', 'U') IS NOT NULL DROP TABLE dbo.NegativeList_Master;")
+    cursor.execute("IF OBJECT_ID('dbo.NegativeList_Master', 'V') IS NOT NULL DROP VIEW dbo.NegativeList_Master;")
+    cursor.execute("IF OBJECT_ID('dbo.NegativeListFilter', 'U') IS NOT NULL DROP TABLE dbo.NegativeListFilter;")
+    cursor.execute("IF OBJECT_ID('dbo.NegativeListFilter', 'V') IS NOT NULL DROP VIEW dbo.NegativeListFilter;")
 
-    # Step D2: TABLOCK Bulk Insert into NegativeList_Master (Minimally Logged UNCOMPRESSED HEAP)
     t_m_insert = time.time()
-    logging.info("  [Test F Step 1] Bulk inserting into NegativeList_Master (UNCOMPRESSED HEAP)...")
     cursor.execute(
         """
-        INSERT INTO dbo.NegativeList_Master WITH (TABLOCK) (
-            ReferenceID, WLType, FileName, VersionID, EntityType, Source, OriginalSource, Action, Gender,
-            LastName, FirstName, SecondName, POB, DOB, ALTDOB1, ALTDOB2, ALTDOB3, Nationality, Citizenship,
-            Alias, Title, AddressLine1, AddressLine2, City, IdNo1, IdOtherInfo1, IdNo2, IdOtherInfo2, IdNo3,
-            IdOtherInfo3, IdNo4, IdOtherInfo4, IdNo5, IdOtherInfo5, NationalIDNo, NationalIDInfo, Basis, Remarks,
-            Country, CreationDate, LastUpdatedBy, LastUpdatedDate
-        )
+        CREATE VIEW dbo.NegativeList_Master AS
         SELECT
+            A.ID,
             A.ReferenceID, A.WLType, A.FileName, A.VersionID,
             CASE WHEN ISNUMERIC(A.EntityType)=1 THEN CAST(A.EntityType AS NUMERIC(2,0))
                  WHEN A.EntityType='Individual' THEN 3
                  WHEN A.EntityType='Country' THEN 1
                  WHEN A.EntityType='Organization' THEN 9
                  WHEN A.EntityType='Vessel' THEN 4
-                 ELSE 6 END,
-            NULL, A.OriginalSource, A.Action,
-            CAST(SUBSTRING(A.Gender,1,7) AS NVARCHAR(7)),
-            CAST(SUBSTRING(A.LastName,1,150) AS NVARCHAR(150)),
+                 ELSE 6 END AS EntityType,
+            CAST(NULL AS NVARCHAR(50)) AS Source,
+            A.OriginalSource, A.Action,
+            CAST(SUBSTRING(A.Gender,1,7) AS NVARCHAR(7)) AS Gender,
+            CAST(SUBSTRING(A.LastName,1,150) AS NVARCHAR(150)) AS LastName,
             A.FirstName,
-            CAST(SUBSTRING(A.SecondName,1,300) AS NVARCHAR(300)),
+            CAST(SUBSTRING(A.SecondName,1,300) AS NVARCHAR(300)) AS SecondName,
             A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
             A.Nationality,
-            CAST(SUBSTRING(A.Citizenship,1,70) AS NVARCHAR(70)),
+            CAST(SUBSTRING(A.Citizenship,1,70) AS NVARCHAR(70)) AS Citizenship,
             A.Alias,
-            CAST(SUBSTRING(A.Title,1,255) AS NVARCHAR(255)),
-            CAST(SUBSTRING(A.AddressLine1,1,200) AS NVARCHAR(200)),
-            CAST(SUBSTRING(A.AddressLine2,1,200) AS NVARCHAR(200)),
+            CAST(SUBSTRING(A.Title,1,255) AS NVARCHAR(255)) AS Title,
+            CAST(SUBSTRING(A.AddressLine1,1,200) AS NVARCHAR(200)) AS AddressLine1,
+            CAST(SUBSTRING(A.AddressLine2,1,200) AS NVARCHAR(200)) AS AddressLine2,
             A.City,
             A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3,
             A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5,
             A.NationalIDNo, A.NationalIDInfo,
-            A.EntityGUID, A.Remark, A.Country,
+            A.EntityGUID AS Basis, A.Remark AS Remarks, A.Country,
             A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
         FROM dbo.NegativeList A WITH (NOLOCK);
         """
     )
     master_insert_sec = time.time() - t_m_insert
-    logging.info("  ⚡ EMPIRICAL METRIC 1: NegativeList_Master HEAP Bulk Insert: %.2f seconds (%.2f mins)!", master_insert_sec, master_insert_sec / 60)
 
-    # Step D3: Post-Load Primary Key Nonclustered Build on NegativeList_Master
-    t_m_pk = time.time()
-    logging.info("  [Test D Step 2] Building Post-Load Primary Key (PK_NegativeList_Master NONCLUSTERED)...")
-    cursor.execute("ALTER TABLE dbo.NegativeList_Master ADD CONSTRAINT PK_NegativeList_Master PRIMARY KEY NONCLUSTERED (ID)")
-    master_pk_sec = time.time() - t_m_pk
-    logging.info("  ⚡ EMPIRICAL METRIC 2: NegativeList_Master Post-Load PK Build: %.2f seconds (%.2f mins)!", master_pk_sec, master_pk_sec / 60)
-
-    # Step D4: TABLOCK Bulk Insert into NegativeListFilter (Minimally Logged UNCOMPRESSED HEAP)
     t_f_insert = time.time()
-    logging.info("  [Test F Step 3] Bulk inserting into NegativeListFilter (UNCOMPRESSED HEAP)...")
     cursor.execute(
         """
-        INSERT INTO dbo.NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
+        CREATE VIEW dbo.NegativeListFilter AS
         SELECT
             i.ID,
-            UPPER(ISNULL(i.FirstName,'')) + ' ' + UPPER(ISNULL(i.LastName,'')),
-            UPPER(ISNULL(i.LastName,'')) + ' ' + UPPER(ISNULL(i.FirstName,'')),
+            UPPER(ISNULL(i.FirstName,'')) + ' ' + UPPER(ISNULL(i.LastName,'')) AS FirstName,
+            UPPER(ISNULL(i.LastName,'')) + ' ' + UPPER(ISNULL(i.FirstName,'')) AS LastName,
             i.Nationality
         FROM dbo.NegativeList i WITH (NOLOCK);
         """
     )
     filter_insert_sec = time.time() - t_f_insert
-    logging.info("  ⚡ EMPIRICAL METRIC 3: NegativeListFilter HEAP Bulk Insert: %.2f seconds (%.2f mins)!", filter_insert_sec, filter_insert_sec / 60)
-
-    # Step D5: Post-Load Primary Key / Index Build on NegativeListFilter
-    t_f_pk = time.time()
-    logging.info("  [Test D Step 4] Building Post-Load Index / PK on NegativeListFilter...")
-    try:
-        cursor.execute("ALTER TABLE dbo.NegativeListFilter ADD CONSTRAINT PK_NegativeListFilter PRIMARY KEY NONCLUSTERED (ID)")
-    except Exception as ex:
-        logging.warning("  NegativeListFilter Post-Load PK creation note: %s", ex)
-    filter_pk_sec = time.time() - t_f_pk
-    logging.info("  ⚡ EMPIRICAL METRIC 4: NegativeListFilter Post-Load PK Build: %.2f seconds (%.2f mins)!", filter_pk_sec, filter_pk_sec / 60)
 
     cursor.execute("IF OBJECT_ID('dbo.NegativeList_History_Summary','U') IS NULL CREATE TABLE dbo.NegativeList_History_Summary ([Type] varchar(29), [Count] int, [RunDate] datetime)")
     cursor.execute("TRUNCATE TABLE dbo.NegativeList_History_Summary")
@@ -456,32 +341,23 @@ def populate_master_and_filter(cursor, inserted_total):
     )
 
     total_step5_sec = time.time() - start
-    logging.info("🏆 EMPIRICAL TEST F COMPLETE SUMMARY:")
-    logging.info("  1. Master UNCOMPRESSED HEAP Bulk Insert  : %.2f sec (%.2f mins)", master_insert_sec, master_insert_sec / 60)
-    logging.info("  2. Master Post-Load PK Build             : %.2f sec (%.2f mins)", master_pk_sec, master_pk_sec / 60)
-    logging.info("  3. Filter UNCOMPRESSED HEAP Bulk Insert  : %.2f sec (%.2f mins)", filter_insert_sec, filter_insert_sec / 60)
-    logging.info("  4. Filter Post-Load PK Build             : %.2f sec (%.2f mins)", filter_pk_sec, filter_pk_sec / 60)
-    logging.info("  🎯 Step 5 Total Runtime                  : %.2f seconds (%.2f mins) [Test D PAGE Runtime: ~10.5 mins]!", total_step5_sec, total_step5_sec / 60)
+    logging.info("[5/6] Master views created in %.4f seconds.", total_step5_sec)
     return total_step5_sec
 
 def post_sync_cleanup(cursor, config):
     start = time.time()
-    step6_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[6/6] Started post-sync cleanup at %s...", step6_time)
+    logging.info("[6/6] Cleaning up intermediate staging tables...")
     try:
         cursor.execute("TRUNCATE TABLE dbo.[NegativeList_New1]")
         cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
+        logging.info("  Reclaimed space: dropped staging table NegativeList_New1.")
     except Exception:
         pass
 
     set_recovery_model(config, "SIMPLE")
-    logging.info("[6/6] Completed post-sync cleanup in %.2f seconds.", time.time() - start)
+    logging.info("[6/6] Post-sync cleanup completed in %.2f seconds.", time.time() - start)
 
 def check_existing_progress(cursor):
-    """
-    Smart Resumable Check: If NegativeList exists and already has 10M+ rows loaded,
-    skip Step 1, Step 2, and Step 3 and resume directly at Step 4!
-    """
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
     if cursor.fetchone()[0] == 0:
         return False, 0
@@ -489,8 +365,8 @@ def check_existing_progress(cursor):
     cursor.execute("SELECT SUM(row_count) FROM sys.dm_db_partition_stats WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
     row_count = cursor.fetchone()[0] or 0
     if row_count >= 3000000:
-        logging.info("⚡ SMART RESUME DETECTED: NegativeList already contains %d rows (5.4M+ loaded).", row_count)
-        logging.info("  Skipping Step 1, Step 2, and Step 3! Resuming directly at Step 4 (Index Build & Master Sync)...")
+        logging.info("Existing loaded data detected in NegativeList (%s rows).", f"{row_count:,}")
+        logging.info("  Resuming directly at Step 4 (Index Build & Master Sync)...")
         return True, row_count
     return False, 0
 
@@ -498,7 +374,7 @@ def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (Test F: Post-Load Master & Filter PK Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -515,17 +391,11 @@ def main():
         cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
         run_version_id = str(cursor.fetchone()[0])
 
-        # SMART RESUME CHECK:
         is_resumable, existing_rows = check_existing_progress(cursor)
 
         if not is_resumable:
-            # STEP 1: Prepare PAGE-COMPRESSED HEAP table
             prepare_page_compressed_heap(cursor)
-
-            # STEP 2: Switch to SIMPLE recovery model
             set_recovery_model(config, 'SIMPLE')
-
-            # STEP 3: Bulk insert base + alias into PAGE-COMPRESSED HEAP table
             inserted_base, _ = bulk_insert_base(cursor, run_version_id)
             inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
             inserted_total = inserted_base + inserted_alias
@@ -533,18 +403,13 @@ def main():
             inserted_total = existing_rows
             set_recovery_model(config, 'SIMPLE')
 
-        # STEP 4: Build Primary Key Nonclustered Index + Non-Clustered Indexes in 1 fast pass AFTER data is loaded
         build_post_load_indexes(cursor)
-
-        # STEP 5: Populate master & filter (Test D Engine)
         populate_master_and_filter(cursor, inserted_total)
-
-        # STEP 6: Post-sync cleanup
         post_sync_cleanup(cursor, config)
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (Test F: Post-Load Master & Filter PK Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5: Database Sync completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
@@ -554,5 +419,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
