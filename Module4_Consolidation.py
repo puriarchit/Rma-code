@@ -77,7 +77,7 @@ def main():
             cursor.execute(f"SELECT 1 FROM sys.indexes WHERE name = '{idx_name}'")
             if cursor.fetchone():
                 continue
-            cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name}) WITH (MAXDOP = 8, SORT_IN_TEMPDB = ON)")
+            cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name})")
         except Exception as ex:
             logging.warning("Index alert on %s: %s", tbl_name, ex)
 
@@ -224,7 +224,7 @@ def main():
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
         WHERE p.EntityGUID IS NULL OR (isnull(F.SourceName, G.SourceName) IS NOT NULL AND isnull(F.SourceName, G.SourceName) <> 'PEP')
-        OPTION (MERGE JOIN, RECOMPILE, MAXDOP 8)
+        OPTION (MERGE JOIN, RECOMPILE)
     """)
     logging.info("  [3/4] [Stage 1/2] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
 
@@ -272,7 +272,7 @@ def main():
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-        OPTION (MERGE JOIN, RECOMPILE, MAXDOP 8)
+        OPTION (MERGE JOIN, RECOMPILE)
     """)
     logging.info("  [3/4] [Stage 2/2] PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
 
