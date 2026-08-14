@@ -18,7 +18,7 @@ def setup_logging():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
-    parser.add_argument("--sample-ratio", type=float, default=1.00, help="Ratio of source file rows to load (default: 1.00 for 100% Full Dataset)")
+    parser.add_argument("--sample-ratio", type=float, default=1.00, help="Ratio of source file rows to load (default: 1.00 for 100%% Full Dataset)")
     return parser.parse_args()
 
 KNOWN_50PCT_LASTROWS = {
