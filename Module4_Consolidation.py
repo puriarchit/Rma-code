@@ -23,7 +23,7 @@ def main():
     setup_logging()
     global_start = time.time()
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 4: Watchlist Consolidation (PEP & Non-PEP Index Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 4: Watchlist Consolidation [Started at %s] ===", start_time_str)
 
     config = load_config()
     db = config["database"]
@@ -56,11 +56,9 @@ def main():
         cursor.execute("CHECKPOINT")
         logging.info("Staging table maintenance completed.")
     except Exception as ex:
-        logging.warning("Maintenance warning: %s", ex)
+        logging.warning("Maintenance note: %s", ex)
 
-    # Step 1: Indexing Staging Tables
-    step1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/4] Started indexing staging tables at %s...", step1_time)
+    logging.info("[1/4] Indexing staging tables...")
     index_start = time.time()
 
     index_queries = [
@@ -79,17 +77,15 @@ def main():
                 continue
             cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name})")
         except Exception as ex:
-            logging.warning("Index alert on %s: %s", tbl_name, ex)
+            logging.warning("Index note on %s: %s", tbl_name, ex)
 
-    logging.info("[1/4] Completed indexing staging tables in %.2f seconds.", time.time() - index_start)
+    logging.info("[1/4] Indexing completed in %.2f seconds.", time.time() - index_start)
 
-    # Step 2: Target Table Setup
-    step2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[2/4] Started creating target NegativeList_New1 at %s...", step2_time)
+    logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](
-            [EntityGUID] [nvarchar](50) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](<
+            [EntityGUID] [nvarchar](50>) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -131,11 +127,11 @@ def main():
         cursor.execute("UPDATE STATISTICS EntityRemark_New")
         cursor.execute("UPDATE STATISTICS EntitySourceItem_New")
     except Exception as e:
-        logging.warning("Statistics notice: %s", e)
+        logging.warning("Statistics note: %s", e)
 
-    logging.info("[2/4] Target NegativeList_New1 ready.")
+    logging.info("[2/4] Target table NegativeList_New1 setup completed.")
 
-    logging.info("Building temporary lookup tables & PEP indexes...")
+    logging.info("Building temporary lookup tables...")
     step_start = time.time()
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("""
@@ -161,8 +157,8 @@ def main():
         cursor.execute("TRUNCATE TABLE EntityCountryAssociation")
         cursor.execute("CHECKPOINT")
     except Exception as e:
-        logging.warning("Notice: %s", e)
-    logging.info("PEP & Lookup indexes ready in %.2f seconds.", time.time() - step_start)
+        logging.warning("Truncate note: %s", e)
+    logging.info("Temporary lookup tables created in %.2f seconds.", time.time() - step_start)
 
     if ROW_LIMIT is not None:
         cte_prefix = f"""
@@ -177,11 +173,10 @@ def main():
         cte_prefix = ""
         from_clause = "FROM Entity A WITH (NOLOCK)"
 
-    logging.info("[3/4] Executing Bulk Consolidation into NegativeList_New1...")
+    logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
 
     # Stage 1: Non-PEP Profiles
-    stage1_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("  [3/4] [Stage 1/2] Started consolidating Non-PEP Watchlist profiles at %s...", stage1_time)
+    logging.info("  [3/4] [Stage 1/2] Consolidating Non-PEP profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -229,8 +224,7 @@ def main():
     logging.info("  [3/4] [Stage 1/2] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
 
     # Stage 2: PEP Profiles
-    stage2_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("  [3/4] [Stage 2/2] Started consolidating PEP Watchlist profiles at %s...", stage2_time)
+    logging.info("  [3/4] [Stage 2/2] Consolidating PEP profiles...")
     stage2_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -276,12 +270,10 @@ def main():
     """)
     logging.info("  [3/4] [Stage 2/2] PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
 
-    logging.info("Cleaning temporary lookup tables...")
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 
-    step4_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[4/4] Reclaiming space (dropping consumed Module 2 & 3 _New tables) at %s...", step4_time)
+    logging.info("[4/4] Cleaning up intermediate staging tables...")
     intermediate_tables = [
         "EntityAddress_New",
         "EntityDOB_New",
@@ -295,14 +287,13 @@ def main():
     for tbl in intermediate_tables:
         try:
             cursor.execute(f"DROP TABLE IF EXISTS dbo.[{tbl}]")
-            logging.info("  Reclaimed space: dropped %s", tbl)
+            logging.info("  Dropped intermediate table %s", tbl)
         except Exception as ex:
             logging.warning("  Could not drop %s: %s", tbl, ex)
 
     elapsed_min = (time.time() - global_start) / 60
     end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 4 completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+    logging.info("=== Module 4: Watchlist Consolidation completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
 
 if __name__ == "__main__":
     main()
-
