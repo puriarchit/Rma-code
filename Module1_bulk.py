@@ -146,7 +146,7 @@
 
 # if __name__ == "__main__":
 #     main()
-
+# -*- coding: utf-8 -*-
 import json
 import os
 import pyodbc
@@ -203,6 +203,13 @@ def main():
     conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
+    # INSTANT CTRL+C ABORT & LOCK RELEASE PROTECTION:
+    try:
+        cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
+        cursor.execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY SIMPLE")
+    except Exception:
+        pass
+
     sample_pct = int(args.sample_ratio * 100)
     logging.info("=== Starting Module 1: Bulk Ingestion (INSTANT 0-SECOND 50%% SAMPLE ENGINE) [Sample: %d%%] ===", sample_pct)
     global_start = time.time()
@@ -226,53 +233,63 @@ def main():
         ("EntitySourceItem.txt", "EntitySourceItem")
     ]
 
-    for filename, tablename in files_list:
-        filepath = os.path.join(paths["unzipped_folder"], filename)
-        
-        if os.path.exists(filepath):
-            file_start = time.time()
+    try:
+        for filename, tablename in files_list:
+            filepath = os.path.join(paths["unzipped_folder"], filename)
             
-            # INSTANT 0-SECOND LASTROW DETERMINATION (NO FILE SCAN DELAY!)
-            if filename in KNOWN_50PCT_LASTROWS and args.sample_ratio < 1.0:
-                last_row = KNOWN_50PCT_LASTROWS[filename]
-                last_row_clause = f", LASTROW = {last_row}"
-                logging.info("Bulk Ingesting 50%% Instant Sample (LASTROW=%d): %s...", last_row, filename)
+            if os.path.exists(filepath):
+                file_start = time.time()
+                
+                # INSTANT 0-SECOND LASTROW DETERMINATION (NO FILE SCAN DELAY!)
+                if filename in KNOWN_50PCT_LASTROWS and args.sample_ratio < 1.0:
+                    last_row = KNOWN_50PCT_LASTROWS[filename]
+                    last_row_clause = f", LASTROW = {last_row}"
+                    logging.info("Bulk Ingesting 50%% Instant Sample (LASTROW=%d): %s...", last_row, filename)
+                else:
+                    last_row_clause = ""
+                    logging.info("Bulk Ingesting FULL: %s...", filename)
+                
+                try:
+                    cursor.execute(f"TRUNCATE TABLE {tablename}")
+                    
+                    bulk_query = f"""
+                        BULK INSERT {tablename}
+                        FROM '{filepath}'
+                        WITH (
+                            FIELDTERMINATOR = '|',
+                            ROWTERMINATOR = '0x0a',
+                            FIRSTROW = 2
+                            {last_row_clause},
+                            CODEPAGE = '65001',
+                            TABLOCK,
+                            BATCHSIZE = 100000
+                        );
+                    """
+                    cursor.execute(bulk_query)
+                    
+                    cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
+                    row_count = cursor.fetchone()[0]
+                    
+                    time_taken = time.time() - file_start
+                    logging.info("  ✅ %s loaded (%d rows) in %.2f seconds.", tablename, row_count, time_taken)
+                    
+                except Exception as ex:
+                    logging.error("❌ Error loading %s: %s", filename, ex)
+                    raise ex
             else:
-                last_row_clause = ""
-                logging.info("Bulk Ingesting FULL: %s...", filename)
-            
-            try:
-                cursor.execute(f"TRUNCATE TABLE {tablename}")
-                
-                bulk_query = f"""
-                    BULK INSERT {tablename}
-                    FROM '{filepath}'
-                    WITH (
-                        FIELDTERMINATOR = '|',
-                        ROWTERMINATOR = '0x0a',
-                        FIRSTROW = 2
-                        {last_row_clause},
-                        CODEPAGE = '65001',
-                        TABLOCK,
-                        BATCHSIZE = 100000
-                    );
-                """
-                cursor.execute(bulk_query)
-                
-                cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
-                row_count = cursor.fetchone()[0]
-                
-                time_taken = time.time() - file_start
-                logging.info("  ✅ %s loaded (%d rows) in %.2f seconds.", tablename, row_count, time_taken)
-                
-            except Exception as ex:
-                logging.error("❌ Error loading %s: %s", filename, ex)
-                raise ex
-        else:
-            logging.warning("⚠️ File not found, skipping: %s", filename)
+                logging.warning("⚠️ File not found, skipping: %s", filename)
 
-    cursor.close()
-    conn.close()
+    except KeyboardInterrupt:
+        logging.warning("⚠️ User interrupted execution with Ctrl+C! Instantly releasing all SQL Server locks...")
+        try:
+            cursor.execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;")
+        except Exception:
+            pass
+        logging.info("All SQL Server transaction locks released cleanly.")
+        sys.exit(1)
+    finally:
+        cursor.close()
+        conn.close()
 
     elapsed_min = (time.time() - global_start) / 60
     logging.info("=== Module 1 (INSTANT 0-SECOND 50%% SAMPLE) completed in %.2f minutes! ===", elapsed_min)
