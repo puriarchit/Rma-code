@@ -1,71 +1,16 @@
-
-
-
-
-
-
-import pyodbc
-import json
-
-with open("D:/LexisNexis/config.json", "r", encoding="utf-8") as f:
-    config = json.load(f)
-
-db = config["database"]
-conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection=yes;"
-conn = pyodbc.connect(conn_str, autocommit=True)
-cursor = conn.cursor()
-
-print("Resetting LexisNexis_Staging transaction log and creating all 16 source table schemas...")
-
-# 1. Truncate transaction log
-try:
-    cursor.execute("ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE")
-    cursor.execute("USE [LexisNexis_Staging]")
-    cursor.execute("CHECKPOINT")
-    cursor.execute("DBCC SHRINKFILE (LexisNexis_Staging_log, 10)")
-    print("Transaction log shrunk successfully!")
-except Exception as e:
-    print("Log shrink note:", e)
-
-# 2. Create missing source table schemas
-tables = [
-    "AssociatedEntity", "ConsolidatedSanction", "EntityAddress", "EntityAdverseMedia",
-    "EntityCountryAssociation", "EntityDOB", "EntityEnforcement", "EntityIdentification",
-    "EntityRemark", "EntitySanction", "EntitySourceItem", "EntityAlias", "EntityName"
-]
-
-for t in tables:
-    try:
-        cursor.execute(f"""
-            IF OBJECT_ID('dbo.[{t}]', 'U') IS NULL
-            BEGIN
-                CREATE TABLE dbo.[{t}] (
-                    EntityGUID NVARCHAR(50) NULL,
-                    Data NVARCHAR(MAX) NULL
-                );
-            END
-        """)
-        cursor.execute(f"TRUNCATE TABLE dbo.[{t}]")
-    except Exception as e:
-        pass
-
-print("All 16 source tables created and truncated successfully!")
-conn.close()
-
-
 USE master;
 GO
 
--- 1. Force rollback all background locks & set SIMPLE recovery
-ALTER DATABASE [LexisNexis_Staging] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-ALTER DATABASE [LexisNexis_Staging] SET RECOVERY SIMPLE;
-ALTER DATABASE [LexisNexis_Staging] SET MULTI_USER;
-GO
-
--- 2. Flush checkpoint and shrink log file
-USE [LexisNexis_Staging];
-GO
-CHECKPOINT;
-GO
-DBCC SHRINKFILE (LexisNexis_Staging_log, 10);
+SELECT 
+    r.session_id AS [Session_ID],
+    r.status AS [Status],
+    r.command AS [Command],
+    r.cpu_time AS [CPU_Time_ms],
+    r.total_elapsed_time / 1000.0 AS [Elapsed_Sec],
+    r.wait_type AS [Wait_Type],
+    r.blocking_session_id AS [Blocked_By_Session],
+    t.text AS [Executing_SQL_Text]
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.session_id <> @@SPID;
 GO
