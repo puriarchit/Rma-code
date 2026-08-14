@@ -39,3 +39,14 @@ FROM sys.dm_db_partition_stats
 WHERE object_id = OBJECT_ID('dbo.NegativeList_Master') AND index_id IN (0, 1)
 GROUP BY object_id;
 GO
+
+
+
+USE LexisNexis_Staging;
+GO
+
+SELECT 
+    'NegativeList_Master' AS [Table_Name], 
+    FORMAT(COUNT(*), 'N0') AS [Live_Uncommitted_Rows] 
+FROM dbo.NegativeList_Master WITH (NOLOCK);
+GO
