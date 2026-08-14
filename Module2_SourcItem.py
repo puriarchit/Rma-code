@@ -5,7 +5,7 @@ import pyodbc
 import sys
 import time
 import logging
-from datetime import datetime
+from collections import defaultdict
 
 def setup_logging():
     logging.basicConfig(
@@ -22,8 +22,7 @@ def load_config() -> dict:
 def main():
     setup_logging()
     global_start = time.time()
-    start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 2: Source URI Merging [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Memory-Optimized Module 2: Merging duplicate web source links ===")
 
     config = load_config()
     db = config["database"]
@@ -33,134 +32,71 @@ def main():
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
-    # Open a separate independent connection for inserts to prevent "Connection is busy" conflicts
-    conn_insert = pyodbc.connect(conn_str)
-    insert_cursor = conn_insert.cursor()
-    insert_cursor.fast_executemany = True
-
-    step1_start = datetime.now().strftime("%H:%M:%S")
-    logging.info("[1/3] Recreating target table and dropping helper tables at %s...", step1_start)
+    logging.info("[1/3] Recreating clean target table EntitySourceItem_New...")
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL)")
-
+    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
     conn.commit()
     logging.info("[1/3] Target table reset completed in %.2f seconds.", time.time() - step_start)
 
-    logging.info("Ensuring Non-Clustered Index on source table (EntitySourceItem)...")
+    logging.info("[2/3] Reading all 3.82 Crore source links into Python memory...")
     step_start = time.time()
-    cursor.execute("""
-        IF NOT EXISTS (
-            SELECT * FROM sys.indexes 
-            WHERE object_id = OBJECT_ID('EntitySourceItem') AND name = 'IX_EntitySourceItem_EntityGUID'
-        )
-        CREATE NONCLUSTERED INDEX IX_EntitySourceItem_EntityGUID ON EntitySourceItem(EntityGUID)
-    """)
-    conn.commit()
-    logging.info("Non-Clustered Index verified in %.2f seconds.", time.time() - step_start)
+    cursor.execute("SELECT EntityGUID, SourceURI FROM EntitySourceItem WITH (NOLOCK)")
 
-    step2_start = datetime.now().strftime("%H:%M:%S")
-    logging.info("[2/3] Identifying & loading unique records (no duplicates) at %s...", step2_start)
-    step_start = time.time()
-    cursor.execute("IF OBJECT_ID('tempdb..#UniqGUIDs', 'U') IS NOT NULL DROP TABLE #UniqGUIDs")
-    cursor.execute("CREATE TABLE #UniqGUIDs (EntityGUID NVARCHAR(50))")
-    cursor.execute("""
-        INSERT INTO #UniqGUIDs (EntityGUID)
-        SELECT EntityGUID
-        FROM EntitySourceItem WITH (INDEX(IX_EntitySourceItem_EntityGUID))
-        GROUP BY EntityGUID
-        HAVING COUNT(*) = 1
-    """)
-    conn.commit()
-    uniq_count = cursor.execute("SELECT COUNT(*) FROM #UniqGUIDs").fetchone()[0]
-    logging.info("Identified %d unique records.", uniq_count)
-
-    cursor.execute("""
-        INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
-        SELECT e.EntityGUID, e.SourceURI
-        FROM EntitySourceItem e WITH (INDEX(IX_EntitySourceItem_EntityGUID))
-        INNER JOIN #UniqGUIDs u ON e.EntityGUID = u.EntityGUID
-    """)
-    conn.commit()
-    logging.info("[2/3] Loaded %d unique records directly to target in %.2f seconds.", uniq_count, time.time() - step_start)
-
-    step3_start = datetime.now().strftime("%H:%M:%S")
-    logging.info("[3/3] Streaming, merging, and loading duplicate records at %s...", step3_start)
-    step_start = time.time()
-
-    cursor.execute("""
-        SELECT e.EntityGUID, e.SourceURI
-        FROM EntitySourceItem e
-        INNER JOIN (
-            SELECT EntityGUID 
-            FROM EntitySourceItem
-            GROUP BY EntityGUID 
-            HAVING COUNT(*) > 1
-        ) d ON e.EntityGUID = d.EntityGUID
-        ORDER BY e.EntityGUID
-    """)
-
-    current_guid = None
-    current_uris = []
-    batch_to_insert = []
-    batch_size = 50000
-    processed_groups = 0
+    groups = defaultdict(set)
+    row_count = 0
 
     while True:
-        rows = cursor.fetchmany(batch_size)
+        rows = cursor.fetchmany(100000)
         if not rows:
             break
         for guid, uri in rows:
-            if guid != current_guid:
-                if current_guid is not None:
-                    # Merge current GUID's URIs
-                    clean_uris = [u for u in current_uris if u and u.strip()]
-                    if not clean_uris and current_uris:
-                        clean_uris = [""]
-                    merged_uri = "; ".join(sorted(list(set(clean_uris))))
-                    batch_to_insert.append((current_guid, merged_uri))
-                    processed_groups += 1
-
-                    if processed_groups % 50000 == 0:
-                        logging.info("   Loaded %d merged duplicate profiles...", processed_groups)
-
-                    if len(batch_to_insert) >= batch_size:
-                        insert_cursor.executemany("""
-                            INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
-                            VALUES (?, ?)
-                        """, batch_to_insert)
-                        conn_insert.commit()
-                        batch_to_insert = []
-
-                current_guid = guid
-                current_uris = [uri] if uri else []
-            else:
+            if guid:
                 if uri:
-                    current_uris.append(uri)
+                    groups[guid].add(uri)
+                else:
+                    groups[guid].add("")
+        row_count += len(rows)
+        if row_count % 1000000 == 0:
+            logging.info("   Processed %.1f Million rows (%d rows)...", row_count / 1000000.0, row_count)
 
-    # Insert remaining last group
-    if current_guid is not None:
-        clean_uris = [u for u in current_uris if u and u.strip()]
-        if not clean_uris and current_uris:
-            clean_uris = [""]
-        merged_uri = "; ".join(sorted(list(set(clean_uris))))
-        batch_to_insert.append((current_guid, merged_uri))
-        processed_groups += 1
+    logging.info("[2/3] Loaded %d rows and grouped into %d unique profiles in %.2f seconds.", row_count, len(groups), time.time() - step_start)
 
-    if batch_to_insert:
-        insert_cursor.executemany("""
+    logging.info("[3/3] Loading merged profiles to target table in 50,000 batches...")
+    step_start = time.time()
+    cursor.fast_executemany = True
+
+    merged_data = []
+    batch_size = 50000
+    inserted_count = 0
+
+    for guid, uris in groups.items():
+        uris_list = list(uris)
+        if len(uris_list) > 1 and "" in uris_list:
+            uris_list.remove("")
+        merged_links = "; ".join(uris_list)
+        merged_data.append((guid, merged_links))
+        
+        if len(merged_data) >= batch_size:
+            cursor.executemany("""
+                INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
+                VALUES (?, ?)
+            """, merged_data)
+            conn.commit()
+            inserted_count += len(merged_data)
+            logging.info("   Inserted %d profiles...", inserted_count)
+            merged_data = []
+
+    if merged_data:
+        cursor.executemany("""
             INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
             VALUES (?, ?)
-        """, batch_to_insert)
-        conn_insert.commit()
-
-    logging.info("[3/3] All %d duplicate profiles merged and loaded in %.2f seconds.", processed_groups, time.time() - step_start)
-
-    # Verify final row count
-    cursor.execute("SELECT COUNT(*) FROM EntitySourceItem_New WITH (NOLOCK)")
-    final_count = cursor.fetchone()[0]
+        """, merged_data)
+        conn.commit()
+        inserted_count += len(merged_data)
+        logging.info("   Inserted %d profiles...", inserted_count)
 
     # Reclaim raw space immediately
     try:
@@ -170,16 +106,14 @@ def main():
         logging.warning("Could not truncate EntitySourceItem: %s", e)
 
     elapsed_min = (time.time() - global_start) / 60
-    end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 2 completed in %.2f minutes [Finished at %s] (Total Merged Profiles: %d) ===", elapsed_min, end_time_str, final_count)
+    logging.info("=== Module 2 completed successfully in %.2f minutes! (Total Merged Profiles: %d) ===", elapsed_min, inserted_count)
 
     cursor.close()
     conn.close()
-    insert_cursor.close()
-    conn_insert.close()
 
 if __name__ == "__main__":
     main()
+
 
 
 
