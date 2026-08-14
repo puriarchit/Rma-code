@@ -488,8 +488,8 @@ def check_existing_progress(cursor):
 
     cursor.execute("SELECT SUM(row_count) FROM sys.dm_db_partition_stats WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
     row_count = cursor.fetchone()[0] or 0
-    if row_count >= 10000000:
-        logging.info("⚡ SMART RESUME DETECTED: NegativeList already contains %d rows (10.9M+ loaded).", row_count)
+    if row_count >= 3000000:
+        logging.info("⚡ SMART RESUME DETECTED: NegativeList already contains %d rows (5.4M+ loaded).", row_count)
         logging.info("  Skipping Step 1, Step 2, and Step 3! Resuming directly at Step 4 (Index Build & Master Sync)...")
         return True, row_count
     return False, 0
@@ -554,4 +554,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
