@@ -30,7 +30,7 @@ def main():
     start_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     logging.info("=========================================================")
-    logging.info("   STARTING FULL LEXISNEXIS ETL PIPELINE (MODULES 1 to 5) ")
+    logging.info("   STARTING ETL PIPELINE ORCHESTRATOR (MODULES 1 TO 5)  ")
     logging.info("   Start Time: %s", start_time_str)
     logging.info("=========================================================")
 
@@ -53,7 +53,7 @@ def main():
         logging.info("---------------------------------------------------------")
 
         try:
-            res = subprocess.run([sys.executable, script_path], check=True)
+            subprocess.run([sys.executable, script_path], check=True)
             elapsed = (time.time() - mod_start) / 60
             summary.append((name, "SUCCESS", f"{elapsed:.2f} min"))
             logging.info(">>> %s completed successfully in %.2f minutes.\n", name, elapsed)
@@ -77,4 +77,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
