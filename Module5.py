@@ -83,9 +83,10 @@ def ensure_indexes(cursor):
 
 def ensure_master_and_filter_tables_heap(cursor):
     """
-    TEST D OPTIMIZATION: Create NegativeList_Master and NegativeListFilter as PAGE-Compressed HEAPs
+    TEST F OPTIMIZATION (EXPERT RECOMMENDED A/B TEST):
+    Create NegativeList_Master and NegativeListFilter as UNCOMPRESSED HEAPs (DATA_COMPRESSION = NONE)
     WITHOUT any pre-existing Primary Key or Non-Clustered indexes.
-    Enables minimally logged bulk loading under applicable SQL Server conditions.
+    Evaluates whether PAGE compression CPU overhead was delaying TABLOCK bulk loading.
     """
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_Master")
     cursor.execute("""
@@ -133,10 +134,10 @@ def ensure_master_and_filter_tables_heap(cursor):
             CreationDate        DATETIME       NULL,
             LastUpdatedBy       INT            NULL,
             LastUpdatedDate     DATETIME       NULL
-        ) WITH (DATA_COMPRESSION = PAGE);
+        ) WITH (DATA_COMPRESSION = NONE);
     """)
 
-    # Create NegativeListFilter as PAGE-Compressed HEAP without indexes
+    # Create NegativeListFilter as UNCOMPRESSED HEAP without indexes
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeListFilter")
     cursor.execute("""
         CREATE TABLE dbo.NegativeListFilter (
@@ -144,7 +145,7 @@ def ensure_master_and_filter_tables_heap(cursor):
             FirstName   NVARCHAR(500) NULL,
             LastName    NVARCHAR(500) NULL,
             Nationality NVARCHAR(255) NULL
-        ) WITH (DATA_COMPRESSION = PAGE);
+        ) WITH (DATA_COMPRESSION = NONE);
     """)
 
 def prepare_page_compressed_heap(cursor):
@@ -349,8 +350,8 @@ def build_post_load_indexes(cursor):
 
 def populate_master_and_filter(cursor, inserted_total):
     """
-    TEST D OPTIMIZATION: HEAP -> TABLOCK BULK LOAD -> POST-LOAD PK BUILD
-    1. Create PAGE-compressed HEAPs for Master & Filter (No PK indexes initially).
+    TEST F OPTIMIZATION: UNCOMPRESSED HEAP -> TABLOCK BULK LOAD -> POST-LOAD PK BUILD
+    1. Create UNCOMPRESSED HEAPs for Master & Filter (No PK indexes initially).
     2. TABLOCK Bulk Insert 10.9M rows into Master.
     3. Post-load PK build on NegativeList_Master.
     4. TABLOCK Bulk Insert 10.9M rows into NegativeListFilter.
@@ -358,14 +359,14 @@ def populate_master_and_filter(cursor, inserted_total):
     """
     start = time.time()
     step5_time = datetime.now().strftime("%H:%M:%S")
-    logging.info("[5/6] Started TEST D (HEAP -> TABLOCK Bulk Load -> Post-Load PKs) at %s...", step5_time)
+    logging.info("[5/6] Started TEST F (UNCOMPRESSED HEAP -> TABLOCK Bulk Load -> Post-Load PKs) at %s...", step5_time)
 
-    # Step D1: Create target tables as PAGE-Compressed HEAPs without indexes
+    # Step F1: Create target tables as UNCOMPRESSED HEAPs without indexes
     ensure_master_and_filter_tables_heap(cursor)
 
-    # Step D2: TABLOCK Bulk Insert into NegativeList_Master (Minimally Logged HEAP)
+    # Step D2: TABLOCK Bulk Insert into NegativeList_Master (Minimally Logged UNCOMPRESSED HEAP)
     t_m_insert = time.time()
-    logging.info("  [Test D Step 1] Bulk inserting 10.9M rows into NegativeList_Master (PAGE-Compressed HEAP)...")
+    logging.info("  [Test F Step 1] Bulk inserting into NegativeList_Master (UNCOMPRESSED HEAP)...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList_Master WITH (TABLOCK) (
@@ -414,9 +415,9 @@ def populate_master_and_filter(cursor, inserted_total):
     master_pk_sec = time.time() - t_m_pk
     logging.info("  ⚡ EMPIRICAL METRIC 2: NegativeList_Master Post-Load PK Build: %.2f seconds (%.2f mins)!", master_pk_sec, master_pk_sec / 60)
 
-    # Step D4: TABLOCK Bulk Insert into NegativeListFilter (Minimally Logged HEAP)
+    # Step D4: TABLOCK Bulk Insert into NegativeListFilter (Minimally Logged UNCOMPRESSED HEAP)
     t_f_insert = time.time()
-    logging.info("  [Test D Step 3] Bulk inserting 10.9M rows into NegativeListFilter (PAGE-Compressed HEAP)...")
+    logging.info("  [Test F Step 3] Bulk inserting into NegativeListFilter (UNCOMPRESSED HEAP)...")
     cursor.execute(
         """
         INSERT INTO dbo.NegativeListFilter WITH (TABLOCK) (ID, FirstName, LastName, Nationality)
@@ -455,12 +456,12 @@ def populate_master_and_filter(cursor, inserted_total):
     )
 
     total_step5_sec = time.time() - start
-    logging.info("🏆 EMPIRICAL TEST D COMPLETE SUMMARY:")
-    logging.info("  1. Master HEAP Bulk Insert  : %.2f sec (%.2f mins)", master_insert_sec, master_insert_sec / 60)
-    logging.info("  2. Master Post-Load PK Build: %.2f sec (%.2f mins)", master_pk_sec, master_pk_sec / 60)
-    logging.info("  3. Filter HEAP Bulk Insert  : %.2f sec (%.2f mins)", filter_insert_sec, filter_insert_sec / 60)
-    logging.info("  4. Filter Post-Load PK Build: %.2f sec (%.2f mins)", filter_pk_sec, filter_pk_sec / 60)
-    logging.info("  🎯 Step 5 Total Runtime     : %.2f seconds (%.2f mins) [Old Runtime: ~22-25 mins]!", total_step5_sec, total_step5_sec / 60)
+    logging.info("🏆 EMPIRICAL TEST F COMPLETE SUMMARY:")
+    logging.info("  1. Master UNCOMPRESSED HEAP Bulk Insert  : %.2f sec (%.2f mins)", master_insert_sec, master_insert_sec / 60)
+    logging.info("  2. Master Post-Load PK Build             : %.2f sec (%.2f mins)", master_pk_sec, master_pk_sec / 60)
+    logging.info("  3. Filter UNCOMPRESSED HEAP Bulk Insert  : %.2f sec (%.2f mins)", filter_insert_sec, filter_insert_sec / 60)
+    logging.info("  4. Filter Post-Load PK Build             : %.2f sec (%.2f mins)", filter_pk_sec, filter_pk_sec / 60)
+    logging.info("  🎯 Step 5 Total Runtime                  : %.2f seconds (%.2f mins) [Test D PAGE Runtime: ~10.5 mins]!", total_step5_sec, total_step5_sec / 60)
     return total_step5_sec
 
 def post_sync_cleanup(cursor, config):
@@ -497,7 +498,7 @@ def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: Database Sync (Test D: Post-Load Master & Filter PK Engine) [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 5: Database Sync (Test F: Post-Load Master & Filter PK Engine) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     config = load_config(args.config)
@@ -543,7 +544,7 @@ def main():
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5 (Test D: Post-Load Master & Filter PK Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+        logging.info("=== Module 5 (Test F: Post-Load Master & Filter PK Engine) completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
     except Exception as e:
         logging.error("Execution failed: %s", e)
         raise
@@ -553,3 +554,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
