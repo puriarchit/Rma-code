@@ -5,6 +5,7 @@ import pyodbc
 import sys
 import time
 import logging
+from datetime import datetime
 from collections import defaultdict
 
 def setup_logging():
@@ -21,8 +22,9 @@ def load_config() -> dict:
 
 def main():
     setup_logging()
+    start_time_str = datetime.now().strftime("%H:%M:%S")
+    logging.info("=== Starting Module 2: Source URI Merging [Started at %s] ===", start_time_str)
     global_start = time.time()
-    logging.info("=== Starting Memory-Optimized Module 2: Merging duplicate web source links ===")
 
     config = load_config()
     db = config["database"]
@@ -32,16 +34,16 @@ def main():
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
 
-    logging.info("[1/3] Recreating clean target table EntitySourceItem_New...")
+    logging.info("[1/3] Resetting target table EntitySourceItem_New...")
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
+    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New](<[EntityGUID] [nvarchar](50>) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
     conn.commit()
     logging.info("[1/3] Target table reset completed in %.2f seconds.", time.time() - step_start)
 
-    logging.info("[2/3] Reading all 3.82 Crore source links into Python memory...")
+    logging.info("[2/3] Reading source links into memory...")
     step_start = time.time()
     cursor.execute("SELECT EntityGUID, SourceURI FROM EntitySourceItem WITH (NOLOCK)")
 
@@ -59,12 +61,12 @@ def main():
                 else:
                     groups[guid].add("")
         row_count += len(rows)
-        if row_count % 1000000 == 0:
-            logging.info("   Processed %.1f Million rows (%d rows)...", row_count / 1000000.0, row_count)
+        if row_count % 5000000 == 0:
+            logging.info("   Read %s rows...", f"{row_count:,}")
 
-    logging.info("[2/3] Loaded %d rows and grouped into %d unique profiles in %.2f seconds.", row_count, len(groups), time.time() - step_start)
+    logging.info("[2/3] Loaded %s rows into %s unique profiles in %.2f seconds.", f"{row_count:,}", f"{len(groups):,}", time.time() - step_start)
 
-    logging.info("[3/3] Loading merged profiles to target table in 50,000 batches...")
+    logging.info("[3/3] Inserting merged profiles into EntitySourceItem_New...")
     step_start = time.time()
     cursor.fast_executemany = True
 
@@ -86,7 +88,7 @@ def main():
             """, merged_data)
             conn.commit()
             inserted_count += len(merged_data)
-            logging.info("   Inserted %d profiles...", inserted_count)
+            logging.info("   Inserted %s profiles...", f"{inserted_count:,}")
             merged_data = []
 
     if merged_data:
@@ -96,9 +98,8 @@ def main():
         """, merged_data)
         conn.commit()
         inserted_count += len(merged_data)
-        logging.info("   Inserted %d profiles...", inserted_count)
+        logging.info("   Inserted %s profiles...", f"{inserted_count:,}")
 
-    # Reclaim raw space immediately
     try:
         cursor.execute("TRUNCATE TABLE EntitySourceItem")
         logging.info("Reclaimed raw space: truncated EntitySourceItem.")
@@ -106,14 +107,12 @@ def main():
         logging.warning("Could not truncate EntitySourceItem: %s", e)
 
     elapsed_min = (time.time() - global_start) / 60
-    logging.info("=== Module 2 completed successfully in %.2f minutes! (Total Merged Profiles: %d) ===", elapsed_min, inserted_count)
+    end_time_str = datetime.now().strftime("%H:%M:%S")
+    logging.info("=== Module 2: Source URI Merging completed successfully in %.2f minutes [Finished at %s] (Total Merged Profiles: %s) ===", elapsed_min, end_time_str, f"{inserted_count:,}")
 
     cursor.close()
     conn.close()
 
 if __name__ == "__main__":
     main()
-
-
-
 
