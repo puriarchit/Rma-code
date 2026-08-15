@@ -5,7 +5,6 @@ import pyodbc
 import sys
 import time
 import logging
-from datetime import datetime
 from collections import defaultdict
 
 def setup_logging():
@@ -20,36 +19,27 @@ def load_config() -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def get_connection(config: dict) -> pyodbc.Connection:
-    db = config["database"]
-    trusted = "yes" if db["trusted_connection"] else "no"
-    server_name = db["server"]
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={server_name};DATABASE={db['name']};Trusted_Connection={trusted};"
-    try:
-        return pyodbc.connect(conn_str, autocommit=True, timeout=3)
-    except Exception:
-        fallback_str = f"DRIVER={{{db['driver']}}};SERVER=.;DATABASE={db['name']};Trusted_Connection={trusted};"
-        return pyodbc.connect(fallback_str, autocommit=True)
-
 def main():
     setup_logging()
     global_start = time.time()
-    start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 2: Source URI Merging [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Memory-Optimized Module 2: Merging duplicate web source links ===")
 
     config = load_config()
-    conn = get_connection(config)
-    cursor = conn.cursor()
+    db = config["database"]
 
-    cursor.execute("SET NOCOUNT ON; SET XACT_ABORT ON;")
+    trusted = "yes" if db["trusted_connection"] else "no"
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
+    conn = pyodbc.connect(conn_str)
+    cursor = conn.cursor()
 
     logging.info("[1/3] Resetting target table EntitySourceItem_New...")
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL)")
+    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
-    logging.info("[1/3] Target table reset completed in %.2f seconds.", time.time() - step_start)
+    conn.commit()
+    logging.info("   Target table reset completed in %.2f seconds.", time.time() - step_start)
 
     logging.info("[2/3] Reading source links into memory...")
     step_start = time.time()
@@ -72,7 +62,7 @@ def main():
         if row_count % 5000000 == 0:
             logging.info("   Read %s rows...", f"{row_count:,}")
 
-    logging.info("[2/3] Loaded %s rows into %s unique profiles in %.2f seconds.", f"{row_count:,}", f"{len(groups):,}", time.time() - step_start)
+    logging.info("   Loaded %s rows into %s unique profiles in %.2f seconds.", f"{row_count:,}", f"{len(groups):,}", time.time() - step_start)
 
     logging.info("[3/3] Inserting merged profiles into EntitySourceItem_New...")
     step_start = time.time()
@@ -94,6 +84,7 @@ def main():
                 INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
                 VALUES (?, ?)
             """, merged_data)
+            conn.commit()
             inserted_count += len(merged_data)
             logging.info("   Inserted %s profiles...", f"{inserted_count:,}")
             merged_data = []
@@ -103,18 +94,19 @@ def main():
             INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
             VALUES (?, ?)
         """, merged_data)
+        conn.commit()
         inserted_count += len(merged_data)
         logging.info("   Inserted %s profiles...", f"{inserted_count:,}")
 
     try:
         cursor.execute("TRUNCATE TABLE EntitySourceItem")
+        conn.commit()
         logging.info("Reclaimed raw space: truncated EntitySourceItem.")
     except Exception as e:
         logging.warning("Could not truncate EntitySourceItem: %s", e)
 
     elapsed_min = (time.time() - global_start) / 60
-    end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 2: Source URI Merging completed successfully in %.2f minutes [Finished at %s] (Total Merged Profiles: %s) ===", elapsed_min, end_time_str, f"{inserted_count:,}")
+    logging.info("=== Module 2 completed successfully in %.2f minutes (Total Merged Profiles: %s) ===", elapsed_min, f"{inserted_count:,}")
 
     cursor.close()
     conn.close()
