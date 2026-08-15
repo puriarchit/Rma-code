@@ -78,7 +78,7 @@ def main():
         uris_list = list(uris)
         if len(uris_list) > 1 and "" in uris_list:
             uris_list.remove("")
-        merged_links = "; ".join(uris_list)
+        merged_links = "; ".join(uris_list)[:4000]
         merged_data.append((guid, merged_links))
         
         if len(merged_data) >= batch_size:
@@ -115,4 +115,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
