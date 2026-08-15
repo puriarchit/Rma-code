@@ -82,6 +82,7 @@ def main():
         merged_data.append((guid, merged_links))
         
         if len(merged_data) >= batch_size:
+            cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
             cursor.executemany("""
                 INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
                 VALUES (?, ?)
@@ -91,6 +92,7 @@ def main():
             merged_data = []
 
     if merged_data:
+        cursor.setinputsizes([(pyodbc.SQL_WVARCHAR, 50, 0), (pyodbc.SQL_WVARCHAR, 4000, 0)])
         cursor.executemany("""
             INSERT INTO EntitySourceItem_New (EntityGUID, SourceURI)
             VALUES (?, ?)
