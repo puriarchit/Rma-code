@@ -102,6 +102,14 @@ def main():
                     logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
+                    cursor.execute(f"""
+                        DECLARE @sql NVARCHAR(MAX) = '';
+                        SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
+                        FROM sys.indexes i
+                        INNER JOIN sys.tables t ON i.object_id = t.object_id
+                        WHERE t.name = '{tablename}' AND i.type > 0 AND i.is_primary_key = 0;
+                        IF @sql <> '' EXEC sp_executesql @sql;
+                    """)
                     cursor.execute(f"TRUNCATE TABLE {tablename}")
                     
                     bulk_query = f"""
@@ -149,3 +157,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
