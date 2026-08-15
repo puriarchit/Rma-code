@@ -20,6 +20,17 @@ def load_config() -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def get_connection(config: dict) -> pyodbc.Connection:
+    db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
+    server_name = db["server"]
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={server_name};DATABASE={db['name']};Trusted_Connection={trusted};"
+    try:
+        return pyodbc.connect(conn_str, timeout=3)
+    except Exception:
+        fallback_str = f"DRIVER={{{db['driver']}}};SERVER=.;DATABASE={db['name']};Trusted_Connection={trusted};"
+        return pyodbc.connect(fallback_str)
+
 def main():
     setup_logging()
     global_start = time.time()
@@ -27,11 +38,7 @@ def main():
     logging.info("=== Starting Module 2: Source URI Merging [Started at %s] ===", start_time_str)
 
     config = load_config()
-    db = config["database"]
-
-    trusted = "yes" if db["trusted_connection"] else "no"
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
-    conn = pyodbc.connect(conn_str)
+    conn = get_connection(config)
     cursor = conn.cursor()
 
     logging.info("[1/3] Resetting target table EntitySourceItem_New...")
@@ -116,3 +123,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
