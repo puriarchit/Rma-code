@@ -1,0 +1,35 @@
+USE LexisNexis_Staging;
+
+-- Total Master Profiles Count Check
+SELECT COUNT(*) AS [Total Master Profiles] 
+FROM dbo.NegativeList_Master;
+
+-- History Summary Table Check
+SELECT * FROM dbo.NegativeList_History_Summary;
+
+
+
+
+SELECT TOP 100 
+    ReferenceID, 
+    EntityType, 
+    FirstName, 
+    LastName, 
+    DOB, 
+    Country, 
+    WLType, 
+    OriginalSource, 
+    Remark, 
+    Citizenship
+FROM dbo.NegativeList_Master;
+
+
+
+
+
+SELECT 
+    COUNT(*) AS [Total Records],
+    COUNT(Basis) AS [Valid EntityGUIDs],
+    COUNT(CASE WHEN WLType IS NOT NULL THEN 1 END) AS [Valid Watchlist Types],
+    COUNT(CASE WHEN OriginalSource IS NOT NULL AND OriginalSource <> '' THEN 1 END) AS [Profiles With Merged Source URIs]
+FROM dbo.NegativeList_Master;
