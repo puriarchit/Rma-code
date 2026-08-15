@@ -38,7 +38,7 @@ def main():
     logging.info("[1/3] Resetting target table EntitySourceItem_New...")
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
+    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New](<[EntityGUID] [nvarchar](50>) NULL, [SourceURI] [nvarchar](max) NULL)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
     logging.info("[1/3] Target table reset completed in %.2f seconds.", time.time() - step_start)
@@ -78,7 +78,7 @@ def main():
         uris_list = list(uris)
         if len(uris_list) > 1 and "" in uris_list:
             uris_list.remove("")
-        merged_links = "; ".join(uris_list)[:4000]
+        merged_links = "; ".join(uris_list)
         merged_data.append((guid, merged_links))
         
         if len(merged_data) >= batch_size:
