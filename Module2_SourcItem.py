@@ -1,3 +1,6 @@
+
+
+
 # -*- coding: utf-8 -*-
 import json
 import os
@@ -33,11 +36,12 @@ def main():
     conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
     conn = pyodbc.connect(conn_str)
     cursor = conn.cursor()
+    cursor.execute("SET NOCOUNT ON; SET XACT_ABORT ON;")
 
     logging.info("[1/3] Resetting target table EntitySourceItem_New...")
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New](<[EntityGUID] [nvarchar](50>) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
+    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = NONE)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
     conn.commit()
