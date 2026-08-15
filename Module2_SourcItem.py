@@ -45,12 +45,12 @@ def main():
     logging.info("[1/3] Resetting target table EntitySourceItem_New...")
     step_start = time.time()
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
-    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
+    cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New](<[EntityGUID] [nvarchar](50>) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
     logging.info("[1/3] Target table reset completed in %.2f seconds.", time.time() - step_start)
 
-    logging.info("[2/3] Merging 1.91 Crore source links via SQL Native Aggregation (100%% Python Parity)...")
+    logging.info("[2/3] Merging source links into EntitySourceItem_New...")
     step_start = time.time()
 
     cursor.execute("""
@@ -81,22 +81,21 @@ def main():
     cursor.execute("SELECT COUNT(*) FROM dbo.EntitySourceItem_New")
     inserted_count = cursor.fetchone()[0]
 
-    logging.info("[2/3] SQL merge completed in %.2f seconds (%.2f mins). Total Profiles: %s", merge_time, merge_time / 60, f"{inserted_count:,}")
+    logging.info("[2/3] Source URI merging completed in %.2f seconds (%.2f mins). Total Profiles: %s.", merge_time, merge_time / 60, f"{inserted_count:,}")
 
-    logging.info("[3/3] Reclaiming raw staging space (TRUNCATE EntitySourceItem)...")
+    logging.info("[3/3] Cleaning up raw staging tables...")
     try:
         cursor.execute("TRUNCATE TABLE EntitySourceItem")
-        logging.info("[3/3] Reclaimed raw space: truncated EntitySourceItem.")
+        logging.info("  Reclaimed space: truncated staging table EntitySourceItem.")
     except Exception as e:
         logging.warning("Could not truncate EntitySourceItem: %s", e)
 
     elapsed_min = (time.time() - global_start) / 60
     end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 2: Source URI Merging completed successfully in %.2f minutes [Finished at %s] (Total Merged Profiles: %s) ===", elapsed_min, end_time_str, f"{inserted_count:,}")
+    logging.info("=== Module 2: Source URI Merging completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
 
     cursor.close()
     conn.close()
 
 if __name__ == "__main__":
     main()
-
