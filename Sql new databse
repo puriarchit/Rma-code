@@ -1,3 +1,8 @@
+USE LexisNexis_Staging;
+SELECT COUNT(*) AS [Live Inserted Profiles] FROM dbo.EntitySourceItem_New WITH (NOLOCK);
+
+
+
 USE master;
 GO
 
