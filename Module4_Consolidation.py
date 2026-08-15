@@ -42,10 +42,8 @@ def main():
         cursor.execute(f"USE [{db['name']}]")
         
         obsolete_tables = [
-            "AssociatedEntity", "ConsolidatedSanction", "EntityAddress", 
-            "EntityAdverseMedia", "EntityCountryAssociation", "EntityDOB", 
-            "EntityEnforcement", "EntityIdentification", "EntityRemark", 
-            "EntitySanction", "EntitySourceItem"
+            "AssociatedEntity", "ConsolidatedSanction", 
+            "EntityAdverseMedia"
         ]
         for table in obsolete_tables:
             try:
@@ -84,8 +82,8 @@ def main():
     logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](
-            [EntityGUID] [nvarchar](50) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](<
+            [EntityGUID] [nvarchar](50>) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -153,11 +151,6 @@ def main():
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 
-    try:
-        cursor.execute("TRUNCATE TABLE EntityCountryAssociation")
-        cursor.execute("CHECKPOINT")
-    except Exception as e:
-        logging.warning("Truncate note: %s", e)
     logging.info("Temporary lookup tables created in %.2f seconds.", time.time() - step_start)
 
     if ROW_LIMIT is not None:
@@ -282,7 +275,9 @@ def main():
         "Entity_Citizenship_New",
         "EntityRemark_New",
         "EntitySourceItem_New",
-        "EntityCountryAssociation_New"
+        "EntityCountryAssociation",
+        "EntityEnforcement",
+        "EntitySanction"
     ]
     for tbl in intermediate_tables:
         try:
