@@ -33,3 +33,14 @@ SELECT
     COUNT(CASE WHEN WLType IS NOT NULL THEN 1 END) AS [Valid Watchlist Types],
     COUNT(CASE WHEN OriginalSource IS NOT NULL AND OriginalSource <> '' THEN 1 END) AS [Profiles With Merged Source URIs]
 FROM dbo.NegativeList_Master;
+
+
+
+
+
+USE LexisNexis_Staging;
+
+-- Fast 2-Second Record Count & WLType Breakdown Check
+SELECT ISNULL(WLType, 'No WLType Mapped') AS [Watchlist Type], COUNT(*) AS [Profile Count]
+FROM dbo.NegativeList WITH (NOLOCK)
+GROUP BY WLType;
