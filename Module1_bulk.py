@@ -75,15 +75,16 @@ def main():
                 logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
+                    # Auto-create table schema if dropped using exact full schema definition
                     cursor.execute(f"""
                         IF OBJECT_ID('{tablename}', 'U') IS NULL
                         BEGIN
                             IF '{tablename}' = 'EntityCountryAssociation'
-                                CREATE TABLE [dbo].[EntityCountryAssociation]([EntityGUID] [nvarchar](50) NULL, [ISOStandard] [nvarchar](50) NULL, [AssociationTypeDesc] [nvarchar](50) NULL);
+                                CREATE TABLE dbo.EntityCountryAssociation (EntityGUID NVARCHAR(50), EntityCountryAssociationGUID NVARCHAR(50), AssociationTypeDesc NVARCHAR(100), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), OwnershipPercentageCalc NVARCHAR(50), LastUpdated DATETIME);
                             ELSE IF '{tablename}' = 'EntityEnforcement'
-                                CREATE TABLE [dbo].[EntityEnforcement]([EntityGUID] [nvarchar](50) NULL, [SourceName] [nvarchar](500) NULL, [SourceURI] [nvarchar](MAX) NULL);
+                                CREATE TABLE dbo.EntityEnforcement (EntityGUID NVARCHAR(50), EntityEnforcementGUID NVARCHAR(50), EnforcementDesc NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
                             ELSE IF '{tablename}' = 'EntitySanction'
-                                CREATE TABLE [dbo].[EntitySanction]([EntityGUID] [nvarchar](50) NULL, [SourceName] [nvarchar](500) NULL, [SourceURI] [nvarchar](MAX) NULL);
+                                CREATE TABLE dbo.EntitySanction (EntityGUID NVARCHAR(50), EntitySanctionGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), ConsolidatedSanctionGUID NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
                         END
                     """)
 
