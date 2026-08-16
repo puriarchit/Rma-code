@@ -32,8 +32,20 @@ def main():
     paths = config["paths"]
 
     trusted = "yes" if db["trusted_connection"] else "no"
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
-    conn = pyodbc.connect(conn_str, autocommit=True)
+    
+    # Try server fallback (db['server'], '.', 'localhost')
+    conn = None
+    for svr in [db["server"], ".", "localhost"]:
+        try:
+            conn_str = f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE={db['name']};Trusted_Connection={trusted};"
+            conn = pyodbc.connect(conn_str, autocommit=True, timeout=5)
+            break
+        except Exception:
+            continue
+
+    if not conn:
+        raise Exception("Could not connect to SQL Server on any server name.")
+
     cursor = conn.cursor()
 
     try:
@@ -75,6 +87,25 @@ def main():
                 logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
+                    # Verify/Ensure exact column schema matching user script
+                    cursor.execute(f"""
+                        IF OBJECT_ID('{tablename}', 'U') IS NOT NULL AND '{tablename}' = 'EntityCountryAssociation'
+                        BEGIN
+                            IF (SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('{tablename}')) < 7
+                                DROP TABLE dbo.[EntityCountryAssociation];
+                        END
+
+                        IF OBJECT_ID('{tablename}', 'U') IS NULL
+                        BEGIN
+                            IF '{tablename}' = 'EntityCountryAssociation'
+                                CREATE TABLE dbo.EntityCountryAssociation (EntityGUID NVARCHAR(50), EntityCountryAssociationGUID NVARCHAR(50), AssociationTypeDesc NVARCHAR(100), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), OwnershipPercentageCalc NVARCHAR(50), LastUpdated DATETIME);
+                            ELSE IF '{tablename}' = 'EntityEnforcement'
+                                CREATE TABLE dbo.EntityEnforcement (EntityGUID NVARCHAR(50), EntityEnforcementGUID NVARCHAR(50), EnforcementDesc NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
+                            ELSE IF '{tablename}' = 'EntitySanction'
+                                CREATE TABLE dbo.EntitySanction (EntityGUID NVARCHAR(50), EntitySanctionGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), ConsolidatedSanctionGUID NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
+                        END
+                    """)
+
                     cursor.execute(f"""
                         DECLARE @sql NVARCHAR(MAX) = '';
                         SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
@@ -84,7 +115,7 @@ def main():
                         IF @sql <> '' EXEC sp_executesql @sql;
                     """)
                     
-                    cursor.execute(f"TRUNCATE TABLE [{tablename}]")
+                    cursor.execute(f"IF OBJECT_ID('{tablename}', 'U') IS NOT NULL TRUNCATE TABLE [{tablename}]")
                     
                     bulk_query = f"""
                         BULK INSERT [{tablename}]
