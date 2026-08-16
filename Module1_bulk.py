@@ -75,7 +75,6 @@ def main():
                 logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
-                    # Auto-create table schema if dropped
                     cursor.execute(f"""
                         IF OBJECT_ID('{tablename}', 'U') IS NULL
                         BEGIN
@@ -143,4 +142,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
