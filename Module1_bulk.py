@@ -18,27 +18,7 @@ def setup_logging():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
-    parser.add_argument("--sample-ratio", type=float, default=1.00, help="Ratio of source file rows to load (default: 1.00 for 100%% Full Dataset)")
     return parser.parse_args()
-
-KNOWN_50PCT_LASTROWS = {
-    "AssociatedEntity.txt": 9413,
-    "ConsolidatedSanction.txt": 47394,
-    "Entity.txt": 4027485,
-    "EntityAddress.txt": 6000000,
-    "EntityAdverseMedia.txt": 250000,
-    "EntityAdverseMediaSubCategory.txt": 250000,
-    "EntityAlias.txt": 6000000,
-    "EntityCountryAssociation.txt": 1500000,
-    "EntityDeletes.txt": 10000,
-    "EntityDOB.txt": 3500000,
-    "EntityEnforcement.txt": 150000,
-    "EntityEnforcementSubCategory.txt": 150000,
-    "EntityIdentification.txt": 2500000,
-    "EntityRemark.txt": 3500000,
-    "EntitySanction.txt": 1500000,
-    "EntitySourceItem.txt": 19108247
-}
 
 def main():
     args = parse_args()
@@ -92,16 +72,22 @@ def main():
             
             if os.path.exists(filepath):
                 file_start = time.time()
-                
-                if filename in KNOWN_50PCT_LASTROWS and args.sample_ratio < 1.0:
-                    last_row = KNOWN_50PCT_LASTROWS[filename]
-                    last_row_clause = f", LASTROW = {last_row}"
-                    logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
-                else:
-                    last_row_clause = ""
-                    logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
+                logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
+                    # Auto-create table schema if dropped
+                    cursor.execute(f"""
+                        IF OBJECT_ID('{tablename}', 'U') IS NULL
+                        BEGIN
+                            IF '{tablename}' = 'EntityCountryAssociation'
+                                CREATE TABLE [dbo].[EntityCountryAssociation]([EntityGUID] [nvarchar](50) NULL, [ISOStandard] [nvarchar](50) NULL, [AssociationTypeDesc] [nvarchar](50) NULL);
+                            ELSE IF '{tablename}' = 'EntityEnforcement'
+                                CREATE TABLE [dbo].[EntityEnforcement]([EntityGUID] [nvarchar](50) NULL, [SourceName] [nvarchar](500) NULL, [SourceURI] [nvarchar](MAX) NULL);
+                            ELSE IF '{tablename}' = 'EntitySanction'
+                                CREATE TABLE [dbo].[EntitySanction]([EntityGUID] [nvarchar](50) NULL, [SourceName] [nvarchar](500) NULL, [SourceURI] [nvarchar](MAX) NULL);
+                        END
+                    """)
+
                     cursor.execute(f"""
                         DECLARE @sql NVARCHAR(MAX) = '';
                         SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
@@ -110,16 +96,16 @@ def main():
                         WHERE t.name = '{tablename}' AND i.type > 0 AND i.is_primary_key = 0;
                         IF @sql <> '' EXEC sp_executesql @sql;
                     """)
-                    cursor.execute(f"TRUNCATE TABLE {tablename}")
+                    
+                    cursor.execute(f"IF OBJECT_ID('{tablename}', 'U') IS NOT NULL TRUNCATE TABLE [{tablename}]")
                     
                     bulk_query = f"""
-                        BULK INSERT {tablename}
+                        BULK INSERT [{tablename}]
                         FROM '{filepath}'
                         WITH (
                             FIELDTERMINATOR = '|',
                             ROWTERMINATOR = '0x0a',
-                            FIRSTROW = 2
-                            {last_row_clause},
+                            FIRSTROW = 2,
                             CODEPAGE = '65001',
                             TABLOCK,
                             BATCHSIZE = 100000
@@ -127,7 +113,7 @@ def main():
                     """
                     cursor.execute(bulk_query)
                     
-                    cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
+                    cursor.execute(f"SELECT COUNT(*) FROM [{tablename}]")
                     row_count = cursor.fetchone()[0]
                     
                     time_taken = time.time() - file_start
