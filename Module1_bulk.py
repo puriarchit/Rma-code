@@ -2,10 +2,10 @@
 import json
 import os
 import pyodbc
-import sys
 import time
 import argparse
 import logging
+import sys
 from datetime import datetime
 
 def setup_logging():
@@ -20,7 +20,6 @@ def parse_args():
     parser.add_argument("--config", default="config.json")
     return parser.parse_args()
 
-
 def main():
     args = parse_args()
     setup_logging()
@@ -34,9 +33,7 @@ def main():
 
     trusted = "yes" if db["trusted_connection"] else "no"
     conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
-    
-    conn = pyodbc.connect(conn_str)
-    conn.autocommit = True
+    conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
     try:
@@ -46,7 +43,7 @@ def main():
         pass
 
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 1: Bulk Ingestion [Started at %s] ===", start_time_str)
+    logging.info("=== Starting Module 1: Bulk Ingestion (100%% FULL LOAD) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     files_list = [
@@ -68,29 +65,19 @@ def main():
         ("EntitySourceItem.txt", "EntitySourceItem")
     ]
 
-    total_files = len(files_list)
     try:
-        for idx, (filename, tablename) in enumerate(files_list, 1):
+        for filename, tablename in files_list:
             filepath = os.path.join(paths["unzipped_folder"], filename)
             
             if os.path.exists(filepath):
                 file_start = time.time()
-                logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
+                logging.info("Bulk Ingesting FULL: %s...", filename)
                 
                 try:
-                    cursor.execute(f"""
-                        DECLARE @sql NVARCHAR(MAX) = '';
-                        SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
-                        FROM sys.indexes i
-                        INNER JOIN sys.tables t ON i.object_id = t.object_id
-                        WHERE t.name = '{tablename}' AND i.type > 0 AND i.is_primary_key = 0;
-                        IF @sql <> '' EXEC sp_executesql @sql;
-                    """)
-                    
-                    cursor.execute(f"TRUNCATE TABLE [{tablename}]")
+                    cursor.execute(f"TRUNCATE TABLE {tablename}")
                     
                     bulk_query = f"""
-                        BULK INSERT [{tablename}]
+                        BULK INSERT {tablename}
                         FROM '{filepath}'
                         WITH (
                             FIELDTERMINATOR = '|',
@@ -103,33 +90,32 @@ def main():
                     """
                     cursor.execute(bulk_query)
                     
-                    cursor.execute(f"SELECT COUNT(*) FROM [{tablename}]")
+                    cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
                     row_count = cursor.fetchone()[0]
                     
                     time_taken = time.time() - file_start
-                    logging.info("[%d/%d] Table %s loaded (%s rows) in %.2f seconds.", idx, total_files, tablename, f"{row_count:,}", time_taken)
+                    logging.info("  >> %s loaded (%d rows) in %.2f seconds.", tablename, row_count, time_taken)
                     
                 except Exception as ex:
                     logging.error("Error loading %s: %s", filename, ex)
                     raise ex
             else:
-                logging.warning("[%d/%d] File not found, skipping: %s", idx, total_files, filename)
+                logging.warning("File not found, skipping: %s", filename)
 
     except KeyboardInterrupt:
-        logging.warning("Execution interrupted by user. Releasing database transaction locks...")
+        logging.warning("Execution interrupted by user (Ctrl+C). Releasing database transaction locks...")
         try:
             cursor.execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;")
         except Exception:
             pass
-        logging.info("Database transaction locks released.")
+        logging.info("Database transaction locks released instantly. Safe to run again.")
         sys.exit(1)
     finally:
         cursor.close()
         conn.close()
 
     elapsed_min = (time.time() - global_start) / 60
-    end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 1: Bulk Ingestion completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+    logging.info("=== Module 1 (100%% FULL LOAD) completed in %.2f minutes! ===", elapsed_min)
 
 if __name__ == "__main__":
     main()
