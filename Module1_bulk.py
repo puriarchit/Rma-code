@@ -104,8 +104,20 @@ def main():
     paths = config["paths"]
 
     trusted = "yes" if db["trusted_connection"] else "no"
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
-    conn = pyodbc.connect(conn_str, autocommit=True)
+    
+    # Try server specified in config.json, fallback to local instances ('.', 'localhost', '(local)')
+    conn = None
+    for svr in [db["server"], ".", "localhost", "(local)"]:
+        try:
+            conn_str = f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE={db['name']};Trusted_Connection={trusted};"
+            conn = pyodbc.connect(conn_str, autocommit=True, timeout=2)
+            break
+        except Exception:
+            continue
+
+    if not conn:
+        raise Exception("Could not connect to SQL Server on any server name.")
+
     cursor = conn.cursor()
 
     try:
@@ -205,5 +217,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
