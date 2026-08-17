@@ -38,9 +38,15 @@ def main():
 
     try:
         cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
-        cursor.execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY SIMPLE")
-    except Exception:
-        pass
+        # Aggressively force SIMPLE recovery mode (rollback other connections if needed)
+        cursor.execute(f"""
+            IF (SELECT recovery_model_desc FROM sys.databases WHERE name = '{db['name']}') != 'SIMPLE'
+            BEGIN
+                ALTER DATABASE [{db['name']}] SET RECOVERY SIMPLE WITH ROLLBACK IMMEDIATE;
+            END
+        """)
+    except Exception as e:
+        logging.warning("Could not force SIMPLE recovery mode: %s", e)
 
     start_time_str = datetime.now().strftime("%H:%M:%S")
     logging.info("=== Starting Module 1: Bulk Ingestion (100%% FULL LOAD) [Started at %s] ===", start_time_str)
@@ -129,6 +135,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
