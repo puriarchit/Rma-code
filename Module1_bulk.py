@@ -18,7 +18,7 @@ def setup_logging():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
-    parser.add_argument("--sample-ratio", type=float, default=0.50, help="Ratio of source file rows to load")
+    parser.add_argument("--sample-ratio", type=float, default=1.0, help="Ratio of source file rows to load")
     return parser.parse_args()
 
 # Known exact line counts for 0-second instant 50% LASTROW limits!
@@ -145,6 +145,16 @@ def main():
                     logging.info("Bulk Ingesting FULL: %s...", filename)
                 
                 try:
+                    # Drop staging indexes if they exist from previous Module 4 runs
+                    cursor.execute(f"""
+                        DECLARE @sql NVARCHAR(MAX) = '';
+                        SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
+                        FROM sys.indexes i
+                        INNER JOIN sys.tables t ON i.object_id = t.object_id
+                        WHERE t.name = '{tablename}' AND i.type > 0 AND i.is_primary_key = 0;
+                        IF @sql <> '' EXEC sp_executesql @sql;
+                    """)
+                    
                     cursor.execute(f"TRUNCATE TABLE {tablename}")
                     
                     bulk_query = f"""
@@ -191,5 +201,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
