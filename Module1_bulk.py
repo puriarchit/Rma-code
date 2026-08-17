@@ -18,31 +18,11 @@ def setup_logging():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
-    parser.add_argument("--sample-ratio", type=float, default=0.20, help="Ratio of source file rows to load")
+    parser.add_argument("--sample-ratio", type=float, default=1.0, help="Ratio of source file rows to load")
     return parser.parse_args()
 
-# Known exact line counts for 0-second instant 50% LASTROW limits!
-KNOWN_50PCT_LASTROWS = {
-    "AssociatedEntity.txt": 9413,
-    "ConsolidatedSanction.txt": 47394,
-    "Entity.txt": 4027485,
-    "EntityAddress.txt": 6000000,
-    "EntityAdverseMedia.txt": 250000,
-    "EntityAdverseMediaSubCategory.txt": 250000,
-    "EntityAlias.txt": 6000000,
-    "EntityCountryAssociation.txt": 1500000,
-    "EntityDeletes.txt": 10000,
-    "EntityDOB.txt": 3500000,
-    "EntityEnforcement.txt": 150000,
-    "EntityEnforcementSubCategory.txt": 150000,
-    "EntityIdentification.txt": 2500000,
-    "EntityRemark.txt": 3500000,
-    "EntitySanction.txt": 1500000,
-    "EntitySourceItem.txt": 19108247
-}
-
 def free_disk_space(cursor):
-    logging.info("Dropping production tables/views to free up disk space...")
+    logging.info("Purging production objects to clear space...")
     prod_cleanup_sql = """
     DROP VIEW IF EXISTS dbo.NegativeList_Master;
     DROP VIEW IF EXISTS dbo.NegativeListFilter;
@@ -54,10 +34,10 @@ def free_disk_space(cursor):
     for stmt in prod_cleanup_sql.split(";"):
         if stmt.strip():
             cursor.execute(stmt)
-    logging.info("Disk space freed successfully.")
+    logging.info("Production tables purged successfully.")
 
 def ensure_staging_tables_exist(cursor):
-    logging.info("Checking staging tables. Creating any missing ones...")
+    logging.info("Checking staging tables structure...")
     ddl_sqls = [
         "IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[AssociatedEntity]') AND type in (N'U')) CREATE TABLE AssociatedEntity (EntityGUID NVARCHAR(50), AssociatedEntityGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), LastUpdated DATETIME, SourceName NVARCHAR(500));",
         "IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ConsolidatedSanction]') AND type in (N'U')) CREATE TABLE ConsolidatedSanction (ConsolidatedSanctionGUID NVARCHAR(50), EntityGUID NVARCHAR(50), LastUpdated DATETIME);",
@@ -78,6 +58,7 @@ def ensure_staging_tables_exist(cursor):
     ]
     for ddl in ddl_sqls:
         cursor.execute(ddl)
+    logging.info("Staging tables checked successfully.")
 
 def main():
     args = parse_args()
@@ -101,12 +82,12 @@ def main():
     except Exception:
         pass
 
-    # Free up space and conditionally create staging tables
     free_disk_space(cursor)
     ensure_staging_tables_exist(cursor)
 
     sample_pct = int(args.sample_ratio * 100)
-    logging.info("=== Starting Module 1: Bulk Ingestion (INSTANT 0-SECOND 50%% SAMPLE ENGINE) [Sample: %d%%] ===", sample_pct)
+    start_time_str = datetime.now().strftime("%H:%M:%S")
+    logging.info("=== Starting Module 1: Bulk Ingestion (100%% Full Load Mode) [Started at %s] ===", start_time_str)
     global_start = time.time()
 
     files_list = [
@@ -134,18 +115,9 @@ def main():
             
             if os.path.exists(filepath):
                 file_start = time.time()
-                
-                # INSTANT 0-SECOND LASTROW DETERMINATION (NO FILE SCAN DELAY!)
-                if filename in KNOWN_50PCT_LASTROWS and args.sample_ratio < 1.0:
-                    last_row = int(KNOWN_50PCT_LASTROWS[filename] * (args.sample_ratio / 0.50))
-                    last_row_clause = f", LASTROW = {last_row}"
-                    logging.info("Bulk Ingesting %d%% Instant Sample (LASTROW=%d): %s...", sample_pct, last_row, filename)
-                else:
-                    last_row_clause = ""
-                    logging.info("Bulk Ingesting FULL: %s...", filename)
+                logging.info("Bulk Ingesting: %s...", filename)
                 
                 try:
-                    # Drop staging indexes if they exist from previous Module 4 runs
                     cursor.execute(f"""
                         DECLARE @sql NVARCHAR(MAX) = '';
                         SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
@@ -163,8 +135,7 @@ def main():
                         WITH (
                             FIELDTERMINATOR = '|',
                             ROWTERMINATOR = '0x0a',
-                            FIRSTROW = 2
-                            {last_row_clause},
+                            FIRSTROW = 2,
                             CODEPAGE = '65001',
                             TABLOCK,
                             BATCHSIZE = 100000
@@ -176,7 +147,7 @@ def main():
                     row_count = cursor.fetchone()[0]
                     
                     time_taken = time.time() - file_start
-                    logging.info("  >> %s loaded (%d rows) in %.2f seconds.", tablename, row_count, time_taken)
+                    logging.info("Success: %s loaded (%d rows) in %.2f seconds.", tablename, row_count, time_taken)
                     
                 except Exception as ex:
                     logging.error("Error loading %s: %s", filename, ex)
@@ -185,19 +156,19 @@ def main():
                 logging.warning("File not found, skipping: %s", filename)
 
     except KeyboardInterrupt:
-        logging.warning("Execution interrupted by user (Ctrl+C). Releasing database transaction locks...")
+        logging.warning("Execution interrupted by user. Releasing transaction locks...")
         try:
             cursor.execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;")
         except Exception:
             pass
-        logging.info("Database transaction locks released instantly. Safe to run again.")
+        logging.info("Database transaction locks released instantly.")
         sys.exit(1)
     finally:
         cursor.close()
         conn.close()
 
     elapsed_min = (time.time() - global_start) / 60
-    logging.info("=== Module 1 (INSTANT 0-SECOND 50%% SAMPLE) completed in %.2f minutes! ===", elapsed_min)
+    logging.info("=== Module 1 (100%% Full Load Mode) completed in %.2f minutes! ===", elapsed_min)
 
 if __name__ == "__main__":
     main()
