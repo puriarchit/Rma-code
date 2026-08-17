@@ -202,3 +202,19 @@ SELECT session_id, wait_type, wait_duration_ms, resource_description
 FROM sys.dm_os_waiting_tasks
 WHERE session_id > 50 
   AND wait_type NOT IN ('WAITFOR', 'BROKER_RECEIVER_WAIT_TYPE', 'DIRTY_PAGE_TABLE_RELEASE', 'HADR_NOTIFICATION_DEQUEUE');
+
+
+
+
+
+
+SELECT session_id, 
+       command, 
+       percent_complete, 
+       estimated_completion_time / 1000 / 60 AS EstMinutesLeft,
+       total_elapsed_time / 1000 / 60 AS ElapsedMinutes,
+       st.text AS ActiveQueryText
+FROM sys.dm_exec_requests req
+CROSS APPLY sys.dm_exec_sql_text(req.sql_handle) st
+WHERE session_id > 50 
+  AND command IN ('CREATE INDEX', 'ALTER INDEX', 'ALTER TABLE', 'DROP INDEX');
