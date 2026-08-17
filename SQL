@@ -45,3 +45,12 @@ GO
 
 ALTER DATABASE LexisNexis_Staging SET MULTI_USER WITH ROLLBACK IMMEDIATE;
 GO
+
+
+USE master;
+GO
+
+-- Data file ko 20 GB aur Log file ko 2 GB ka bana dega
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging', SIZE = 20000MB);
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging_log', SIZE = 2000MB);
+GO
