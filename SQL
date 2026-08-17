@@ -175,6 +175,10 @@ ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
 GO
 
 
+SELECT session_id, blocking_session_id, wait_type, wait_duration_ms, resource_description
+FROM sys.dm_os_waiting_tasks
+WHERE session_id > 50 AND blocking_session_id <> 0;
+
 
 SELECT session_id, wait_type, wait_duration_ms, resource_description
 FROM sys.dm_os_waiting_tasks
