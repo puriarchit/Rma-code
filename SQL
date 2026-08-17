@@ -97,3 +97,12 @@ USE master;
 GO
 ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
 GO
+
+
+
+
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging', FILEGROWTH = 2000MB);
+ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging_log', FILEGROWTH = 500MB);
+GO
