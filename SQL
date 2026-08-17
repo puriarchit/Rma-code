@@ -192,3 +192,13 @@ WHERE session_id > 50
 SELECT session_id, blocking_session_id, wait_type, wait_duration_ms, resource_description
 FROM sys.dm_os_waiting_tasks
 WHERE session_id > 50 AND blocking_session_id <> 0;
+
+
+
+
+
+
+SELECT session_id, wait_type, wait_duration_ms, resource_description
+FROM sys.dm_os_waiting_tasks
+WHERE session_id > 50 
+  AND wait_type NOT IN ('WAITFOR', 'BROKER_RECEIVER_WAIT_TYPE', 'DIRTY_PAGE_TABLE_RELEASE', 'HADR_NOTIFICATION_DEQUEUE');
