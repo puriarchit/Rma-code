@@ -18,7 +18,7 @@ def setup_logging():
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
-    parser.add_argument("--sample-ratio", type=float, default=1.0, help="Ratio of source file rows to load")
+    parser.add_argument("--sample-ratio", type=float, default=0.20, help="Ratio of source file rows to load")
     return parser.parse_args()
 
 # Known exact line counts for 0-second instant 50% LASTROW limits!
@@ -137,9 +137,9 @@ def main():
                 
                 # INSTANT 0-SECOND LASTROW DETERMINATION (NO FILE SCAN DELAY!)
                 if filename in KNOWN_50PCT_LASTROWS and args.sample_ratio < 1.0:
-                    last_row = KNOWN_50PCT_LASTROWS[filename]
+                    last_row = int(KNOWN_50PCT_LASTROWS[filename] * (args.sample_ratio / 0.50))
                     last_row_clause = f", LASTROW = {last_row}"
-                    logging.info("Bulk Ingesting 50%% Instant Sample (LASTROW=%d): %s...", last_row, filename)
+                    logging.info("Bulk Ingesting %d%% Instant Sample (LASTROW=%d): %s...", sample_pct, last_row, filename)
                 else:
                     last_row_clause = ""
                     logging.info("Bulk Ingesting FULL: %s...", filename)
@@ -201,4 +201,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
