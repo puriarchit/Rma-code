@@ -104,26 +104,8 @@ def main():
     paths = config["paths"]
 
     trusted = "yes" if db["trusted_connection"] else "no"
-    
-    # Try fast local loopback servers first ('.', 'localhost', db['server'])
-    conn = None
-    for svr in [".", "localhost", "127.0.0.1", db["server"]]:
-        try:
-            conn_str = f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE=master;Trusted_Connection={trusted};"
-            conn_master = pyodbc.connect(conn_str, autocommit=True, timeout=2)
-            cursor_m = conn_master.cursor()
-            cursor_m.execute(f"IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'{db['name']}') CREATE DATABASE [{db['name']}];")
-            conn_master.close()
-
-            conn_str_db = f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE={db['name']};Trusted_Connection={trusted};"
-            conn = pyodbc.connect(conn_str_db, autocommit=True, timeout=2)
-            break
-        except Exception:
-            continue
-
-    if not conn:
-        raise Exception("Could not connect to SQL Server on any server name.")
-
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection={trusted};"
+    conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
     try:
@@ -223,4 +205,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
