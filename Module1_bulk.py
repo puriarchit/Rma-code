@@ -134,8 +134,11 @@ def main():
     try:
         cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
         cursor.execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY SIMPLE")
-    except Exception:
-        pass
+        # Pre-allocate data and log file sizes to avoid slow auto-growths during BULK INSERT on a fresh database
+        cursor.execute(f"ALTER DATABASE [{db['name']}] MODIFY FILE (NAME = N'{db['name']}', SIZE = 5000MB, FILEGROWTH = 500MB)")
+        cursor.execute(f"ALTER DATABASE [{db['name']}] MODIFY FILE (NAME = N'{db['name']}_log', SIZE = 1000MB, FILEGROWTH = 500MB)")
+    except Exception as e:
+        logging.warning("Pre-allocation note (safe to ignore if files are already larger): %s", e)
 
     start_time_str = datetime.now().strftime("%H:%M:%S")
     logging.info("=== Starting Module 1: Bulk Ingestion [Started at %s] ===", start_time_str)
@@ -228,5 +231,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
