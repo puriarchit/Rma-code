@@ -141,3 +141,35 @@ USE master;
 GO
 ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
 GO
+
+
+USE master;
+GO
+
+-- 1. Purane database ko drop karenge taaki saari bad file allocations khatam ho jayein
+ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+GO
+DROP DATABASE IF EXISTS LexisNexis_Staging;
+GO
+
+-- 2. Naya database pre-allocated sizes (25 GB Data, 4 GB Log) ke sath banayein
+CREATE DATABASE LexisNexis_Staging
+ON PRIMARY (
+    NAME = 'LexisNexis_Staging',
+    FILENAME = 'C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\DATA\LexisNexis_Staging.mdf',
+    SIZE = 25000MB,
+    FILEGROWTH = 2000MB
+)
+LOG ON (
+    NAME = 'LexisNexis_Staging_log',
+    FILENAME = 'C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\DATA\LexisNexis_Staging_log.ldf',
+    SIZE = 4000MB,
+    FILEGROWTH = 500MB
+);
+GO
+
+-- 3. Speed badhane ke liye Recovery aur Commit settings set karein
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
+ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
+GO
