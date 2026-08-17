@@ -105,7 +105,18 @@ def main():
 
     trusted = "yes" if db["trusted_connection"] else "no"
     
-    # Try server specified in config.json, fallback to local instances ('.', 'localhost', '(local)')
+    # 1. Connect to master first to ensure database exists
+    for svr in [db["server"], ".", "localhost", "(local)"]:
+        try:
+            conn_m = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE=master;Trusted_Connection={trusted};", autocommit=True, timeout=2)
+            cursor_m = conn_m.cursor()
+            cursor_m.execute(f"IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'{db['name']}') CREATE DATABASE [{db['name']}];")
+            conn_m.close()
+            break
+        except Exception:
+            continue
+
+    # 2. Connect to database
     conn = None
     for svr in [db["server"], ".", "localhost", "(local)"]:
         try:
@@ -217,4 +228,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
