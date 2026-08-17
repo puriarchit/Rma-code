@@ -89,3 +89,11 @@ SELECT f.name, fs.num_of_writes, fs.io_stall_write_ms,
        (fs.io_stall_write_ms / NULLIF(fs.num_of_writes, 0)) AS AvgWriteStall_MS
 FROM sys.dm_io_virtual_file_stats(DB_ID('LexisNexis_Staging'), NULL) fs
 JOIN sys.master_files f ON fs.database_id = f.database_id AND fs.file_id = f.file_id;
+
+
+
+
+USE master;
+GO
+ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
+GO
