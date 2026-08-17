@@ -173,3 +173,10 @@ ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
 ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
 ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
 GO
+
+
+
+SELECT session_id, wait_type, wait_duration_ms, resource_description
+FROM sys.dm_os_waiting_tasks
+WHERE session_id > 50 
+  AND wait_type NOT IN ('WAITFOR', 'BROKER_RECEIVER_WAIT_TYPE', 'DIRTY_PAGE_TABLE_RELEASE', 'HADR_NOTIFICATION_DEQUEUE');
