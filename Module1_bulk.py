@@ -20,6 +20,78 @@ def parse_args():
     parser.add_argument("--config", default="config.json")
     return parser.parse_args()
 
+def reset_raw_tables_schema(cursor):
+    logging.info("[0/16] Resetting, purging production objects & recreating clean raw staging tables...")
+    
+    # 1. Drop production target tables & views first to instantly reclaim disk space
+    prod_cleanup_sql = """
+    DROP VIEW IF EXISTS dbo.NegativeList_Master;
+    DROP VIEW IF EXISTS dbo.NegativeListFilter;
+    DROP TABLE IF EXISTS dbo.NegativeList;
+    DROP TABLE IF EXISTS dbo.NegativeList_New1;
+    DROP TABLE IF EXISTS dbo.NegativeList_History_Summary;
+    DROP SEQUENCE IF EXISTS dbo.NegativeListVersionSeq;
+    """
+    for stmt in prod_cleanup_sql.split(";"):
+        if stmt.strip():
+            cursor.execute(stmt)
+    logging.info("[0/16] Production target tables, views & sequences dropped (Disk space reclaimed).")
+
+    # 2. Drop and recreate all 16 raw staging tables freshly from exact DDL script
+    raw_ddl_sql = """
+    DROP TABLE IF EXISTS AssociatedEntity;
+    CREATE TABLE AssociatedEntity (EntityGUID NVARCHAR(50), AssociatedEntityGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), LastUpdated DATETIME, SourceName NVARCHAR(500));
+
+    DROP TABLE IF EXISTS ConsolidatedSanction;
+    CREATE TABLE ConsolidatedSanction (ConsolidatedSanctionGUID NVARCHAR(50), EntityGUID NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS Entity;
+    CREATE TABLE Entity (EntityGUID NVARCHAR(50), EntityTypeDesc NVARCHAR(50), Gender NVARCHAR(50), Name NVARCHAR(500), FirstName NVARCHAR(200), MiddleName NVARCHAR(200), LastName NVARCHAR(500), Prefix NVARCHAR(100), Suffix NVARCHAR(50), Title NVARCHAR(500), IsDeceased NVARCHAR(10), DeceasedYear NVARCHAR(10), DeceasedMonth NVARCHAR(10), DeceasedDay NVARCHAR(10), IsRelatedEntity NVARCHAR(10), EntityID NVARCHAR(50), LookupID NVARCHAR(50), LastUpdated DATETIME, AssociatedPhoto NVARCHAR(10));
+
+    DROP TABLE IF EXISTS EntityAddress;
+    CREATE TABLE EntityAddress (EntityGUID NVARCHAR(50), EntityAddressGUID NVARCHAR(50), AddressTypeDesc NVARCHAR(100), Address1 NVARCHAR(500), Address2 NVARCHAR(500), City NVARCHAR(200), StateProvinceRegion NVARCHAR(200), PostalCode NVARCHAR(50), Country NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityAdverseMedia;
+    CREATE TABLE EntityAdverseMedia (EntityGUID NVARCHAR(50), EntityAdverseMediaGUID NVARCHAR(50), AdverseMediaDesc NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityAdverseMediaSubCategory;
+    CREATE TABLE EntityAdverseMediaSubCategory (EntityAdverseMediaGUID NVARCHAR(50), EntityAdverseMediaSubCategoryGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityAlias;
+    CREATE TABLE EntityAlias (EntityGUID NVARCHAR(50), EntityAliasGUID NVARCHAR(50), AliasTypeDesc NVARCHAR(100), EnglishDescription NVARCHAR(100), Name NVARCHAR(500), FirstName NVARCHAR(200), MiddleName NVARCHAR(200), LastName NVARCHAR(500), Prefix NVARCHAR(100), Suffix NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityCountryAssociation;
+    CREATE TABLE EntityCountryAssociation (EntityGUID NVARCHAR(50), EntityCountryAssociationGUID NVARCHAR(50), AssociationTypeDesc NVARCHAR(100), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), OwnershipPercentageCalc NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityDeletes;
+    CREATE TABLE EntityDeletes (EntityGUID NVARCHAR(50), DateDeleted DATETIME);
+
+    DROP TABLE IF EXISTS EntityDOB;
+    CREATE TABLE EntityDOB (EntityGUID NVARCHAR(50), EntityDOBGUID NVARCHAR(50), BirthYear NVARCHAR(10), BirthMonth NVARCHAR(10), BirthDay NVARCHAR(10), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityEnforcement;
+    CREATE TABLE EntityEnforcement (EntityGUID NVARCHAR(50), EntityEnforcementGUID NVARCHAR(50), EnforcementDesc NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityEnforcementSubCategory;
+    CREATE TABLE EntityEnforcementSubCategory (EntityEnforcementGUID NVARCHAR(50), EntityEnforcementSubCategoryGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityIdentification;
+    CREATE TABLE EntityIdentification (EntityGUID NVARCHAR(50), EntityIdentificationGUID NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), IdentificationIssuer NVARCHAR(500), IdentificationTypeDesc NVARCHAR(200), IdentificationNumber NVARCHAR(200), IssueYear NVARCHAR(10), IssueMonth NVARCHAR(10), IssueDay NVARCHAR(10), ExpirationYear NVARCHAR(10), ExpirationMonth NVARCHAR(10), ExpirationDay NVARCHAR(10), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntityRemark;
+    CREATE TABLE EntityRemark (EntityGUID NVARCHAR(50), EntityRemarkGUID NVARCHAR(50), Remark NVARCHAR(MAX), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntitySanction;
+    CREATE TABLE EntitySanction (EntityGUID NVARCHAR(50), EntitySanctionGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), ConsolidatedSanctionGUID NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
+
+    DROP TABLE IF EXISTS EntitySourceItem;
+    CREATE TABLE EntitySourceItem (EntityGUID NVARCHAR(50), EntitySourceItemGUID NVARCHAR(50), SourceURI NVARCHAR(MAX), LastUpdated DATETIME);
+    """
+    for stmt in raw_ddl_sql.split(";"):
+        if stmt.strip():
+            cursor.execute(stmt)
+    logging.info("[0/16] All 16 raw staging tables freshly dropped and recreated.")
+
 def main():
     args = parse_args()
     setup_logging()
@@ -33,7 +105,6 @@ def main():
 
     trusted = "yes" if db["trusted_connection"] else "no"
     
-    # Try server fallback (db['server'], '.', 'localhost')
     conn = None
     for svr in [db["server"], ".", "localhost"]:
         try:
@@ -57,6 +128,9 @@ def main():
     start_time_str = datetime.now().strftime("%H:%M:%S")
     logging.info("=== Starting Module 1: Bulk Ingestion [Started at %s] ===", start_time_str)
     global_start = time.time()
+
+    # Drop and recreate all raw + production tables freshly at the start of Module 1
+    reset_raw_tables_schema(cursor)
 
     files_list = [
         ("AssociatedEntity.txt", "AssociatedEntity"),
@@ -87,25 +161,6 @@ def main():
                 logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
-                    # Verify/Ensure exact column schema matching user script
-                    cursor.execute(f"""
-                        IF OBJECT_ID('{tablename}', 'U') IS NOT NULL AND '{tablename}' = 'EntityCountryAssociation'
-                        BEGIN
-                            IF (SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID('{tablename}')) < 7
-                                DROP TABLE dbo.[EntityCountryAssociation];
-                        END
-
-                        IF OBJECT_ID('{tablename}', 'U') IS NULL
-                        BEGIN
-                            IF '{tablename}' = 'EntityCountryAssociation'
-                                CREATE TABLE dbo.EntityCountryAssociation (EntityGUID NVARCHAR(50), EntityCountryAssociationGUID NVARCHAR(50), AssociationTypeDesc NVARCHAR(100), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), OwnershipPercentageCalc NVARCHAR(50), LastUpdated DATETIME);
-                            ELSE IF '{tablename}' = 'EntityEnforcement'
-                                CREATE TABLE dbo.EntityEnforcement (EntityGUID NVARCHAR(50), EntityEnforcementGUID NVARCHAR(50), EnforcementDesc NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
-                            ELSE IF '{tablename}' = 'EntitySanction'
-                                CREATE TABLE dbo.EntitySanction (EntityGUID NVARCHAR(50), EntitySanctionGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), ConsolidatedSanctionGUID NVARCHAR(50), SourceName NVARCHAR(500), SourceNameAbbrev NVARCHAR(50), AdministrativeUnitName NVARCHAR(200), ISOStandard NVARCHAR(50), LastUpdated DATETIME);
-                        END
-                    """)
-
                     cursor.execute(f"""
                         DECLARE @sql NVARCHAR(MAX) = '';
                         SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
@@ -115,7 +170,7 @@ def main():
                         IF @sql <> '' EXEC sp_executesql @sql;
                     """)
                     
-                    cursor.execute(f"IF OBJECT_ID('{tablename}', 'U') IS NOT NULL TRUNCATE TABLE [{tablename}]")
+                    cursor.execute(f"TRUNCATE TABLE [{tablename}]")
                     
                     bulk_query = f"""
                         BULK INSERT [{tablename}]
@@ -161,5 +216,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
