@@ -1,46 +1,38 @@
+USE master;
+GO
+
+SELECT name, state_desc, recovery_model_desc 
+FROM sys.databases 
+WHERE name = 'LexisNexis_Staging';
+GO
+
+
+
+
+USE master;
+GO
+
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'LexisNexis_Staging')
+BEGIN
+    CREATE DATABASE LexisNexis_Staging;
+END
+GO
+
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+GO
+
+
+
+
+
 USE LexisNexis_Staging;
-
--- Total Master Profiles Count Check
-SELECT COUNT(*) AS [Total Master Profiles] 
-FROM dbo.NegativeList_Master;
-
--- History Summary Table Check
-SELECT * FROM dbo.NegativeList_History_Summary;
-
-
-
-
-SELECT TOP 100 
-    ReferenceID, 
-    EntityType, 
-    FirstName, 
-    LastName, 
-    DOB, 
-    Country, 
-    WLType, 
-    OriginalSource, 
-    Remark, 
-    Citizenship
-FROM dbo.NegativeList_Master;
-
-
-
-
+GO
 
 SELECT 
-    COUNT(*) AS [Total Records],
-    COUNT(Basis) AS [Valid EntityGUIDs],
-    COUNT(CASE WHEN WLType IS NOT NULL THEN 1 END) AS [Valid Watchlist Types],
-    COUNT(CASE WHEN OriginalSource IS NOT NULL AND OriginalSource <> '' THEN 1 END) AS [Profiles With Merged Source URIs]
-FROM dbo.NegativeList_Master;
-
-
-
-
-
-USE LexisNexis_Staging;
-
--- Fast 2-Second Record Count & WLType Breakdown Check
-SELECT ISNULL(WLType, 'No WLType Mapped') AS [Watchlist Type], COUNT(*) AS [Profile Count]
-FROM dbo.NegativeList WITH (NOLOCK)
-GROUP BY WLType;
+    t.name AS TableName,
+    p.rows AS RowCounts
+FROM sys.tables t
+INNER JOIN sys.partitions p ON t.object_id = p.object_id
+WHERE p.index_id IN (0, 1)
+ORDER BY t.name;
+GO
