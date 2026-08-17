@@ -74,6 +74,16 @@ def main():
                 logging.info("Bulk Ingesting FULL: %s...", filename)
                 
                 try:
+                    # DROP ANY EXISTING INDEXES ON STAGING TABLES TO MAKE BULK INSERT LIGHTNING FAST
+                    cursor.execute(f"""
+                        DECLARE @sql NVARCHAR(MAX) = '';
+                        SELECT @sql += 'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(SCHEMA_NAME(t.schema_id)) + '.' + QUOTENAME(t.name) + ';'
+                        FROM sys.indexes i
+                        INNER JOIN sys.tables t ON i.object_id = t.object_id
+                        WHERE t.name = '{tablename}' AND i.type > 0 AND i.is_primary_key = 0;
+                        IF @sql <> '' EXEC sp_executesql @sql;
+                    """)
+                    
                     cursor.execute(f"TRUNCATE TABLE {tablename}")
                     
                     bulk_query = f"""
