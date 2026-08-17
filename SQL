@@ -126,3 +126,11 @@ INSERT INTO DiskTest (Val)
 SELECT TOP 100000 'Test String Data'
 FROM sys.all_objects a, sys.all_objects b;
 SET STATISTICS TIME OFF;
+
+
+
+USE LexisNexis_Staging;
+GO
+SET STATISTICS TIME ON;
+CHECKPOINT;
+SET STATISTICS TIME OFF;
