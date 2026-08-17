@@ -106,3 +106,19 @@ GO
 ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging', FILEGROWTH = 2000MB);
 ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging_log', FILEGROWTH = 500MB);
 GO
+
+
+
+
+USE LexisNexis_Staging;
+GO
+DROP TABLE IF EXISTS DiskTest;
+CREATE TABLE DiskTest (Id INT IDENTITY, Val NVARCHAR(100));
+GO
+
+-- 1 Lakh rows insert karne ka time check karein
+SET STATISTICS TIME ON;
+INSERT INTO DiskTest (Val)
+SELECT TOP 100000 'Test String Data'
+FROM sys.all_objects a, sys.all_objects b;
+SET STATISTICS TIME OFF;
