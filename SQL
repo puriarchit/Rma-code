@@ -54,3 +54,38 @@ GO
 ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging', SIZE = 20000MB);
 ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = N'LexisNexis_Staging_log', SIZE = 2000MB);
 GO
+
+
+
+
+
+SELECT name, delayed_durability_desc 
+FROM sys.databases 
+WHERE name = 'LexisNexis_Staging';
+
+
+
+SELECT session_id, wait_type, wait_duration_ms, resource_description
+FROM sys.dm_os_waiting_tasks
+WHERE session_id > 50 
+  AND wait_type NOT IN ('WAITFOR', 'BROKER_RECEIVER_WAIT_TYPE', 'DIRTY_PAGE_TABLE_RELEASE');
+
+
+
+
+SELECT SERVERPROPERTY('Collation') AS ServerCollation,
+       DATABASEPROPERTYEX('LexisNexis_Staging', 'Collation') AS DbCollation;
+
+
+
+
+SELECT OBJECT_NAME(object_id) AS TableName, name AS IndexName, type_desc
+FROM sys.indexes
+WHERE object_id IN (OBJECT_ID('Entity'), OBJECT_ID('EntityAlias'), OBJECT_ID('EntitySourceItem'))
+  AND type > 0 AND is_primary_key = 0;
+
+
+SELECT f.name, fs.num_of_writes, fs.io_stall_write_ms,
+       (fs.io_stall_write_ms / NULLIF(fs.num_of_writes, 0)) AS AvgWriteStall_MS
+FROM sys.dm_io_virtual_file_stats(DB_ID('LexisNexis_Staging'), NULL) fs
+JOIN sys.master_files f ON fs.database_id = f.database_id AND fs.file_id = f.file_id;
