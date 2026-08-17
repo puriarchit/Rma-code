@@ -23,6 +23,10 @@ GO
 
 
 
+SELECT name, physical_name AS PhysicalPathOnServer
+FROM sys.master_files
+WHERE database_id = DB_ID('LexisNexis_Staging');
+
 
 
 USE LexisNexis_Staging;
