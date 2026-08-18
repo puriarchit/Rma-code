@@ -242,3 +242,27 @@ WHERE session_id > 50
 SELECT name, user_access_desc, state_desc 
 FROM sys.databases 
 WHERE name = 'LexisNexis_Staging';
+
+
+
+
+USE master;
+GO
+
+-- Database ke saare active connection force close karke drop karein
+IF EXISTS (SELECT name FROM sys.databases WHERE name = N'LexisNexis_Staging')
+BEGIN
+    ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE LexisNexis_Staging;
+END
+GO
+
+-- Ekdam fresh clean database banayein
+CREATE DATABASE LexisNexis_Staging;
+GO
+
+-- Speed aur performance optimizations apply karein
+ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
+ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
+ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
+GO
