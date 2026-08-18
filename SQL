@@ -288,3 +288,10 @@ INNER JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.inde
 INNER JOIN sys.allocation_units a ON p.partition_id = a.container_id
 GROUP BY t.name, p.rows
 ORDER BY TotalSpace_MB DESC;
+
+
+
+
+SELECT session_id, command, status, cpu_time, total_elapsed_time / 1000 AS ElapsedSeconds
+FROM sys.dm_exec_requests
+WHERE session_id > 50;
