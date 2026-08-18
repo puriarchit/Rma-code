@@ -266,3 +266,11 @@ ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
 ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
 ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
 GO
+
+
+
+
+
+SELECT COUNT(*) AS TotalRows, 
+       COUNT(DISTINCT EntityGUID) AS UniqueEntities
+FROM LexisNexis_Staging.dbo.Entity;
