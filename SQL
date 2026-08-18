@@ -234,3 +234,11 @@ FROM sys.dm_exec_requests req
 CROSS APPLY sys.dm_exec_sql_text(req.sql_handle) st
 WHERE session_id > 50 
   AND command IN ('INSERT', 'SELECT', 'CREATE INDEX', 'ALTER INDEX', 'ALTER TABLE');
+
+
+
+
+
+SELECT name, user_access_desc, state_desc 
+FROM sys.databases 
+WHERE name = 'LexisNexis_Staging';
