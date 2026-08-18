@@ -538,7 +538,6 @@ def main():
         cursor.execute("TRUNCATE TABLE EntityDOB")
         cursor.execute("TRUNCATE TABLE EntityIdentification")
         cursor.execute("TRUNCATE TABLE EntityRemark")
-        cursor.execute("DBCC SHRINKDATABASE (LexisNexis_Staging)")
     except Exception as ex:
         logging.warning("Space reclaim note: %s", ex)
 
