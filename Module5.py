@@ -173,10 +173,13 @@ def bulk_insert_base(cursor, run_version_id):
         (run_version_id,)
     )
     inserted = cursor.rowcount
+    if inserted < 0:
+        cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
+        inserted = cursor.fetchone()[0] or 0
     logging.info("[2/6] Base records loaded in %.2f seconds.", time.time() - start)
     return inserted, time.time() - start
 
-def bulk_insert_alias(cursor, run_version_id):
+def bulk_insert_alias(cursor, run_version_id, inserted_base):
     start = time.time()
     logging.info("[3/6] Inserting Alias records into NegativeList...")
 
@@ -231,14 +234,15 @@ def bulk_insert_alias(cursor, run_version_id):
     )
     inserted = cursor.rowcount
     if inserted < 0:
-        cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WITH (NOLOCK) WHERE EntityAliasGUID IS NOT NULL")
-        inserted = cursor.fetchone()[0]
+        cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
+        total_rows = cursor.fetchone()[0] or 0
+        inserted = total_rows - inserted_base
 
     logging.info("[3/6] Alias records loaded in %.2f seconds.", time.time() - start)
 
     logging.info("  Reclaiming space: dropping consumed staging table NegativeList_New1...")
     try:
-        cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_New1;")
+        cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1];")
         cursor.execute("CHECKPOINT;")
         logging.info("  Reclaimed space: dropped NegativeList_New1.")
     except Exception as ex:
@@ -253,15 +257,15 @@ def build_post_load_indexes(cursor):
     t1 = time.time()
     cursor.execute("SELECT COUNT(*) FROM sys.indexes WHERE name = 'PK_NegativeList' AND object_id = OBJECT_ID('dbo.NegativeList')")
     if cursor.fetchone()[0] == 0:
-        cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID)")
+        cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID) WITH (SORT_IN_TEMPDB = ON)")
         logging.info("  PK_NegativeList created in %.2f sec", time.time() - t1)
 
     t2 = time.time()
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID) WITH (SORT_IN_TEMPDB = ON)")
     logging.info("  IX_NegativeList_EntityGUID created in %.2f sec", time.time() - t2)
 
     t3 = time.time()
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
+    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID) WITH (SORT_IN_TEMPDB = ON)")
     logging.info("  IX_NegativeList_EntityAliasGUID created in %.2f sec", time.time() - t3)
 
     logging.info("[4/6] Production indexes built in %.2f seconds.", time.time() - start)
@@ -346,11 +350,18 @@ def populate_master_and_filter(cursor, inserted_total):
 
 def post_sync_cleanup(cursor, config):
     start = time.time()
-    logging.info("[6/6] Cleaning up intermediate staging tables...")
+    logging.info("[6/6] Cleaning up intermediate staging tables & shrinking transaction log...")
     try:
         cursor.execute("TRUNCATE TABLE dbo.[NegativeList_New1]")
         cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
         logging.info("  Reclaimed space: dropped staging table NegativeList_New1.")
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("CHECKPOINT;")
+        cursor.execute("DBCC SHRINKFILE (2, TRUNCATEONLY);")
+        logging.info("  Reclaimed space: transaction log truncated and shrunk.")
     except Exception:
         pass
 
@@ -366,7 +377,6 @@ def check_existing_progress(cursor):
     row_count = cursor.fetchone()[0] or 0
     if row_count >= 3000000:
         logging.info("Existing loaded data detected in NegativeList (%s rows).", f"{row_count:,}")
-        logging.info("  Resuming directly at Step 4 (Index Build & Master Sync)...")
         return True, row_count
     return False, 0
 
@@ -397,7 +407,7 @@ def main():
             prepare_page_compressed_heap(cursor)
             set_recovery_model(config, 'SIMPLE')
             inserted_base, _ = bulk_insert_base(cursor, run_version_id)
-            inserted_alias, _ = bulk_insert_alias(cursor, run_version_id)
+            inserted_alias, _ = bulk_insert_alias(cursor, run_version_id, inserted_base)
             inserted_total = inserted_base + inserted_alias
         else:
             inserted_total = existing_rows
@@ -419,4 +429,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
