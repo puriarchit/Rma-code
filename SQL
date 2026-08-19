@@ -291,6 +291,25 @@ ORDER BY TotalSpace_MB DESC;
 
 
 
+USE LexisNexis_Staging;
+GO
+
+-- Query 1: Final table ka total count check karein
+SELECT COUNT(*) AS [Total Final Records in NegativeList] 
+FROM dbo.NegativeList WITH (NOLOCK);
+
+-- Query 2: Base profiles aur Alias records ka breakdown
+SELECT 
+    COUNT(CASE WHEN EntityAliasGUID IS NULL THEN 1 END) AS [Base Records Count (Profiles)],
+    COUNT(CASE WHEN EntityAliasGUID IS NOT NULL THEN 1 END) AS [Alias Records Count]
+FROM dbo.NegativeList WITH (NOLOCK);
+
+-- Query 3: Raw staging tables ke records se match karein
+-- (Base Records count must match Total Staging Entities)
+-- (Alias Records count must match Total Staging Aliases)
+SELECT COUNT(*) AS [Total Staging Entities (Expected Base)] FROM dbo.Entity WITH (NOLOCK);
+SELECT COUNT(*) AS [Total Staging Aliases (Expected Aliases)] FROM dbo.EntityAlias WITH (NOLOCK);
+
 
 SELECT session_id, command, status, cpu_time, total_elapsed_time / 1000 AS ElapsedSeconds
 FROM sys.dm_exec_requests
