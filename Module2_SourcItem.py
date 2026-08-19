@@ -78,8 +78,8 @@ def main():
 
     merge_time = time.time() - step_start
 
-    cursor.execute("SELECT COUNT(*) FROM dbo.EntitySourceItem_New")
-    inserted_count = cursor.fetchone()[0]
+    cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.EntitySourceItem_New') AND index_id IN (0, 1)")
+    inserted_count = cursor.fetchone()[0] or 0
 
     logging.info("[2/3] Source URI merging completed in %.2f seconds (%.2f mins). Total Profiles: %s.", merge_time, merge_time / 60, f"{inserted_count:,}")
 
