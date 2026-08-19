@@ -314,3 +314,17 @@ SELECT COUNT(*) AS [Total Staging Aliases (Expected Aliases)] FROM dbo.EntityAli
 SELECT session_id, command, status, cpu_time, total_elapsed_time / 1000 AS ElapsedSeconds
 FROM sys.dm_exec_requests
 WHERE session_id > 50;
+
+
+
+USE master;
+GO
+
+-- 1. Main Data File ko direct 35 GB (35,840 MB) par set karne ke liye
+ALTER DATABASE LexisNexis_Staging 
+MODIFY FILE (NAME = LexisNexis_Staging, SIZE = 35840MB, FILEGROWTH = 1024MB);
+
+-- 2. Transaction Log File ko direct 5 GB (5,120 MB) par set karne ke liye
+ALTER DATABASE LexisNexis_Staging 
+MODIFY FILE (NAME = LexisNexis_Staging_log, SIZE = 5120MB, FILEGROWTH = 1024MB);
+GO
