@@ -328,3 +328,27 @@ MODIFY FILE (NAME = LexisNexis_Staging, SIZE = 35840MB, FILEGROWTH = 1024MB);
 ALTER DATABASE LexisNexis_Staging 
 MODIFY FILE (NAME = LexisNexis_Staging_log, SIZE = 5120MB, FILEGROWTH = 1024MB);
 GO
+
+
+
+
+
+
+SELECT 
+    req.session_id AS [Session ID],
+    req.command AS [Active Command],
+    req.status AS [Status],
+    req.percent_complete AS [Percent Complete],
+    CAST(req.total_elapsed_time / 1000.0 / 60.0 AS DECIMAL(10,2)) AS [Elapsed Minutes],
+    req.logical_reads AS [Logical Reads],
+    req.writes AS [Writes],
+    req.cpu_time AS [CPU Time (ms)],
+    SUBSTRING(st.text, (req.statement_start_offset/2)+1, 
+        ((CASE req.statement_end_offset 
+          WHEN -1 THEN DATALENGTH(st.text) 
+          ELSE req.statement_end_offset END - req.statement_start_offset)/2) + 1) AS [Active Query Text],
+    st.text AS [Full Batch Text]
+FROM sys.dm_exec_requests req
+CROSS APPLY sys.dm_exec_sql_text(req.sql_handle) st
+WHERE req.session_id > 50 
+  AND req.session_id <> @@SPID;
