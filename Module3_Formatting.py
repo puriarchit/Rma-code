@@ -123,7 +123,7 @@ def main():
     cursor.execute("IF OBJECT_ID('EntityAddress_Dup', 'U') IS NOT NULL DROP TABLE EntityAddress_Dup")
     cursor.execute("CREATE TABLE [dbo].[EntityAddress_Dup]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL)")
     cursor.execute("IF OBJECT_ID('EntityAddress_New', 'U') IS NOT NULL DROP TABLE EntityAddress_New")
-    cursor.execute("CREATE TABLE [dbo].[EntityAddress_New]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [POB] [nvarchar](50) NULL, [Country] [nvarchar](100) NULL)")
+    cursor.execute("CREATE TABLE [dbo].[EntityAddress_New]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [POB] [nvarchar](50) NULL, [Country] [nvarchar](100) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntityAddress1', 'U') IS NOT NULL DROP TABLE EntityAddress1")
     cursor.execute("CREATE TABLE [dbo].[EntityAddress1]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL)")
     cursor.execute("IF OBJECT_ID('EntityAddress2', 'U') IS NOT NULL DROP TABLE EntityAddress2")
@@ -223,7 +223,7 @@ def main():
     cursor.execute("IF OBJECT_ID('Entity_Citizenship_Duplicate', 'U') IS NOT NULL DROP TABLE Entity_Citizenship_Duplicate")
     cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_Duplicate]([EntityGUID] [nvarchar](50) NULL, [Rank] [bigint] NULL, [ISOStandard] [nvarchar](50) NULL, [AdministrativeUnitName] [nvarchar](200) NULL, [Citizenship] [nvarchar](100) NULL)")
     cursor.execute("IF OBJECT_ID('Entity_Citizenship_New', 'U') IS NOT NULL DROP TABLE Entity_Citizenship_New")
-    cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_New]([EntityGUID] [nvarchar](50) NULL, [ISOStandard] [nvarchar](50) NULL, [Citizenship] [nvarchar](100) NULL)")
+    cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_New]([EntityGUID] [nvarchar](50) NULL, [ISOStandard] [nvarchar](50) NULL, [Citizenship] [nvarchar](100) NULL) WITH (DATA_COMPRESSION = PAGE)")
 
     cursor.execute("""
         ;WITH Scanned AS (
@@ -272,7 +272,7 @@ def main():
     cursor.execute("IF OBJECT_ID('EntityDOB_Test', 'U') IS NOT NULL DROP TABLE EntityDOB_Test")
     cursor.execute("CREATE TABLE [dbo].[EntityDOB_Test]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [row_rank] [bigint] NULL)")
     cursor.execute("IF OBJECT_ID('EntityDOB_New', 'U') IS NOT NULL DROP TABLE EntityDOB_New")
-    cursor.execute("CREATE TABLE [dbo].[EntityDOB_New]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [ALTDOB1] [datetime] NULL, [ALTDOB2] [datetime] NULL, [ALTDOB3] [datetime] NULL)")
+    cursor.execute("CREATE TABLE [dbo].[EntityDOB_New]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [ALTDOB1] [datetime] NULL, [ALTDOB2] [datetime] NULL, [ALTDOB3] [datetime] NULL) WITH (DATA_COMPRESSION = PAGE)")
 
     cursor.execute("""
         INSERT INTO EntityDOB_Test (EntityGUID, DOB, row_rank)
@@ -309,9 +309,9 @@ def main():
     cursor.execute("IF OBJECT_ID('EntityIdentification_National', 'U') IS NOT NULL DROP TABLE EntityIdentification_National")
     cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National]([EntityGUID] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL)")
     cursor.execute("IF OBJECT_ID('EntityIdentification_National_New', 'U') IS NOT NULL DROP TABLE EntityIdentification_National_New")
-    cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National_New]([EntityGUID] [nvarchar](50) NULL, [IdentificationNumber] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](250) NULL)")
+    cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National_New]([EntityGUID] [nvarchar](50) NULL, [IdentificationNumber] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](250) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntityIdentification_New', 'U') IS NOT NULL DROP TABLE EntityIdentification_New")
-    cursor.execute("CREATE TABLE [dbo].[EntityIdentification_New]([EntityGUID] [nvarchar](50) NULL, [IdOtherInfo1] [nvarchar](250) NULL, [IdNo1] [nvarchar](250) NULL, [IdOtherInfo2] [nvarchar](250) NULL, [IdNo2] [nvarchar](250) NULL, [IdOtherInfo3] [nvarchar](250) NULL, [IdNo3] [nvarchar](250) NULL, [IdOtherInfo4] [nvarchar](250) NULL, [IdNo4] [nvarchar](250) NULL, [IdOtherInfo5] [nvarchar](250) NULL, [IdNo5] [nvarchar](250) NULL)")
+    cursor.execute("CREATE TABLE [dbo].[EntityIdentification_New]([EntityGUID] [nvarchar](50) NULL, [IdOtherInfo1] [nvarchar](250) NULL, [IdNo1] [nvarchar](250) NULL, [IdOtherInfo2] [nvarchar](250) NULL, [IdNo2] [nvarchar](250) NULL, [IdOtherInfo3] [nvarchar](250) NULL, [IdNo3] [nvarchar](250) NULL, [IdOtherInfo4] [nvarchar](250) NULL, [IdNo4] [nvarchar](250) NULL, [IdOtherInfo5] [nvarchar](250) NULL, [IdNo5] [nvarchar](250) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntityIdentification_Test', 'U') IS NOT NULL DROP TABLE EntityIdentification_Test")
     cursor.execute("CREATE TABLE [dbo].[EntityIdentification_Test]([EntityGUID] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL, [row_rank] [bigint] NULL)")
 
@@ -449,7 +449,7 @@ def main():
     cursor.execute("CREATE CLUSTERED INDEX IX_EntityRemark_DUP_EntityGUID ON EntityRemark_DUP(EntityGUID)")
 
     cursor.execute("IF OBJECT_ID('EntityRemark_New', 'U') IS NOT NULL DROP TABLE EntityRemark_New")
-    cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL)")
+    cursor.execute("CREATE TABLE [dbo].[EntityRemark_New]([EntityGUID] [nvarchar](50) NULL, [Remark] [nvarchar](4000) NULL) WITH (DATA_COMPRESSION = PAGE)")
 
     cursor.execute("IF OBJECT_ID('tempdb..#UniqueGUIDs') IS NOT NULL DROP TABLE #UniqueGUIDs")
     cursor.execute("""
@@ -551,4 +551,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
