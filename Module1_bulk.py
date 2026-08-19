@@ -143,8 +143,8 @@ def main():
                     """
                     cursor.execute(bulk_query)
                     
-                    cursor.execute(f"SELECT COUNT(*) FROM {tablename}")
-                    row_count = cursor.fetchone()[0]
+                    cursor.execute(f"SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.{tablename}') AND index_id IN (0, 1)")
+                    row_count = cursor.fetchone()[0] or 0
                     
                     time_taken = time.time() - file_start
                     logging.info("Success: %s loaded (%d rows) in %.2f seconds.", tablename, row_count, time_taken)
