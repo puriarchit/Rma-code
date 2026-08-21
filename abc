@@ -8,3 +8,25 @@ D:\LexisNexis\Omni_DataMart_Lexisnexis_Test\OmniData_Process\Jobs\Config_Conn.dt
 
 
 D:\LexisNexis
+
+
+Find what: Data Source=RMA-SVR2\SQLSVR2016;User ID=sa;Initial Catalog=LN_checkDB ;Provider=SQLNCLI11.1;Persist Security Info=True;
+
+
+
+Data Source=WIN-Q6F1HDK5R4D;Initial Catalog=LexisNexis_Data;Provider=SQLNCLI11.1;Integrated Security=SSPI;
+
+
+
+Data Source=RMA-SVR2\SQLSVR2016;User ID=sa;Initial Catalog=LN_checkDB_2023.11.08 ;Provider=SQLNCLI11.1;Persist Security Info=True;
+
+
+
+Data Source=WIN-Q6F1HDK5R4D;Initial Catalog=LexisNexis_Data;Provider=SQLNCLI11.1;Integrated Security=SSPI;
+
+
+Data Source=RMA-SVR2\SQLSVR2016;User ID=sa;Initial Catalog=AceProd_20230518 ;Provider=SQLNCLI11.1;Persist Security Info=True;
+
+
+
+Data Source=WIN-Q6F1HDK5R4D;Initial Catalog=MoneyWaveRemit;Provider=SQLNCLI11.1;Integrated Security=SSPI;
