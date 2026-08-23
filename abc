@@ -231,3 +231,12 @@ ALTER TABLE dbo.Country ADD
     HEFlag NVARCHAR(100) NULL,
     RemitFlag NVARCHAR(100) NULL;
 GO
+
+
+
+USE MoneyWaveRemit;
+GO
+
+-- Column name ka case correct (k -> K) karne ke liye:
+EXEC sp_rename 'dbo.Country.MCkycScore', 'MCKycScore', 'COLUMN';
+GO
