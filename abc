@@ -43,3 +43,13 @@ Data Source=WIN-Q6F1HDK5R4D;Initial Catalog=MoneyWaveRemit;Provider=SQLNCLI11.1;
   <DTSConfigurationHeading>
     <DTSConfigurationFileInfo GeneratedDate="8/21/2026 6:51:00 PM" GeneratedFromPackageID="{00000000-0000-0000-0000-000000000000}" GeneratedFromPackageName="Files_1" GeneratedBy="WIN-Q6F1HDK5R4D\User2"/>
   </DTSConfigurationHeading>
+
+
+
+USE LexisNexis_Data;
+GO
+
+-- Original database se naye database mein Country table copy karne ke liye:
+SELECT * INTO LexisNexis_Data.dbo.Country 
+FROM LN_checkDB.dbo.Country;
+GO
