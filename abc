@@ -53,3 +53,22 @@ GO
 SELECT * INTO LexisNexis_Data.dbo.Country 
 FROM LN_checkDB.dbo.Country;
 GO
+
+
+
+
+
+USE LexisNexis_Data;
+GO
+
+-- EntityAddress2 table mein missing Rank column add karne ke liye:
+IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.EntityAddress2') AND name = 'Rank')
+BEGIN
+    PRINT 'Rank column already exists';
+END
+ELSE
+BEGIN
+    ALTER TABLE dbo.EntityAddress2 ADD [Rank] [bigint] NULL;
+    PRINT 'Rank column added successfully';
+END
+GO
