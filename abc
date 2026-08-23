@@ -196,3 +196,38 @@ END
 
 CLOSE db_cursor  
 DEALLOCATE db_cursor
+
+
+
+
+
+USE MoneyWaveRemit;
+GO
+
+-- Country table mein saare expected schema columns add karne ke liye:
+ALTER TABLE dbo.Country ADD 
+    tCurrency NVARCHAR(100) NULL,
+    tCode NVARCHAR(100) NULL,
+    tCountryCode NVARCHAR(100) NULL,
+    tDialCode NVARCHAR(100) NULL,
+    nUOM NVARCHAR(100) NULL,
+    RemitChannel NVARCHAR(100) NULL,
+    KycScore NVARCHAR(100) NULL,
+    BaseCcy NVARCHAR(100) NULL,
+    MaxTxnLimit NVARCHAR(100) NULL,
+    BasisPoints NVARCHAR(100) NULL,
+    Status NVARCHAR(100) NULL,
+    CreatedBy NVARCHAR(100) NULL,
+    ApprovedBy NVARCHAR(100) NULL,
+    CreationDate DATETIME NULL,
+    ApprovalDate DATETIME NULL,
+    LastUpdatedBy NVARCHAR(100) NULL,
+    LastUpdatedDate DATETIME NULL,
+    LastApprovedBy NVARCHAR(100) NULL,
+    LastApprovalDate DATETIME NULL,
+    msrepl_tran_version NVARCHAR(100) NULL,
+    MCkycScore NVARCHAR(100) NULL,
+    CountryFlagPath NVARCHAR(100) NULL,
+    HEFlag NVARCHAR(100) NULL,
+    RemitFlag NVARCHAR(100) NULL;
+GO
