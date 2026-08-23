@@ -321,3 +321,25 @@ END
 CLOSE db_cursor  
 DEALLOCATE db_cursor
 GO
+
+
+
+
+USE LexisNexis_Data;
+GO
+
+-- 1. Agar pehle se koi duplicate/galat schema table hai to drop kijiye:
+IF OBJECT_ID('dbo.WLCharMap', 'U') IS NOT NULL
+    DROP TABLE dbo.WLCharMap;
+GO
+
+-- 2. Expected columns ke sath table create kijiye:
+CREATE TABLE dbo.WLCharMap (
+    Symbol NVARCHAR(50) NOT NULL,
+    MapChar NVARCHAR(50) NOT NULL
+);
+GO
+
+-- 3. Ek dummy mapping insert kijiye taaki validation pass ho sake:
+INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES ('a', 'a');
+GO
