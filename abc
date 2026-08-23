@@ -265,3 +265,30 @@ GO
 SELECT * INTO MoneyWaveRemit.dbo.WLCharMap 
 FROM LexisNexis_Staging.dbo.WLCharMap;
 GO
+
+
+
+DECLARE @dbName NVARCHAR(256)
+DECLARE @sql NVARCHAR(MAX)
+DECLARE db_cursor CURSOR FOR 
+SELECT name FROM sys.databases WHERE name NOT IN ('master','tempdb','model','msdb')
+
+OPEN db_cursor  
+FETCH NEXT FROM db_cursor INTO @dbName  
+
+WHILE @@FETCH_STATUS = 0  
+BEGIN  
+    SET @sql = '
+    IF EXISTS (
+        SELECT * FROM ' + QUOTENAME(@dbName) + '.sys.tables 
+        WHERE name = ''WLCharMap''
+    )
+    BEGIN
+        PRINT ''FOUND in database: ' + @dbName + '''
+    END'
+    EXEC sp_executesql @sql
+    FETCH NEXT FROM db_cursor INTO @dbName  
+END  
+
+CLOSE db_cursor  
+DEALLOCATE db_cursor
