@@ -30,3 +30,10 @@ Data Source=RMA-SVR2\SQLSVR2016;User ID=sa;Initial Catalog=AceProd_20230518 ;Pro
 
 
 Data Source=WIN-Q6F1HDK5R4D;Initial Catalog=MoneyWaveRemit;Provider=SQLNCLI11.1;Integrated Security=SSPI;
+
+
+
+
+;User ID="+ @[User::SqlUserID] +";Password="+ @[User::SqlPwd] +";
+
+;Integrated Security=SSPI;
