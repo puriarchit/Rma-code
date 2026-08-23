@@ -132,3 +132,19 @@ BEGIN
     EXEC sp_rename 'dbo.Country.TA3', 'tA3', 'COLUMN';
 END
 GO
+
+
+
+
+
+
+
+-- LexisNexis_Data mein Country table ke columns check karne ke liye:
+SELECT 'LexisNexis_Data' AS DatabaseName, COLUMN_NAME 
+FROM LexisNexis_Data.INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = 'Country';
+
+-- MoneyWaveRemit mein Country table ke columns check karne ke liye:
+SELECT 'MoneyWaveRemit' AS DatabaseName, COLUMN_NAME 
+FROM MoneyWaveRemit.INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = 'Country';
