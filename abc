@@ -100,3 +100,35 @@ WHERE TABLE_NAME = 'EntityAddress2';
 -- Test 2: Case-sensitivity check (Dono ko run karke dekhiye)
 SELECT TOP 1 [Rank] FROM LexisNexis_Data.dbo.EntityAddress2;
 SELECT TOP 1 [RANK] FROM LexisNexis_Data.dbo.EntityAddress2;
+
+
+
+
+
+-- 1. LexisNexis_Data database ke liye columns update:
+USE LexisNexis_Data;
+GO
+
+IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Country') AND name = 'ta3')
+BEGIN
+    EXEC sp_rename 'dbo.Country.ta3', 'tA3', 'COLUMN';
+END
+IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Country') AND name = 'TA3')
+BEGIN
+    EXEC sp_rename 'dbo.Country.TA3', 'tA3', 'COLUMN';
+END
+GO
+
+-- 2. MoneyWaveRemit database ke liye columns update:
+USE MoneyWaveRemit;
+GO
+
+IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Country') AND name = 'ta3')
+BEGIN
+    EXEC sp_rename 'dbo.Country.ta3', 'tA3', 'COLUMN';
+END
+IF EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Country') AND name = 'TA3')
+BEGIN
+    EXEC sp_rename 'dbo.Country.TA3', 'tA3', 'COLUMN';
+END
+GO
