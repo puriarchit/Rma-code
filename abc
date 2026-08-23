@@ -90,3 +90,13 @@ WHERE TABLE_NAME = 'EntityAddress2';
 SELECT 'MoneyWaveRemit' AS DatabaseName, COLUMN_NAME 
 FROM MoneyWaveRemit.INFORMATION_SCHEMA.COLUMNS 
 WHERE TABLE_NAME = 'EntityAddress2';
+
+
+-- Test 1: Check if EntityAddress2 exists in LN_checkDB
+SELECT 'LN_checkDB' AS DatabaseName, COLUMN_NAME 
+FROM LN_checkDB.INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = 'EntityAddress2';
+
+-- Test 2: Case-sensitivity check (Dono ko run karke dekhiye)
+SELECT TOP 1 [Rank] FROM LexisNexis_Data.dbo.EntityAddress2;
+SELECT TOP 1 [RANK] FROM LexisNexis_Data.dbo.EntityAddress2;
