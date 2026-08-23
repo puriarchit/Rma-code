@@ -148,3 +148,19 @@ WHERE TABLE_NAME = 'Country';
 SELECT 'MoneyWaveRemit' AS DatabaseName, COLUMN_NAME 
 FROM MoneyWaveRemit.INFORMATION_SCHEMA.COLUMNS 
 WHERE TABLE_NAME = 'Country';
+
+
+
+
+
+USE MoneyWaveRemit;
+GO
+
+-- 1. Purani 2-column wali table ko drop kijiye:
+DROP TABLE MoneyWaveRemit.dbo.Country;
+GO
+
+-- 2. Nayi 3-column (tA3 ke sath) wali table ko staging database se copy kijiye:
+SELECT * INTO MoneyWaveRemit.dbo.Country 
+FROM LexisNexis_Data.dbo.Country;
+GO
