@@ -72,3 +72,21 @@ BEGIN
     PRINT 'Rank column added successfully';
 END
 GO
+
+
+
+
+-- LexisNexis_Data DB columns check
+SELECT 'LexisNexis_Data' AS DatabaseName, COLUMN_NAME 
+FROM LexisNexis_Data.INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = 'EntityAddress2';
+
+-- LexisNexis_Staging DB columns check
+SELECT 'LexisNexis_Staging' AS DatabaseName, COLUMN_NAME 
+FROM LexisNexis_Staging.INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = 'EntityAddress2';
+
+-- MoneyWaveRemit DB columns check
+SELECT 'MoneyWaveRemit' AS DatabaseName, COLUMN_NAME 
+FROM MoneyWaveRemit.INFORMATION_SCHEMA.COLUMNS 
+WHERE TABLE_NAME = 'EntityAddress2';
