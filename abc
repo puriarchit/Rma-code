@@ -292,3 +292,32 @@ END
 
 CLOSE db_cursor  
 DEALLOCATE db_cursor
+
+
+
+-- 1. Saare databases ki list check karne ke liye:
+SELECT name AS DatabaseList FROM sys.databases;
+GO
+
+-- 2. 'charmap' ya 'character' keyword se matching tables search karne ke liye:
+DECLARE @dbName NVARCHAR(256)
+DECLARE @sql NVARCHAR(MAX)
+DECLARE db_cursor CURSOR FOR 
+SELECT name FROM sys.databases WHERE name NOT IN ('master','tempdb','model','msdb')
+
+OPEN db_cursor  
+FETCH NEXT FROM db_cursor INTO @dbName  
+
+WHILE @@FETCH_STATUS = 0  
+BEGIN  
+    SET @sql = '
+    SELECT ''' + @dbName + ''' AS DatabaseName, name AS TableName
+    FROM ' + QUOTENAME(@dbName) + '.sys.tables 
+    WHERE name LIKE ''%charmap%'' OR name LIKE ''%character%'''
+    EXEC sp_executesql @sql
+    FETCH NEXT FROM db_cursor INTO @dbName  
+END  
+
+CLOSE db_cursor  
+DEALLOCATE db_cursor
+GO
