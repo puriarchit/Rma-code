@@ -250,3 +250,18 @@ GO
 -- Correct MEFlag column add karne ke liye:
 ALTER TABLE dbo.Country ADD MEFlag NVARCHAR(100) NULL;
 GO
+
+
+-- 1. LexisNexis_Data database mein copy karne ke liye:
+USE LexisNexis_Data;
+GO
+SELECT * INTO LexisNexis_Data.dbo.WLCharMap 
+FROM LexisNexis_Staging.dbo.WLCharMap;
+GO
+
+-- 2. MoneyWaveRemit database mein copy karne ke liye:
+USE MoneyWaveRemit;
+GO
+SELECT * INTO MoneyWaveRemit.dbo.WLCharMap 
+FROM LexisNexis_Staging.dbo.WLCharMap;
+GO
