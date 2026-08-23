@@ -343,3 +343,39 @@ GO
 -- 3. Ek dummy mapping insert kijiye taaki validation pass ho sake:
 INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES ('a', 'a');
 GO
+
+
+
+
+
+-- 1. LexisNexis_Data (Staging DB) ke row counts:
+USE LexisNexis_Data;
+GO
+SELECT 
+    t.NAME AS TableName,
+    s.row_count AS RowCount
+FROM 
+    sys.tables t
+INNER JOIN      
+    sys.dm_db_partition_stats s ON t.object_id = s.object_id
+WHERE 
+    t.is_ms_shipped = 0 AND s.index_id < 2
+ORDER BY 
+    t.NAME;
+GO
+
+-- 2. MoneyWaveRemit (Destination DB) ke row counts:
+USE MoneyWaveRemit;
+GO
+SELECT 
+    t.NAME AS TableName,
+    s.row_count AS RowCount
+FROM 
+    sys.tables t
+INNER JOIN      
+    sys.dm_db_partition_stats s ON t.object_id = s.object_id
+WHERE 
+    t.is_ms_shipped = 0 AND s.index_id < 2
+ORDER BY 
+    t.NAME;
+GO
