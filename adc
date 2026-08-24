@@ -1,0 +1,135 @@
+# -*- coding: utf-8 -*-
+import json
+import os
+import pyodbc
+
+def load_config() -> dict:
+    config_path = r"D:\LexisNexis\config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def main():
+    config = load_config()
+    db = config["database"]
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection=yes;"
+    conn = pyodbc.connect(conn_str, autocommit=True)
+    cursor = conn.cursor()
+
+    print("Building temporary tables...")
+    cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
+    cursor.execute("""
+        SELECT A.EntityGUID, B.tCountry AS Nationality
+        INTO #TempNationalities
+        FROM EntityCountryAssociation A WITH (NOLOCK)
+        LEFT JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
+        WHERE A.AssociationTypeDesc = 'Nationality'
+    """)
+    
+    cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
+    cursor.execute("""
+        SELECT DISTINCT EntityGUID
+        INTO #PEP_GUIDs
+        FROM EntityCountryAssociation WITH (NOLOCK)
+        WHERE AssociationTypeDesc = 'PEP'
+    """)
+
+    print("Executing diagnostic scan into temp table...")
+    cursor.execute("DROP TABLE IF EXISTS #TempLengths")
+    cursor.execute("""
+        SELECT 
+            A.EntityGUID,
+            CAST(A.EntityID AS NVARCHAR(MAX)) as ReferenceID,
+            CAST(A.EntityTypeDesc AS NVARCHAR(MAX)) as EntityType,
+            CAST(A.Gender AS NVARCHAR(MAX)) as Gender,
+            CAST(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,'') AS NVARCHAR(MAX)) as FirstName,
+            CAST(A.LastName AS NVARCHAR(MAX)) as LastName,
+            CAST(A.Name AS NVARCHAR(MAX)) as SecondName,
+            CAST(A.Title AS NVARCHAR(MAX)) as Title,
+            CAST(B.DOB AS NVARCHAR(MAX)) as DOB,
+            CAST(C.AddressLine1 AS NVARCHAR(MAX)) as AddressLine1,
+            CAST(C.AddressLine2 AS NVARCHAR(MAX)) as AddressLine2,
+            CAST(C.City AS NVARCHAR(MAX)) as City,
+            CAST(C.Country AS NVARCHAR(MAX)) as Country,
+            CAST(C.POB AS NVARCHAR(MAX)) as POB,
+            CAST(isnull(F.SourceName, G.SourceName) AS NVARCHAR(MAX)) as WLType,
+            CAST(E.SourceURI AS NVARCHAR(MAX)) as OriginalSource,
+            CAST(D.Remark AS NVARCHAR(MAX)) as Remark,
+            CAST(H.IdentificationTypeDesc AS NVARCHAR(MAX)) as NationalIDInfo,
+            CAST(H.IdentificationNumber AS NVARCHAR(MAX)) as NationalIDNo,
+            CAST(I.IdOtherInfo1 AS NVARCHAR(MAX)) as IdOtherInfo1,
+            CAST(I.IdNo1 AS NVARCHAR(MAX)) as IdNo1,
+            CAST(I.IdOtherInfo2 AS NVARCHAR(MAX)) as IdOtherInfo2,
+            CAST(I.IdNo2 AS NVARCHAR(MAX)) as IdNo2,
+            CAST(I.IdOtherInfo3 AS NVARCHAR(MAX)) as IdOtherInfo3,
+            CAST(I.IdNo3 AS NVARCHAR(MAX)) as IdNo3,
+            CAST(I.IdOtherInfo4 AS NVARCHAR(MAX)) as IdOtherInfo4,
+            CAST(I.IdNo4 AS NVARCHAR(MAX)) as IdNo4,
+            CAST(I.IdOtherInfo5 AS NVARCHAR(MAX)) as IdOtherInfo5,
+            CAST(I.IdNo5 AS NVARCHAR(MAX)) as IdNo5,
+            CAST(J.Nationality AS NVARCHAR(MAX)) as Nationality,
+            CAST(K.Citizenship AS NVARCHAR(MAX)) as Citizenship
+        INTO #TempLengths
+        FROM Entity A WITH (NOLOCK)
+        LEFT JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
+        LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+        LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
+        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+        LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+        LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
+        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
+        LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
+        LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
+        WHERE (p.EntityGUID IS NULL AND isnull(F.SourceName, G.SourceName) IS NULL)
+           OR isnull(F.SourceName, G.SourceName) IS NOT NULL
+    """)
+
+    # Target limits (from Module 4 target table)
+    target_limits = {
+        "ReferenceID": 50,
+        "EntityType": 50,
+        "Gender": 50,
+        "FirstName": 4000,
+        "LastName": 250,
+        "SecondName": 500,
+        "Title": 250,
+        "DOB": 92,
+        "AddressLine1": 255,
+        "AddressLine2": 255,
+        "City": 50,
+        "Country": 100,
+        "POB": 50,
+        "WLType": 100,
+        "Remark": 4000,
+        "NationalIDInfo": 250,
+        "NationalIDNo": 250,
+        "IdOtherInfo1": 250,
+        "IdNo1": 250,
+        "IdOtherInfo2": 250,
+        "IdNo2": 250,
+        "IdOtherInfo3": 250,
+        "IdNo3": 250,
+        "IdOtherInfo4": 250,
+        "IdNo4": 250,
+        "IdOtherInfo5": 250,
+        "IdNo5": 250,
+        "Citizenship": 100
+    }
+
+    print("\n=== SCANNING COLUMN LENGTHS ===")
+    for col, limit in target_limits.items():
+        cursor.execute(f"SELECT MAX(LEN({col})) FROM #TempLengths")
+        max_len = cursor.fetchone()[0]
+        if max_len is None:
+            max_len = 0
+        if max_len > limit:
+            print(f"!!! COLUMN '{col}' EXCEEDS LIMIT! Max Length: {max_len} | Limit: {limit}")
+        else:
+            print(f"Column '{col}': Max Length: {max_len} | Limit: {limit} (OK)")
+
+    cursor.close()
+    conn.close()
+
+if __name__ == "__main__":
+    main()
