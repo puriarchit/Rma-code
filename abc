@@ -1,19 +1,41 @@
--- 1. Total count check
-SELECT 'LexisNexis_Data' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Data.dbo.NegativeList_New1
-UNION ALL
-SELECT 'LexisNexis_Staging' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Staging.dbo.NegativeList_New1;
+# -*- coding: utf-8 -*-
+import json
+import os
+import pyodbc
 
--- 2. Category counts checks
-SELECT 'LexisNexis_Data' AS DbName, 
-       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
-       COUNT(*) AS Count 
-FROM LexisNexis_Data.dbo.NegativeList_New1 
-WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
-GROUP BY WLType
-UNION ALL
-SELECT 'LexisNexis_Staging' AS DbName, 
-       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
-       COUNT(*) AS Count 
-FROM LexisNexis_Staging.dbo.NegativeList_New1 
-WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
-GROUP BY WLType;
+def load_config() -> dict:
+    config_path = r"D:\LexisNexis\config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def main():
+    config = load_config()
+    db = config["database"]
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection=yes;"
+    conn = pyodbc.connect(conn_str, autocommit=True)
+    cursor = conn.cursor()
+
+    # Get EntityGUID of 10001598
+    cursor.execute("SELECT EntityGUID FROM Entity WHERE EntityID = '10001598'")
+    guid = cursor.fetchone()
+    if not guid:
+        print("Entity 10001598 not found.")
+        return
+    guid = guid[0]
+    print(f"EntityGUID for 10001598: {guid}")
+
+    # Check raw EntityDOB in LexisNexis_Data
+    cursor.execute("""
+        SELECT EntityDOBGUID, BirthYear, BirthMonth, BirthDay
+        FROM EntityDOB
+        WHERE EntityGUID = ?
+    """, (guid,))
+    print("\n--- Production Raw DOBs ---")
+    for row in cursor.fetchall():
+        print(f"GUID: {row[0]} | Year: {row[1]} | Month: {row[2]} | Day: {row[3]}")
+
+    cursor.close()
+    conn.close()
+
+if __name__ == "__main__":
+    main()
