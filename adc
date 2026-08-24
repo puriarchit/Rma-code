@@ -11,43 +11,46 @@ def load_config() -> dict:
 def main():
     config = load_config()
     db = config["database"]
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection=yes;"
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection=yes;"
     conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
+    # Get EntityGUID of 7416380
+    cursor.execute("SELECT EntityGUID FROM Entity WHERE EntityID = '7416380'")
+    guid = cursor.fetchone()
+    if not guid:
+        print("Entity 7416380 not found.")
+        return
+    guid = guid[0]
+    print(f"EntityGUID for 7416380: {guid}")
+
+    # Query raw EntityIdentification in Staging (loaded from file)
     cursor.execute("""
-        SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_NAME = 'NegativeList_New1'
-        ORDER BY ORDINAL_POSITION
-    """)
-    cols = cursor.fetchall()
-    
-    print("\n=== PRODUCTION SCHEMA OF NegativeList_New1 ===")
-    sql_defs = []
-    for col in cols:
-        name = col[0]
-        dtype = col[1]
-        length = col[2]
-        nullable = "NULL" if col[3] == "YES" else "NOT NULL"
-        
-        if length == -1 or length is None:
-            len_str = "MAX"
-        else:
-            len_str = str(length)
-            
-        type_str = f"{dtype}({len_str})" if dtype in ["nvarchar", "varchar", "char", "nchar"] else dtype
-        
-        print(f"[{name}] [{type_str}] {nullable}")
-        sql_defs.append(f"            [{name}] [{type_str}] {nullable}")
-        
-    print("\n--- Copy-paste this SQL block for table creation: ---")
-    print("CREATE TABLE [dbo].[NegativeList_New1](")
-    print(",\n".join(sql_defs))
-    print(") WITH (DATA_COMPRESSION = PAGE)")
+        SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber, LastUpdated
+        FROM EntityIdentification
+        WHERE EntityGUID = ?
+    """, (guid,))
+    print("\n--- Staging (Python) Raw Identifications ---")
+    for row in cursor.fetchall():
+        print(f"GUID: {row[0]} | Type: {row[1]} | Number: {row[2]} | LastUpdated: {row[3]}")
+
+    # Query raw EntityIdentification in Production
+    conn_prod_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection=yes;"
+    conn_prod = pyodbc.connect(conn_prod_str, autocommit=True)
+    cursor_prod = conn_prod.cursor()
+    cursor_prod.execute("""
+        SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber, LastUpdated
+        FROM EntityIdentification
+        WHERE EntityGUID = ?
+    """, (guid,))
+    print("\n--- Production (SSIS) Raw Identifications ---")
+    for row in cursor_prod.fetchall():
+        print(f"GUID: {row[0]} | Type: {row[1]} | Number: {row[2]} | LastUpdated: {row[3]}")
 
     cursor.close()
+    cursor_prod.close()
     conn.close()
+    conn_prod.close()
 
 if __name__ == "__main__":
     main()
