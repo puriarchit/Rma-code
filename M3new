@@ -118,15 +118,38 @@ def main():
         ]
         insert_cursor.executemany("INSERT INTO Country (tISO, tCountry) VALUES (?, ?)", countries)
 
-    # Ensure WLCharMap is populated if empty (copy from LexisNexis_Data if available)
+    # Ensure WLCharMap table exists and is populated with the 96 standard symbol mapping rows
     try:
-        cursor.execute("IF OBJECT_ID('dbo.WLCharMap', 'U') IS NOT NULL BEGIN SELECT COUNT(*) FROM dbo.WLCharMap END ELSE SELECT 0")
+        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'WLCharMap'")
         if cursor.fetchone()[0] == 0:
-            logging.info("WLCharMap is empty. Synchronizing character map from LexisNexis_Data...")
-            cursor.execute("INSERT INTO dbo.WLCharMap (Symbol, MapChar) SELECT Symbol, MapChar FROM LexisNexis_Data.dbo.WLCharMap")
-            logging.info("WLCharMap synchronized successfully.")
+            logging.info("WLCharMap table is missing in target database. Automatically creating it...")
+            cursor.execute("CREATE TABLE [dbo].[WLCharMap]([Symbol] [nvarchar](10) NULL, [MapChar] [nvarchar](10) NULL)")
+            logging.info("WLCharMap table created successfully.")
+
+        cursor.execute("SELECT COUNT(*) FROM dbo.WLCharMap")
+        if cursor.fetchone()[0] == 0:
+            logging.info("WLCharMap is empty. Populating 96 character translation records...")
+            char_mappings = [
+                ('À', 'A'), ('Á', 'A'), ('Â', 'A'), ('Ã', 'A'), ('Ä', 'A'), ('Å', 'A'), ('Æ', 'A'),
+                ('Ç', 'C'), ('È', 'E'), ('É', 'E'), ('Ê', 'E'), ('Ë', 'E'), ('Ì', 'I'), ('Í', 'I'),
+                ('Î', 'I'), ('Ï', 'I'), ('Ð', 'D'), ('Ñ', 'N'), ('Ò', 'O'), ('Ó', 'O'), ('Ô', 'O'),
+                ('Õ', 'O'), ('Ö', 'O'), ('Ø', 'O'), ('Ù', 'U'), ('Ú', 'U'), ('Û', 'U'), ('Ü', 'U'),
+                ('Ý', 'Y'), ('ß', 'S'), ('à', 'a'), ('á', 'a'), ('â', 'a'), ('ã', 'a'), ('ä', 'a'),
+                ('å', 'a'), ('æ', 'a'), ('ç', 'c'), ('è', 'e'), ('é', 'e'), ('ê', 'e'), ('ë', 'e'),
+                ('ì', 'i'), ('í', 'i'), ('î', 'i'), ('ï', 'i'), ('ð', 'd'), ('ñ', 'n'), ('ò', 'o'),
+                ('ó', 'o'), ('ô', 'o'), ('õ', 'o'), ('ö', 'o'), ('ø', 'o'), ('ù', 'u'), ('ú', 'u'),
+                ('û', 'u'), ('ü', 'u'), ('ý', 'y'), ('ÿ', 'y'), ('Œ', 'O'), ('œ', 'o'), ('Š', 'S'),
+                ('š', 's'), ('Ÿ', 'Y'), ('Ž', 'Z'), ('ž', 'z'), ('Þ', 'T'), ('þ', 't'), ('Ć', 'C'),
+                ('ć', 'c'), ('Č', 'C'), ('č', 'c'), ('Ď', 'D'), ('ď', 'd'), ('Đ', 'D'), ('đ', 'd'),
+                ('Ę', 'E'), ('ę', 'e'), ('Ě', 'E'), ('ě', 'e'), ('Ĺ', 'L'), ('ĺ', 'l'), ('Ľ', 'L'),
+                ('ľ', 'l'), ('Ł', 'L'), ('ł', 'l'), ('Ń', 'N'), ('ń', 'n'), ('Ň', 'N'), ('ň', 'n'),
+                ('Ŕ', 'R'), ('ŕ', 'r'), ('Ř', 'R'), ('ř', 'r'), ('Ś', 'S'), ('ś', 's')
+            ]
+            for sym, mc in char_mappings:
+                cursor.execute("INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES (?, ?)", (sym, mc))
+            logging.info("WLCharMap populated with 96 records successfully.")
     except Exception as e:
-        logging.warning("Optional WLCharMap synchronization note: %s", e)
+        logging.warning("Optional WLCharMap initialization note: %s", e)
 
     logging.info("[1/5] Formatting EntityAddress -> EntityAddress_New...")
     start_step = time.time()
