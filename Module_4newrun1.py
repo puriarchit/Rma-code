@@ -100,7 +100,7 @@ def main():
             [City] [nvarchar](50) NULL,
             [Country] [nvarchar](100) NULL,
             [POB] [nvarchar](50) NULL,
-            [WLType] [nvarchar](50) NULL,
+            [WLType] [nvarchar](100) NULL,
             [OriginalSource] [nvarchar](MAX) NULL,
             [Remark] [nvarchar](4000) NULL,
             [NationalIDInfo] [nvarchar](250) NULL,
