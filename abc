@@ -1,3 +1,3 @@
-SELECT AssociationTypeDesc, COUNT(*) 
-FROM LexisNexis_Data.dbo.EntityCountryAssociation 
-GROUP BY AssociationTypeDesc;
+SELECT 'LexisNexis_Data' AS Db, COUNT(*) AS CountryCount FROM LexisNexis_Data.dbo.Country
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, COUNT(*) AS CountryCount FROM LexisNexis_Staging.dbo.Country;
