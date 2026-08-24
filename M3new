@@ -1,4 +1,4 @@
- -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import json
 import os
 import pyodbc
@@ -599,7 +599,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
 
