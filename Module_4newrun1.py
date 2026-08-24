@@ -153,6 +153,32 @@ def main():
 
     logging.info("Temporary lookup tables created in %.2f seconds.", time.time() - step_start)
 
+    # Database diagnostics to investigate remaining row count discrepancies
+    try:
+        cursor.execute("SELECT COUNT(DISTINCT EntityGUID) FROM #PEP_GUIDs")
+        pep_guids_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM EntityCountryAssociation WHERE AssociationTypeDesc = 'PEP'")
+        raw_pep_assoc_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM #TempNationalities")
+        temp_nat_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT EntityGUID) FROM #TempNationalities")
+        temp_nat_dist_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM EntityAddress_New")
+        addr_new_cnt = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(DISTINCT EntityGUID) FROM EntityAddress_New")
+        addr_new_dist_cnt = cursor.fetchone()[0]
+        
+        logging.info("=== DIAGNOSTICS ===")
+        logging.info(f"Distinct PEP GUIDs in #PEP_GUIDs: {pep_guids_cnt}")
+        logging.info(f"Raw 'PEP' rows in EntityCountryAssociation: {raw_pep_assoc_cnt}")
+        logging.info(f"Total rows in #TempNationalities: {temp_nat_cnt}")
+        logging.info(f"Distinct GUIDs in #TempNationalities: {temp_nat_dist_cnt}")
+        logging.info(f"Total rows in EntityAddress_New: {addr_new_cnt}")
+        logging.info(f"Distinct GUIDs in EntityAddress_New: {addr_new_dist_cnt}")
+        logging.info("===================")
+    except Exception as diag_ex:
+        logging.warning("Failed to collect diagnostics: %s", diag_ex)
+
     if ROW_LIMIT is not None:
         cte_prefix = f"""
         ;WITH Batch AS (
@@ -287,4 +313,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
