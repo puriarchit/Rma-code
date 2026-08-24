@@ -235,8 +235,13 @@ def main():
         ),
         POB_Data AS (
             SELECT EntityGUID, City AS POB
-            FROM EntityAddress
-            WHERE AddressTypeDesc = 'Place Of Birth'
+            FROM (
+                SELECT EntityGUID, City,
+                       ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY (SELECT NULL)) as rn
+                FROM EntityAddress
+                WHERE AddressTypeDesc = 'Place Of Birth'
+            ) t
+            WHERE rn = 1
         ),
         Country_Data AS (
             SELECT tISO, tCountry AS CountryName
@@ -358,7 +363,7 @@ def main():
             SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
                    COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
             FROM EntityIdentification
-            WHERE IdentificationTypeDesc LIKE 'National Id%'
+            WHERE IdentificationTypeDesc COLLATE SQL_Latin1_General_CP1_CS_AS LIKE 'National Id%'
         )
         INSERT INTO EntityIdentification_National (EntityGUID, IdentificationTypeDesc, IdentificationNumber)
         SELECT EntityGUID, SUBSTRING(IdentificationTypeDesc, 1, 85), SUBSTRING(IdentificationNumber, 1, 50)
@@ -371,7 +376,7 @@ def main():
             SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
                    COUNT(*) OVER (PARTITION BY EntityGUID) as cnt
             FROM EntityIdentification
-            WHERE IdentificationTypeDesc LIKE 'National Id%'
+            WHERE IdentificationTypeDesc COLLATE SQL_Latin1_General_CP1_CS_AS LIKE 'National Id%'
         )
         SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber
         FROM Scanned
@@ -589,4 +594,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
