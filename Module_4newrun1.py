@@ -100,7 +100,7 @@ def main():
             [City] [nvarchar](50) NULL,
             [Country] [nvarchar](100) NULL,
             [POB] [nvarchar](50) NULL,
-            [WLType] [nvarchar](100) NULL,
+            [WLType] [nvarchar](250) NULL,
             [OriginalSource] [nvarchar](MAX) NULL,
             [Remark] [nvarchar](4000) NULL,
             [NationalIDInfo] [nvarchar](250) NULL,
@@ -216,7 +216,7 @@ def main():
             CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB,
-            CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 100) AS NVARCHAR(100)) as WLType,
+            CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 250) AS NVARCHAR(250)) as WLType,
             E.SourceURI as OriginalSource,
             D.Remark,
             H.IdentificationTypeDesc as NationalIDInfo,
@@ -313,4 +313,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
