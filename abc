@@ -1,3 +1,18 @@
-SELECT 'LexisNexis_Data' AS Db, COUNT(*) AS CountryCount FROM LexisNexis_Data.dbo.Country
-UNION ALL
-SELECT 'LexisNexis_Staging' AS Db, COUNT(*) AS CountryCount FROM LexisNexis_Staging.dbo.Country;
+SELECT COALESCE(d.WLType, s.WLType) AS WLType, 
+       ISNULL(d.Count, 0) AS DataCount, 
+       ISNULL(s.Count, 0) AS StagingCount,
+       ISNULL(d.Count, 0) - ISNULL(s.Count, 0) AS Diff
+FROM (
+    SELECT WLType COLLATE SQL_Latin1_General_CP1_CI_AS AS WLType, COUNT(*) AS Count 
+    FROM LexisNexis_Data.dbo.NegativeList_New1 
+    WHERE WLType IS NOT NULL AND (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) <> 'PEP'
+    GROUP BY WLType
+) d
+FULL OUTER JOIN (
+    SELECT WLType COLLATE SQL_Latin1_General_CP1_CI_AS AS WLType, COUNT(*) AS Count 
+    FROM LexisNexis_Staging.dbo.NegativeList_New1 
+    WHERE WLType IS NOT NULL AND (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) <> 'PEP'
+    GROUP BY WLType
+) s ON d.WLType = s.WLType
+WHERE ISNULL(d.Count, 0) - ISNULL(s.Count, 0) <> 0
+ORDER BY ABS(ISNULL(d.Count, 0) - ISNULL(s.Count, 0)) DESC;
