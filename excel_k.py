@@ -1,4 +1,4 @@
- #-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import json
 import os
 import sys
@@ -143,6 +143,7 @@ def main():
                 p_vals = [str(x) if x is not None else "" for x in python_row] if python_row else [""] * len(all_columns)
                 
                 match_vals = []
+                for col_name, sv, pv in zip(all_columns, s_vals, p_vals):
                     # Clean encoding noise for compare
                     sv_clean = sv.replace("Ã§", "ç").replace("Ãº", "ú").replace("Ã±", "ñ").replace("â€“", "–").replace("Ã³", "ó").replace("Ã©", "é").replace("Â¶", "¶")
                     
