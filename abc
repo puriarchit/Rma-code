@@ -1,18 +1,12 @@
--- 1. Total row count bina UNION ke alag-alag check karein
-SELECT 'LexisNexis_Data' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Data.dbo.NegativeList_New1;
-SELECT 'LexisNexis_Staging' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Staging.dbo.NegativeList_New1;
-
--- 2. Collation error resolve karke categories count check karein
-SELECT 'LexisNexis_Data' AS DbName, 
-       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
-       COUNT(*) AS Count 
-FROM LexisNexis_Data.dbo.NegativeList_New1 
-WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
-GROUP BY WLType;
-
-SELECT 'LexisNexis_Staging' AS DbName, 
-       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
-       COUNT(*) AS Count 
-FROM LexisNexis_Staging.dbo.NegativeList_New1 
-WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
-GROUP BY WLType;
+-- Raw tables ke counts side-by-side compare karein
+SELECT 'LexisNexis_Data' AS Db, 'Entity' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.Entity
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, 'Entity' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.Entity
+UNION ALL
+SELECT 'LexisNexis_Data' AS Db, 'EntityCountryAssociation' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityCountryAssociation
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, 'EntityCountryAssociation' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityCountryAssociation
+UNION ALL
+SELECT 'LexisNexis_Data' AS Db, 'EntityAddress' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityAddress
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, 'EntityAddress' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityAddress;
