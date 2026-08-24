@@ -82,8 +82,8 @@ def main():
     logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](<
-            [EntityGUID] [nvarchar](50>) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](
+            [EntityGUID] [nvarchar](50) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -168,7 +168,7 @@ def main():
 
     logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
 
-    # Stage 1: Non-PEP Profiles (Strict AND Condition)
+    # Stage 1: Non-PEP Profiles
     logging.info("  [3/4] [Stage 1/2] Consolidating Non-PEP profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
@@ -214,8 +214,6 @@ def main():
         WHERE p.EntityGUID IS NULL AND (isnull(F.SourceName, G.SourceName) IS NULL OR isnull(F.SourceName, G.SourceName) <> 'PEP')
         OPTION (MERGE JOIN, RECOMPILE)
     """)
-    logging.info("  [3/4] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
-
     # Stage 2: PEP Profiles
     logging.info("  [3/4] [Stage 2/2] Consolidating PEP profiles...")
     stage2_start = time.time()
@@ -253,8 +251,8 @@ def main():
         LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
         LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
         LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
-        LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
-        LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+        --LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+        --LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
         LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
@@ -289,3 +287,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
