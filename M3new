@@ -450,7 +450,7 @@ def main():
     cursor.execute("""
         INSERT INTO EntityIdentification_Test (EntityGUID, IdentificationTypeDesc, IdentificationNumber, row_rank)
         SELECT P.EntityGUID, P.IdentificationTypeDesc, P.IdentificationNumber,
-               ROW_NUMBER() OVER (PARTITION BY P.EntityGUID ORDER BY P.IdentificationNumber DESC) as row_rank
+               ROW_NUMBER() OVER (PARTITION BY P.EntityGUID ORDER BY P.EntityGUID DESC) as row_rank
         FROM (
             SELECT EntityGUID, 
                    CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
@@ -462,6 +462,7 @@ def main():
                 WHERE n.EntityGUID = e.EntityGUID
             )
         ) P
+        GROUP BY P.EntityGUID, P.IdentificationTypeDesc, P.IdentificationNumber
     """)
 
     cursor.execute("""
@@ -594,5 +595,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
