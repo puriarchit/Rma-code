@@ -216,7 +216,7 @@ def main():
             CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB,
-            CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 50) AS NVARCHAR(50)) as WLType,
+            CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 100) AS NVARCHAR(100)) as WLType,
             E.SourceURI as OriginalSource,
             D.Remark,
             H.IdentificationTypeDesc as NationalIDInfo,
@@ -236,7 +236,8 @@ def main():
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-        WHERE p.EntityGUID IS NULL AND (isnull(F.SourceName, G.SourceName) IS NULL OR isnull(F.SourceName, G.SourceName) <> 'PEP')
+        WHERE (p.EntityGUID IS NULL AND isnull(F.SourceName, G.SourceName) IS NULL)
+           OR isnull(F.SourceName, G.SourceName) IS NOT NULL
         OPTION (MERGE JOIN, RECOMPILE)
     """)
     # Stage 2: PEP Profiles
@@ -312,3 +313,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
