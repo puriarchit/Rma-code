@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ -*- coding: utf-8 -*-
 import json
 import os
 import pyodbc
@@ -449,20 +449,24 @@ def main():
 
     cursor.execute("""
         INSERT INTO EntityIdentification_Test (EntityGUID, IdentificationTypeDesc, IdentificationNumber, row_rank)
-        SELECT P.EntityGUID, P.IdentificationTypeDesc, P.IdentificationNumber,
-               ROW_NUMBER() OVER (PARTITION BY P.EntityGUID ORDER BY P.EntityGUID DESC) as row_rank
+        SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
+               ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY MaxGUID DESC) as row_rank
         FROM (
-            SELECT EntityGUID, 
-                   CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
-                   CASE WHEN LEN(IdentificationNumber) < 50 THEN IdentificationNumber ELSE SUBSTRING(IdentificationNumber, 1, 50) END AS IdentificationNumber
-            FROM EntityIdentification e
-            WHERE NOT EXISTS (
-                SELECT 1 
-                FROM EntityIdentification_National_New n 
-                WHERE n.EntityGUID = e.EntityGUID
-            )
+            SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
+                   MAX(EntityIdentificationGUID) as MaxGUID
+            FROM (
+                SELECT EntityGUID, EntityIdentificationGUID,
+                       CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
+                       CASE WHEN LEN(IdentificationNumber) < 50 THEN IdentificationNumber ELSE SUBSTRING(IdentificationNumber, 1, 50) END AS IdentificationNumber
+                FROM EntityIdentification e
+                WHERE NOT EXISTS (
+                    SELECT 1 
+                    FROM EntityIdentification_National_New n 
+                    WHERE n.EntityGUID = e.EntityGUID
+                )
+            ) t
+            GROUP BY EntityGUID, IdentificationTypeDesc, IdentificationNumber
         ) P
-        GROUP BY P.EntityGUID, P.IdentificationTypeDesc, P.IdentificationNumber
     """)
 
     cursor.execute("""
