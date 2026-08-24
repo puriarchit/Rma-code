@@ -1,9 +1,11 @@
--- 1. LexisNexis_Data (SSIS) ke raw PEP profiles count
-SELECT COUNT(DISTINCT EntityGUID) 
-FROM LexisNexis_Data.dbo.EntityCountryAssociation 
-WHERE AssociationTypeDesc = 'PEP';
+-- 1. LexisNexis_Data (SSIS) mein kitne PEPs Entity table se match hote hain
+SELECT COUNT(DISTINCT ca.EntityGUID) 
+FROM LexisNexis_Data.dbo.EntityCountryAssociation ca
+INNER JOIN LexisNexis_Data.dbo.Entity e ON ca.EntityGUID = e.EntityGUID
+WHERE ca.AssociationTypeDesc = 'PEP';
 
--- 2. LexisNexis_Staging (Python) ke raw PEP profiles count
-SELECT COUNT(DISTINCT EntityGUID) 
-FROM LexisNexis_Staging.dbo.EntityCountryAssociation 
-WHERE AssociationTypeDesc = 'PEP';
+-- 2. LexisNexis_Staging (Python) mein kitne PEPs Entity table se match hote hain
+SELECT COUNT(DISTINCT ca.EntityGUID) 
+FROM LexisNexis_Staging.dbo.EntityCountryAssociation ca
+INNER JOIN LexisNexis_Staging.dbo.Entity e ON ca.EntityGUID = e.EntityGUID
+WHERE ca.AssociationTypeDesc = 'PEP';
