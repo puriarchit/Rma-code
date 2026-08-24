@@ -1,19 +1,18 @@
--- 1. Dono databases ka total row count side-by-side
-SELECT 'LexisNexis_Data' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Data.dbo.NegativeList_New1
-UNION ALL
+-- 1. Total row count bina UNION ke alag-alag check karein
+SELECT 'LexisNexis_Data' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Data.dbo.NegativeList_New1;
 SELECT 'LexisNexis_Staging' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Staging.dbo.NegativeList_New1;
 
--- 2. Dono databases ka key categories count side-by-side
+-- 2. Collation error resolve karke categories count check karein
 SELECT 'LexisNexis_Data' AS DbName, 
-       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType END AS Category, 
+       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
        COUNT(*) AS Count 
 FROM LexisNexis_Data.dbo.NegativeList_New1 
-WHERE WLType IS NULL OR WLType = 'PEP'
-GROUP BY WLType
-UNION ALL
+WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
+GROUP BY WLType;
+
 SELECT 'LexisNexis_Staging' AS DbName, 
-       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType END AS Category, 
+       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
        COUNT(*) AS Count 
 FROM LexisNexis_Staging.dbo.NegativeList_New1 
-WHERE WLType IS NULL OR WLType = 'PEP'
+WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
 GROUP BY WLType;
