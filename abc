@@ -1,16 +1,3 @@
-SELECT COUNT(*)
-FROM LexisNexis_Data.dbo.Entity A
-LEFT JOIN LexisNexis_Data.dbo.EntityDOB_New B ON A.EntityGUID = B.EntityGUID
-LEFT JOIN LexisNexis_Data.dbo.EntityAddress_New C ON A.EntityGUID = C.EntityGUID
-LEFT JOIN LexisNexis_Data.dbo.EntityRemark_New D ON A.EntityGUID = D.EntityGUID
-LEFT JOIN LexisNexis_Data.dbo.EntitySourceItem_New E ON A.EntityGUID = E.EntityGUID
-LEFT JOIN LexisNexis_Data.dbo.EntityIdentification_National_New H ON A.EntityGUID = H.EntityGUID
-LEFT JOIN LexisNexis_Data.dbo.EntityIdentification_New I ON A.EntityGUID = I.EntityGUID
-LEFT JOIN (
-    SELECT A.EntityGUID, B.Nationality 
-    FROM (SELECT EntityGUID, ISOStandard FROM LexisNexis_Data.dbo.EntityCountryAssociation WHERE AssociationTypeDesc = 'Nationality') A
-    LEFT JOIN (SELECT tCountry Nationality, tISO FROM LexisNexis_Data.dbo.Country) B ON A.ISOStandard = B.tISO
-) J ON A.EntityGUID = J.EntityGUID
-LEFT JOIN LexisNexis_Data.dbo.Entity_Citizenship_New K ON A.EntityGUID = K.EntityGUID 
-LEFT JOIN (SELECT DISTINCT EntityGUID FROM LexisNexis_Data.dbo.[EntityCountryAssociation] WHERE AssociationTypeDesc = 'PEP') L ON L.EntityGUID = A.EntityGUID
-WHERE L.EntityGUID IS NOT NULL;
+SELECT WLType, COUNT(*) as Count 
+FROM LexisNexis_Data.dbo.NegativeList_New1 
+GROUP BY WLType;
