@@ -191,6 +191,37 @@ def main():
         cte_prefix = ""
         from_clause = "FROM Entity A WITH (NOLOCK)"
 
+    # Load character translation map
+    cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
+    char_map = cursor.fetchall()
+    
+    def get_translate_sql(expr):
+        sql = expr
+        for sym, mc in char_map:
+            sym_esc = sym.replace("'", "''")
+            mc_esc = mc.replace("'", "''")
+            sql = f"REPLACE({sql}, N'{sym_esc}', N'{mc_esc}')"
+        return sql
+
+    T_FirstName = get_translate_sql("ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,'')")
+    T_LastName = get_translate_sql("ISNULL(A.LastName,'')")
+    T_SecondName = get_translate_sql("ISNULL(A.Name,'')")
+
+    FN_Expr = f"""CAST(SUBSTRING(
+        CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
+             THEN {T_LastName} 
+             ELSE {T_FirstName} 
+        END, 1, 4000) AS NVARCHAR(4000))"""
+
+    LN_Expr = f"""CAST(SUBSTRING(
+        CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
+             THEN '' 
+             ELSE {T_LastName} 
+        END, 1, 250) AS NVARCHAR(250))"""
+
+    SN_Expr = f"""CAST(SUBSTRING(
+        REPLACE(REPLACE(REPLACE({T_SecondName}, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500))"""
+
     logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
 
     # Stage 1: Non-PEP Profiles
@@ -210,9 +241,9 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
-            CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
+            {FN_Expr} as FirstName,
+            {LN_Expr} as LastName,
+            {SN_Expr} as SecondName,
             CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB,
