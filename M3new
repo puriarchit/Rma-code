@@ -148,45 +148,6 @@ def main():
             for sym, mc in char_mappings:
                 cursor.execute("INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES (?, ?)", (sym, mc))
             logging.info("WLCharMap populated with 96 records successfully.")
-
-        # Apply character translation to raw staging tables using a high-performance T-SQL cursor
-        logging.info("Applying character translation mapping to raw staging tables...")
-        cursor.execute("""
-            DECLARE @sym nvarchar(10), @mc nvarchar(10);
-            DECLARE char_cursor CURSOR FOR SELECT Symbol, MapChar FROM dbo.WLCharMap;
-            OPEN char_cursor;
-            FETCH NEXT FROM char_cursor INTO @sym, @mc;
-            WHILE @@FETCH_STATUS = 0
-            BEGIN
-                UPDATE dbo.Entity SET 
-                    FirstName = REPLACE(FirstName, @sym, @mc), 
-                    LastName = REPLACE(LastName, @sym, @mc), 
-                    Name = REPLACE(Name, @sym, @mc), 
-                    Title = REPLACE(Title, @sym, @mc)
-                WHERE FirstName LIKE '%' + @sym + '%' OR LastName LIKE '%' + @sym + '%' OR Name LIKE '%' + @sym + '%' OR Title LIKE '%' + @sym + '%';
-                
-                UPDATE dbo.EntityAddress SET 
-                    Address1 = REPLACE(Address1, @sym, @mc), 
-                    Address2 = REPLACE(Address2, @sym, @mc), 
-                    City = REPLACE(City, @sym, @mc)
-                WHERE Address1 LIKE '%' + @sym + '%' OR Address2 LIKE '%' + @sym + '%' OR City LIKE '%' + @sym + '%';
-                
-                UPDATE dbo.EntityAlias SET 
-                    FirstName = REPLACE(FirstName, @sym, @mc), 
-                    LastName = REPLACE(LastName, @sym, @mc), 
-                    Name = REPLACE(Name, @sym, @mc)
-                WHERE FirstName LIKE '%' + @sym + '%' OR LastName LIKE '%' + @sym + '%' OR Name LIKE '%' + @sym + '%';
-                
-                UPDATE dbo.EntityRemark SET 
-                    Remark = REPLACE(Remark, @sym, @mc)
-                WHERE Remark LIKE '%' + @sym + '%';
-                
-                FETCH NEXT FROM char_cursor INTO @sym, @mc;
-            END;
-            CLOSE char_cursor;
-            DEALLOCATE char_cursor;
-        """)
-        logging.info("Character translation mapping applied successfully.")
     except Exception as e:
         logging.warning("Optional WLCharMap initialization note: %s", e)
 
@@ -628,3 +589,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
