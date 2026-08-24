@@ -1,12 +1,3 @@
--- Raw tables ke counts side-by-side compare karein
-SELECT 'LexisNexis_Data' AS Db, 'Entity' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.Entity
-UNION ALL
-SELECT 'LexisNexis_Staging' AS Db, 'Entity' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.Entity
-UNION ALL
-SELECT 'LexisNexis_Data' AS Db, 'EntityCountryAssociation' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityCountryAssociation
-UNION ALL
-SELECT 'LexisNexis_Staging' AS Db, 'EntityCountryAssociation' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityCountryAssociation
-UNION ALL
-SELECT 'LexisNexis_Data' AS Db, 'EntityAddress' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityAddress
-UNION ALL
-SELECT 'LexisNexis_Staging' AS Db, 'EntityAddress' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityAddress;
+SELECT AddressTypeDesc, COUNT(*) 
+FROM LexisNexis_Data.dbo.EntityAddress 
+GROUP BY AddressTypeDesc;
