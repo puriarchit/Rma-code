@@ -82,8 +82,8 @@ def main():
     logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](<
-            [EntityGUID] [nvarchar](50>) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](
+            [EntityGUID] [nvarchar](50) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -168,7 +168,7 @@ def main():
 
     logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
 
-    # Stage 1: Non-PEP Profiles (Strict AND Condition)
+    # Stage 1: Non-PEP Profiles
     logging.info("  [3/4] [Stage 1/2] Consolidating Non-PEP profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
@@ -242,3 +242,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
