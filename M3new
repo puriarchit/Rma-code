@@ -242,12 +242,17 @@ def main():
             SELECT *, COUNT(*) OVER (PARTITION BY EntityGUID) as rank_count
             FROM EntityAddress2
             WHERE Rank = 1
+        ),
+        Numbered AS (
+            SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength,
+                   ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY AddressLength DESC) as rn
+            FROM RankCounts
+            WHERE rank_count > 1
         )
         INSERT INTO EntityAddress3 (EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength, rn)
-        SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength,
-               ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY AddressLength DESC) as rn
-        FROM RankCounts
-        WHERE rank_count > 1
+        SELECT EntityGUID, AddressLine1, AddressLine2, City, CountryCode, AddressLength, rn
+        FROM Numbered
+        WHERE rn = 1
     """)
 
     cursor.execute("""
@@ -623,4 +628,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
