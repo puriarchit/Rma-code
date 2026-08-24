@@ -55,3 +55,971 @@ GROUP BY WLType;
 SELECT WLType, COUNT(*) as Count 
 FROM LexisNexis_Staging.dbo.NegativeList_New1 
 GROUP BY WLType;
+
+
+
+AE- Dubai Financial Services Authority 	2
+AL-Albanian State Police	11
+AM-Central Bank of Armenia-Domestic List	2
+AR-AdministraciÃ³n Federal de Ingresos PÃºblicos	5
+AR-Comision Nacional de Valores	1
+AR-Ministerio de Justicia y Derechos Humanos	1
+AT-Austrian Competition Authority	6
+AU-Fair Work Ombudsman	12
+BA-The Court of Bosnia and Herzegovina	19
+BA-The Prosecutor's Office of B&H	18
+BG-Bulgarian Supreme Court of Cassation	5
+BR - MinistÃ©rio PÃºblico do Acre	12
+BR - MinistÃ©rio PÃºblico do Estado de GoiÃ¡s	49
+BR - MinistÃ©rio PÃºblico do Estado de SÃ£o Paulo	260
+BR - MinistÃ©rio PÃºblico do Estado do AmapÃ¡	2
+BR - MinistÃ©rio PÃºblico do Estado do Distrito Federal	2
+BR - Procuradoria da RepÃºblica no Rio de Janeiro	8
+BR - Procuradoria Geral do Estado de SÃ£o Paulo	1
+BR-Cadastro de ExpulsÃµes da AdministraÃ§Ã£o Federal	13
+BR-MinistÃ©rio da Fazenda	1
+BR-MinistÃ©rio do Trabalho e Emprego (M.T.E.) do Brasil	3
+BR-Secretaria da Receita Federal do Brasil	1
+BR-Tribunal de Contas da UniÃ£o do Brasil	3
+CA- Financial Transaction Reports Analysis Center	1
+CAâ€“Competition Bureau	6
+CA-Alberta Securities Commission	4
+CA-Autorite Des Marches Financiers	7
+CA-Ontario Securities Commission	15
+CA-RÃ©gie du BÃ¢timent QuÃ©bec - Restricted, Suspended and Canceled Licenses	1
+CA-Regulations Implementing the UN Resolutions on the Suppression of Terrorism 	1
+CA-Special Economic Measures against Belarus	15
+CA-Special Economic Measures against Iran	22
+CA-Special Economic Measures against Russia	119
+CA-Trade Restrictions Country List	1
+CH-Federal Department of Foreign Affairs-Syria	1
+CH-SIX Swiss Exchange	3
+CN-China Banking and Insurance Regulatory Commission	321
+CN-China National Development and Reform Commission	3
+CN-Ministry of Commerce	2
+CN-Ministry of Public Security-Sanction	7
+CN-Ningxia Taxation Bureau	5
+CN-People's Procuratorate-Anhui	22
+CN-People's Procuratorate-Gansu	22
+CN-People's Procuratorate-Heilongjiang	38
+CN-People's Procuratorate-Henan	22
+CN-People's Procuratorate-Jiangsu	13
+CN-People's Procuratorate-Jiangxi	23
+CN-People's Procuratorate-Neimenggo	3
+CN-People's Procuratorate-Sanxi	27
+CN-Shenzhen Stock Exchange	11
+CN-Shenzhen Taxation Bureau	54
+CN-State Administration for Market Regulation	1
+COâ€“Autorregulador del Mercado de Valores	1
+CO-ContralorÃ­a General de la RepÃºblica de Colombia	12
+CO-DirecciÃ³n de Impuestos y Aduanas Nacionales	46
+CY-Consumer Protection Service	7
+CY-Cyprus Securities and Exchange Commission	14
+CZ-Czech Office for the Protection of Competition	3
+CZ-Financial Analytical Office	1
+DE - Bundesanzeiger - courts' decisions (Germany)	6
+DK-Finanstilsynet (Financial Supervisory Authority of Denmark)	3
+ES-Catalan Competition Authority	69
+ES-Directorate General for the Regulation of Gambling	2
+ES-Interior Ministry News	1
+FR-French AutoritÃ© des marchÃ©s financiers	11
+FR-Judicial Public Interest Agreements List	4
+FR-National Gambling Authority	1
+GE-Ministry of Internal Affairs of Georgia	1
+GH-Economic and Organized Crime Office	1
+GR-The Hellenic Gaming Commission Blacklist	12
+GTâ€“Policia Nacional Civil de Guatemala 	61
+HN-Poder Judicial de Honduras 	7
+HU-Hungarian National Police	9
+ID - Indonesian Financial Services Authority	2
+ID-Attorney General of Indonesia	4
+AC-African Development Bank Group	19
+AR-Central Bank of Argentina	1
+AU - Australian National Security	19
+AU-Australian Competition and Consumer Commission	7
+AU-Australian National Security-State Sponsors of Terrorism	1
+AU-Australian Securities & Investments Commission	54
+AU-Australian Stock Exchange	3
+AU-Department of Foreign Affairs and Trade	487
+AU-Department of Foreign Affairs and Trade-Sanctions Regimes Country List	1
+BE - Royal Decree 28 December 2006	1
+BG-Commission for Combating Corruption and Withdrawal of Criminal Assets	1
+BG-National Revenue Agency	9
+BG-Prosecutor of the Republic of Bulgaria	7
+BO â€“ District Attorneyâ€™s Office	10
+BR - Administrative Council for Economic Defense	91
+BR - MinistÃ©rio PÃºblico do Estado da ParaÃ­ba	8
+BR - MinistÃ©rio PÃºblico do Estado de RondÃ´nia	2
+BR - MinistÃ©rio PÃºblico do Estado do Amazonas	11
+BR - MinistÃ©rio PÃºblico do Estado do EspÃ­ritu Santo	2
+BR - MinistÃ©rio PÃºblico do Estado do Mato Grosso	251
+BR - Procuradoria Geral do Estado do MaranhÃ£o	1
+BR - Procuradoria Geral do Estado do Rio de Janeiro	9
+BR-Acordo de LeniÃªncia	2
+BR-Cadastro de Entidades Privadas Sem Fins Lucrativos Impedidas	3
+BR-ComissÃ£o de Valores MobiliÃ¡rios do Brasil	29
+BR-Controladoria- Geral da Uniao	14
+BR-Departamento de PolÃ­cia RodoviÃ¡ria Federal do Brasil	1
+BR-FederaÃ§Ã£o Nacional dos Policiais Federais - FENAPEF (Brazil)	13
+BR-National Register of Penalized Entities	1
+BR-Portal DA Transparencia	52
+BR-Public Ministry of Piaui	20
+BR-Public Ministry of Tocantins	23
+BR-Superior Tribunal de JustiÃ§a do Brasil	926
+BY-State Security Agency of Belarus-Sanction	359
+CA- Public Safety Canada	47
+CA-Commission des valeurs mobiliÃ¨res du QuÃ©bec	2
+CA-OSFI Enforcements	3
+CA-Peel Regional Police	1
+CA-Royal Canadian Mounted Police	5
+CA-Saskatchewan - Financial and Consumer Affairs Authority	1
+CA-Saskatchewan Financial Services Commission	1
+CA-Special Economic Measures (Hamas Terrorist Attacks) Regulations	1
+CA-Special Economic Measures against Venezuela	3
+CH-Federal Department of Foreign Affairs-Venezuela	2
+CH-Gambling Supervisory Authority	3
+CL-ChileCompra	1
+CL-Fiscalia de Chile	4
+CNâ€“Peoples Procuratorate of Zhejiang Province	42
+CN-Banking Regulatory Commission	44
+CN-Chongqing Taxation Bureau	27
+CN-People's Procuratorate-Chongqing	1
+CN-People's Procuratorate-Guangxi	14
+CN-People's Procuratorate-Hainan	4
+CN-People's Procuratorate-Hunan	5
+CN-People's Procuratorate-Liaoning	2
+CN-People's Procuratorate-Xinjiang	39
+CN-Shandong Taxation Bureau	33
+CN-State Administration of Foreign Exchange	13
+CN-The People's Bank of China - Administrative Punishment	65
+CO-EjÃ©rcito Nacional de Colombia	10
+CO-FiscalÃ­a General de la NaciÃ³n, RepÃºblica de Colombia	177
+CO-Superintendencia de Industria y Comercio 	2
+CY-Central Bank of Cyprus	3
+CY-Commission for the Protection of Competition	9
+CY-National Betting Authority	16
+DE - Federal Ministry of the Interior	2
+DE-Bafin Federal Financial Supervisory Authority 	19
+DE-Federal Office for Protection of the Constitution	5
+EC - Superintendencia de CompaÃ±ias y Valores	1
+ECâ€“Policia Nacional del Ecuador	1214
+EE - Financial Supervision Authority of Estonia	4
+EE-Estonia State Gazette	1
+EG-Domestic Terrorist List	2
+ES-ComisiÃ³n Nacional del Mercado de Valores	17
+ID-Financial Transaction Reports and Analysis Center (PPATK)-UN Resolution 1737	6
+IEâ€“Central Bank of Ireland	1
+IE-Revenue Commissioners - Irish Tax & Customs	12
+IL-Bank of Israel Sanctions Committee	1
+IN-Bombay Stock Exchange	34
+IN-Financial Intelligence Unit - India	4
+IN-National Stock Exchange of India Ltd.	36
+INT-Asian Infrastructure Investment Bank	2
+INT-International Organization of Securities Commissions	164
+IQ-Central Bank of Iraq-Punished Companies	1
+IQ-Terrorist Freezing Funds Committee - International List	7
+IT - Institute for Supervision of Insurance	4
+ITâ€“Autorita Garante Concorrenze Mercato	23
+JP-Fukuoka Prefecture	5
+JP-Japanese National Police Agency	334
+JP-Kanto Local Finance Bureau	48
+JP-Ministry of Economy, Trade and Industry - Import Export Ban	43
+JP-National Public Safety Commission	4
+KR-Fair Trade Commission	358
+KR-Financial Services Commission of Korea	42
+KZ-Financial Supervision of the National Bank of Kazakhstan	2
+LT-Special Investigation Service of the Republic of Lithuania	2
+LV- Supreme Court	1
+LV-Competition Council	59
+MinistÃ¨re de l'Economie	622
+MO-Macao Asset Freezing Coordination Commission	351
+MU-Mauritius Financial Services Commission	2
+MX - UIF - Resolution 1267	280
+MX-Diario Oficial de la FederaciÃ³n	11
+MX-Servicio de AdministraciÃ³n Tributaria	138
+MX-Servicio de AdministraciÃ³n Tributaria - 69B Presuntos	121
+MX-UIF-Resolution 1737 & 2231	14
+MY-Bank Negara Malaysia	25
+MY-Courts of Malaysia (Judgments list)	3
+MY-Federation of Investment Managers Malaysia	12
+MY-Malaysia Securities Commission	13
+NL-Gaming Authority of the Netherlands	1
+NZ - Commerce Commission	3
+PA- Superintendencia del Mercado de Valores	4
+PA-Organo Judicial de Panama	8
+PE â€“ Poder Judicial de Peru	23
+PE-Agencia Fiscal de Noticias	4
+PE-Ministerio PÃºblico, Fiscalia de la NaciÃ³n (PerÃº)	44
+PH-Philippine Stock Exchange	1
+PH-Philippines National Bureau of Investigation	9
+PK-Competition Commission of Pakistan	1
+PK-National Counter Terrorism Authority-Proscribed Organizations	21
+PK-National Counter Terrorism Authority-Proscribed Persons	4
+PL-Illicit Gambling Services	19
+PY- SecretarÃ­a Nacional Antidrogas 	113
+RK-Ministry of the Interior of the Republika Srpska	7
+RO-Directorate for Investigation of Organized Crime and Terrorism (DIICOT)	8
+RO-National Integrity Agency	3
+RS-Ministry of Interior of the Republic of Serbia	4
+RU- Chief Military Prosecutor	5
+RU-Federal Security Service of the Russian Federation (FSB)	6
+RU-Presidential Sanctions Decree No. 1300	6
+RU-Presidential Sanctions Decree No. 252	1
+RU-The Central Bank of the Russian Federation	35
+SA-Permanent Counter Terrorism Committee-National List	26
+SG-Immigration and Checkpoints Authority	2
+SG-Ministry of Home Affairs	19
+SG-Monetary Authority of Singapore	27
+SK- National Bank of Slovakia	4
+TH-Thai Securities and Exchange Commission	5
+TJ-Financial Intelligence Unit of the National Bank of Tajikistan	14
+TR-Ministry of Treasury and Finance Article 7 of Law 6415	1
+TT-Trinidad and Tobago Financial Intelligence Unit-Sanctions List	312
+TW-Banking Bureau of Financial Supervisory Commission 	6
+TW-Fair Trade Commission	6
+TW-Insurance Bureau of Financial Supervisory Commission 	5
+TW-Ministry of Justice	9
+UA-Ministry of Internal Affairs (MIA) of Ukraine	3
+AE-National Terrorist List	44
+AF-DA Afghanistan Bank-Financial Transactions and Reports Analysis Center of Afghanistan	5
+AL-District Court of Tirana	3
+AL-General Prosecutorâ€™s Office	7
+AR-Unidad de Informacion Financiera 	2
+Asian Development Bank	20
+AT-Austrian Financial Markets Authority	11
+AU - Commonwealth Law	129
+BD-Bangladesh Financial Intelligence Unit-Domestic Sanction List	2
+BE-Belgian Competition Authority	4
+BF-Advisory Commission on Administrative Freezing (CCGA)-National List	3
+BR - MinistÃ©rio PÃºblico de Alagoas	8
+BR - MinistÃ©rio PÃºblico do Estado da BahÃ­a	20
+BR - MinistÃ©rio PÃºblico do Estado de Minas Gerais	7
+BR - MinistÃ©rio PÃºblico do Estado de Roraima	1
+BR - MinistÃ©rio PÃºblico do Estado de Santa Catarina	14
+BR - MinistÃ©rio PÃºblico do Estado do Mato Grosso do Sul	66
+BR - MinistÃ©rio PÃºblico do Estado do Rio Grande do Sul	12
+BR - Procuradoria Geral do Estado do Mato Grosso do Sul	2
+BR- MinistÃ©rio PÃºblico Federal	329
+BR-Banco Central Do Brasil	12
+BR-Instituto Brasileiro do Meio Ambiente e dos Recursos Naturais RenovÃ¡veis	2
+BR-Supremo Tribunal Federal do Brasil	104
+BS-The Insurance Commission of the Bahamas	1
+CA-Manitoba Securities Commission	3
+CA-Nova Scotia Securities Commission	2
+CA-Special Economic Measures against Burma	43
+CA-Special Economic Measures against Ukraine	3
+CH-State Secretariat for Economic Affairs Trade and Embargo	1
+CH-Swiss Financial Market Supervisory Authority	12
+CL â€“ National Economic Prosecutor	1
+CL-Poder Judicial de la RepÃºblica de Chile	2
+CM-Public Procurement Regulatory Agency	1
+CN-Credit China	18
+CN-Fujian Taxation Bureau	13
+CN-Hainan Taxation Bureau	11
+CN-Insurance Regulatory Commission	33
+CN-Liaoning Taxation Bureau	2
+CN-Ministry of Foreign Affairs Sanctions Announcements	1
+CN-Ministry of Public Security-Enforcement	1
+CN-People's Procuratorate-Bingtuan	2
+CN-People's Procuratorate-Guizhou	45
+CN-People's Procuratorate-Hebei	2
+CN-People's Procuratorate-Hubei	20
+CN-People's Procuratorate-Shandong	6
+CN-People's Procuratorate-Shanxi	9
+CN-People's Procuratorate-Xizhang	1
+CN-Supreme People's Court	41
+CN-Zhejiang Taxation Bureau	2
+CO-Armada Nacional de Colombia	11
+CO-Judicial Branch, Superior Council of the Judiciary	3
+CO-PolicÃ­a Nacional de Colombia	41
+CO-Superintendencia Financiera de Colombia	8
+CR - Ministerio PÃºblico de Costa Rica	11
+CZ- Czech Police - Most Wanted	1
+CZ-Czech National Bank	7
+CZ-Ministry of Finance	3
+DE-German Federal Criminal Police Office	2
+DO-DirecciÃ³n Nacional de Control de Drogas (Dominican Republic)	3
+ECâ€“Fiscalia General del Estado de Ecuador	254
+EE-Estonian Internal Security Service	2
+EE-Prosecutor's Office	5
+ES-ComisiÃ³n Nacional de los Mercados y la Competencia	20
+EU-European Central Bank - Supervision	3
+EU-European Commission-High Risk Jurisdiction	1
+EU-European Union List	700
+EU-Trade Restrictions Country List	1
+FR- Banque De France	7
+GT-Ministerio de GobernaciÃ³n de Guatemala	250
+GT-Ministerio PÃºblico de Guatemala	535
+HU- The Central Bank of Hungary	7
+ID - Criminal Investigation Police	1
+ID-Commodity Futures Trading Regulatory Agency (Bappebti)	22
+ID-Financial Transaction Reports and Analysis Center (PPATK)-UN Resolution 1718	20
+ID-National Police	1
+IL - Ministry of Finance	35
+ES-Ministry of Justice	4
+EU - Europol	1
+EU-European Commission	74
+EU-European Securities and Markets Authority	1
+EU-European Union Banned Airlines	7
+FI-Finanssivalvonta (Financial Supervisory Authority of Finland)	4
+FR-Anti-Corruption Agency	1
+FR-Energy Regulatory Commission	1
+GE-Office of the Prosecutor General of Georgia	7
+GI-Gibraltar Financial Services Commission	3
+GR-Hellenic Republic Capital Market Commission	8
+HK-Hong Kong Monetary Authority	4
+HK-Hong Kong Stock Exchange	2
+HN-Ministerio PÃºblico de Honduras 	23
+HR-Croatian Competition Agency	2
+HUâ€“Competition Commission	4
+ID - Supreme Court	10
+ID-Corruption Eradication Commission	1
+ID-Financial Transaction Reports and Analysis Center (PPATK)-Sanctions	301
+IL-Israel Ministry of Environmental Protection	2
+IL-Ministry of Foreign Affairs	9
+IN-Ministry of Home Affairs - Gazette	30
+IN-National Investigation Agency	100
+IN-National Securities Depository Limited	107
+IN-Pension Fund Regulatory and Development Authority	1
+IN-Press Information Bureau	19
+Inter-American Development Bank	6
+International Criminal Court	5
+Interpol	71
+IT-Banca d'Italia	2
+IT-Guardia di Finanza	14
+IT-Italy Commissione Nazionale per le SocietÃ  e la Borsa	11
+IT-Polizia di Stato	4
+JO-Technical Committee for the Implementation of the Security Council Resolution-National List	2
+JP-Financial Services Agency-Unauthorized Companies	7
+JP-Fukuoka Prefecture Police	93
+JP-Ministry of Land, Infrastructure and Transport	1
+KE-Prevention of Terrorism Act-Specified Entities	5
+KG- State Financial Intelligence Service under the Govt. Kyrgyz Republic	50
+KR-Financial Supervisory Service	90
+KR-Ministry of Strategy and Finance-Sanctions	256
+KR-National Tax Service	1
+KR-Prime Ministers Office	7
+KR-Public Procurement Service	17
+KY-Cayman Islands Monetary Authority	22
+LK-Central Bank of Sri Lanka	2
+LK-Financial Intelligence Unit of Sri Lanka	4
+LT-Financial Crime Investigation Service-Sanctions	1
+LT-Supreme Court	2
+LV-Central Bank of Latvia	1
+MC-Service d'Information et de ContrÃ´le sur les Circuits Financiers	608
+MK-Primary Court Skopje	6
+MM-Myanmar Financial Intelligence Unit (MFIU)	1
+MT-Asset Recovery Bureau	24
+MT-Malta Financial Services Authority	3
+Mutual Legal Assistance (MLAT)	1
+MX â€“ FiscalÃ­a General del Estado	10
+MX- ComisiÃ³n Nacional de Seguridad	3
+MX-CatÃ¡logo de Datos Abiertos	2
+MX-ComisiÃ³n Nacional Bancaria y de Valores de Mexico	5
+MX-ProcuradurÃ­a General de la RepÃºblica de Mexico	272
+MX-Secretaria de la Defensa Nacional	41
+MY-Ministry of International Trade and Industry	13
+MZ-Financial Information Office of Mozambique-National Sanctioned List	1
+NG-Economic and Financial Crimes Commission (EFCC)	1
+NO-Financial Supervisory Authority	7
+NZ-Inland Revenue of New Zealand	1
+NZ-New Zealand Financial Markets Authority	7
+PE-PolicÃ­a Nacional del PerÃº	5
+PH-Anti-Money Laundering Council-Enforcement	5
+PH-Criminal Investigation and Detection Group	1
+PK-Federal Investigation Agency (FIA) - Govt. of Pakistan	25
+PK-Pakistan National Accountability Bureau	7
+PK-Punjab Police (Pakistan)	15
+PK-Sindh Police	6
+PL-Ministry of Interior and Administration List of Persons and Entities Subject to Sanctions	4
+PL-Poland Police	1
+PY â€“ Ministerio del Interior	128
+UG-Financial Intelligence Authority	9
+UK - National Crime Agency	4
+UK-Crown Prosecution Service	16
+UK-Department of Trade and Industry	1
+UK-Financial Conduct Authority	18
+UK-Financial Services Authority	4
+UK-UK Home Office Proscribed Terrorist groups	45
+UN - United Nations Children and Armed Conflict - Persistent Violators	21
+UN â€“ Security Council Resolution 2140	1
+UN-Sanctions Regimes Country List	1
+UN-United Nations Security Council Resolution 1737 (2006) - Iran	14
+UN-United Nations Security Council Resolution 751 (1992) - Al-Shabaab	11
+US - Colorado Public Employees' Retirement Association	10
+US - Iowa Public Employee Retirement System	37
+US - Rewards for Justice	79
+US â€“Financial Industry Regulatory Authority	6
+US- Chicago Mercantile Exchange & Chicago Board of Trade	11
+US-Alabama Attorney General	14
+US-Arizona Attorney General	50
+US-California Department of Financial Protection & Innovation	1
+US-California Department of Insurance	5
+US-California State Teachers Retirement System	12
+US-Chicago Board Options Exchange - Disciplinary Actions	1
+US-Chicago Board Options Exchange - Disciplinary Actions - C2 Options	1
+US-Chicago Board Options Exchange - Disciplinary Actions - EDGEA	1
+US-Delaware Attorney General and the Department of Justice	66
+US-Department of Defense - Section 1286 of the National Defense Authorization Act	3
+US-Department of Justice-EO 14117-Countries of Concern	1
+US-Dept of State- Foreign Terrorist Organizations	57
+US-Florida Department of Financial Services	2
+US-Georgia Attorney General	15
+US-Idaho Attorney General	20
+US-Illinois Department of Financial & Professional Regulation	3
+US-Illinois Investment Policy Board - Prohibited Investment List	69
+US-Iowa Attorney General	69
+US-Maine Securities Division	1
+US-Oregon Department of Consumer & Business Services Division of Finance and Corporate Securities	2
+US-South Carolina Attorney General	61
+US-The System for Award Management (SAM)	1449
+US-U.S. Bureau of Industry and Security (BIS)- Denied Persons List	5
+US-U.S. Department of Health & Human Services	229
+US-U.S. Department of Housing and Urban Development	2
+US-U.S. Department of State - Chemical and Biological Weapons Sanctions	1
+US-U.S. FDIC Order to Cease and Desist	2
+US-U.S. Financial Crimes Enforcement Network	8
+US-U.S. OCC Banks Cease & Desist Orders (C&D)	2
+US-U.S. OFAC - Palestinian Legislative Council List	1
+US-U.S. Secret Service	78
+US-United States Attorney - District of Nevada	6
+US-United States Attorney - District of New Jersey	12
+US-United States Attorney - District of New Mexico  	5
+US-United States Attorney - District of North Dakota	4
+US-United States Attorney - District of Utah	2
+US-United States Attorney - Eastern District of Kentucky	4
+US-United States Attorney - Eastern District of New York	35
+US-United States Attorney - Northern District of Alabama	36
+US-United States Attorney - Northern District of California	30
+US-United States Attorney - Northern District of Georgia	9
+US-United States Attorney - Northern District of Ohio	4
+US-United States Attorney - Northern District of West Virginia	21
+US-United States Attorney - Southern District of Alabama	9
+US-United States Attorney - Southern District of California	300
+US-United States Attorney - Southern District of Georgia	1
+US-United States Attorney - Southern District of Indiana	7
+ROâ€“Competition Council	1
+RO-National Anticorruption Directorate (DNA)	23
+RS-Domestic List of Designated Persons	1
+RW-Office of the Ombudsman	10
+RW-Rwanda National Police	4
+SA - Capital Market Authority	1
+SA-Ministry of Interior (General Directorate of Investigation)	13
+SG - Attorney-Generalâ€™s Chambers â€“ Terrorism	2
+SG-MAS Financial Measures Related to Russia	1
+SG-Singapore, Supreme Court	8
+SI- Slovenian Competition Protection Office	1
+SK-Gambling Regulatory Authority	5
+SK-The Antimonopoly Office of the Slovak Republic 	2
+SV-PolicÃ­a Nacional Civil de El Salvador	22
+TN-National Sanctions List	7
+TR - Wanted Terrorists List	1
+TT-Trinidad and Tobago Financial Intelligence Unit	39
+U.S. Bureau of Industry and Security (BIS)â€“export violations	8
+UA-Antimonopoly Committee of Ukraine	3
+UA-Ministry of Economic Development and Trade	2
+UA-Office of the Prosecutor General of Ukraine	2
+UA-Security Service of Ukraine	4
+UA-Security Service of Ukraine-Terrorist List	5
+UK-Bank of England-News	2
+UK-Disqualified Directors	145
+UK-FCO UK Sanctions List	559
+UK-Financial Conduct Authority - Unauthorized Firms/Individuals	98
+UK-Her Majesty's Courts Service	12
+UK-Metropolitan Police	11
+UK-Serious Fraud Office	6
+UN - United Nations Security Council Resolution 1267 (1999) 1989 (2011) and 2253 (2015) concerning ISIL (DA'ESH) Al-Qaida and associated individuals and entities	291
+UN-Security Council Resolution 1533	8
+UN-Security Council Resolution 1718	20
+US - California Public Employees' Retirement System	10
+US - Illinois State Board of Investment	62
+US - Michigan Treasury	16
+US - New York State Office of General Services	6
+US - Rhode Island Department of Business Regulation	3
+US- New York Department of Financial Services	27
+US-Alaska Division of Banking, Securities and Corporations	2
+US-Arkansas Attorney General	46
+US-CBOE Futures Exchange - CFE	2
+US-Chicago Board Options Exchange - Disciplinary Actions - BYX	1
+US-Connecticut Attorney General	74
+US-Connecticut Department of Banking	1
+US-Delaware State Police	3
+US-District of Columbia Attorney General	47
+US-Equal Employment Opportunities Commission	3
+US-Financial Fraud Enforcement Task Force/ StopFraud.gov	3
+US-Investors Exchange - Disciplinary Actions	1
+US-Iowa Insurance Division	1
+US-Maryland Attorney General	72
+US-Massachusetts Attorney General	74
+US-Miami International Securities Exchange - MIAX Pearl Disciplinary Actions	1
+US-Michigan Attorney General	78
+US-Minnesota Attorney General	66
+US-Minnesota Department of Commerce	1
+US-Missouri Secretary of State Securities Division	2
+US-Montana Attorney General	57
+US-Montana State Auditorâ€™s Office	2
+US-Nebraska Department of Banking and Finance	2
+US-New Jersey Bureau of Securities	48
+US-New Jersey Office of the Attorney General and Department of Law & Public Safety	80
+US-New York State Attorney General	93
+US-North Carolina Attorney General	80
+US-OFAC Non-SDN Communist Chinese Military Companies List	13
+US-Ohio Department of Commerce	5
+US-Oregon Department of Justice Office of the Attorney General	46
+US-Pennsylvania Attorney General	110
+US-Rhode Island Attorney General	12
+US-San Diego County Attorney General	4
+US-The United States Attorney's Office Northern District of Mississippi 	1
+US-U.S. Commodity Futures Trading Commission	31
+IL-Israel Tax Authority	6
+IL-Ministry of Justice-Enforcement	37
+IN-Central Reserve Police Force	5
+IN-Competition Commission of India	11
+IN-Enforcement Directorate	77
+IN-Ministry of Corporate Affairs of India	2
+IN-National Investigation Agency - Most Wanted	24
+IN-Reserve Bank of India	22
+IQ-Terrorist Freezing Funds Committee - National List	3
+JE-Jersey Ministry of Justice and Home Affairs-Proscribed Organizations	47
+JP - Public Security Intelligence Agency	104
+JP- Ministry of Economy, Trade and Industry 	63
+JP-Japan Fair Trade Commission	8
+KZ-Agency on Regulation of Financial Markets and Organizations	5
+KZ-Financial Monitoring Agency of the Republic of Kazakhstan-Financing Of Terrorism/Extremism	31
+KZ-The Committee on Legal Statistics and Special Records of the General Prosecutor of the Republic of Kazakhstan	11
+LB-Internal Security Forces - Terrorist List	25
+LT- Central Bank of the Republic of Lithuania	7
+LT-Competition Council of Lithuania	3
+LT-Gaming Control Authority	3
+LT-Lithuania General Prosecutor's Office 	8
+LT-Lithuanian Courts	6
+LT-Lithuanian Criminal Police Bureau	1
+LT-Police department under the Interior Ministry	3
+LU-Commission de Surveillance du Secteur Financial Anti-Terrorist Financing Ministerial Regulations	171
+LV-Financial Intelligence Unit-Sanctions	3
+MD-Interinstitutional Supervisory Council-Sanctions	123
+ME-Agency for Prevention of Corruption	4
+MK-Public Prosecutor's Office	2
+MM-Anti-Corruption Commission	1
+MU-Financial Crimes Commission	1
+MX â€“ Presidencia de la RÃ©publica	53
+MX â€“ SecretarÃ­a de GobernaciÃ³n	5
+MX-SecretarÃ­a de Seguridad PÃºblica de Mexico	9
+MX-Secretaria de Marina	3
+MY-Bursa Malaysia	1
+MY-Ministry of Home Affairs - Sanctions	14
+NI-ProcuradurÃ­a General de la RepÃºblica de Nicaragua	18
+NL-De Nederlandsche Bank (DNB)	1
+NL-Netherlands Authority for the Financial Markets	15
+NP-Department of Foreign Employment	13
+NP-Narcotics Control Bureau	2
+NZ-New Zealand Police List â€“ UNSC 1267/1989 and 1988	314
+NZ-New Zealand Securities Commission	1
+NZ-Russia Sanctions Regulations	87
+OM-National Counter Terrorism Committee - Local List	1
+PEâ€“ Organismo Supervisor de las Contrataciones 	57
+PE-ContralorÃ­a General de la RepÃºblica	14
+PH-Philippines Securities and Exchange Commission	1
+PL-Central Anti-Corruption Bureau	1
+PL-Polish Financial Supervision Authority	3
+PR-Departamento de Justicia 	2
+PY â€“ Policia Naciona	1
+QA-Qatar Financial Center 	1
+QA-Qatar Financial Centre Regulatory Authority	1
+RO-Ministry of Justice of Romania	2
+RO-Police	2
+RU-Federal Antimonopoly Service of the Russian Federation	26
+RU-Ministry of the Interior of the Russian Federation	5
+RU-Prosecutor's Office	4
+SG-Competition Commission of Singapore (CCS)	2
+SG-Corrupt Practices Investigation Bureau 	42
+SG-Ministry of Manpower	19
+SG-Singapore Stock Exchange	4
+TH-Anti Money Laundering Office-Enforcement	2
+TJ-Ministry of Internal Affairs	1
+TR-Capital Markets Board of Turkey	40
+TR-Ministry of Treasury and Finance Article 5 of Law 6415	312
+TW - Taiwan Judicial Yuan Criminal Case Judgments	27
+TW-Taiwan Criminal Investigation Bureau	4
+TW-Taiwan Securities Association	4
+UA-National Security and Defense Council of Ukraine	291
+UA-Securities and Stock Market State Commission	1
+NULL	13964
+AL-Albanian Supreme Court	3
+AR-Ministerio PÃºblico Fiscal	127
+AR-Registro PÃºblico de Personas y Entidades Vinculadas a Actos de Terrorismo y su Financiamiento-Sanctions	349
+AR-Revenue Collection and Customs Control Agency	79
+AT-Federal Ministry for Finance - Unlicensed Company List	1
+AU - Office of the Registrar of Indigenous Corporations	4
+AU-Transactions Reports and Analysis Centre	3
+BA-Federal Police Directorate of Bosnia and Herzegovina	5
+BEâ€“Financial Services and Markets Authority	7
+BG-Ministry of Interior	5
+BH-Ministry of Foreign Affairs-Terrorist List	65
+BH-Ministry of Information Affairs - Domestic Terrorist List	84
+BR - MinistÃ©rio PÃºblico do Estado do CearÃ¡	42
+BR - MinistÃ©rio PÃºblico do Estado do MaranhÃ£o	7
+BR - MinistÃ©rio PÃºblico do Estado do ParÃ¡	23
+BR - MinistÃ©rio PÃºblico do Estado do RÃ­o de Janeiro	484
+BR - MinistÃ©rio PÃºblico do Estado do Rio Grande do Norte	38
+BR - MinistÃ©rio PÃºblico Federal na ParaÃ­ba	2
+BR - Procuradoria Geral do Estado do CearÃ¡	1
+BR-DENARC (Departamento de InvestigaÃ§Ãµes sobre NarcÃ³ticos)	5
+BR-Procuradoria Geral da RepÃºblica do Brasil	25
+BR-Supremo Tribunal de Contas da UniÃ£o - CADICON	1
+BZ-Financial Intelligence Unit-Sanctions	251
+CA-British Columbia Securities Commission	10
+CA-Canadian Securities Administrators	2
+CA-Environmental and Wildlife Enforcement	1
+CA-Financial Consumer Services Commission New Brunswick	1
+CA-Justice for Victims of Corrupt Foreign Officials Regulations	4
+CA-Niagara Regional Police Service	3
+CA-Special Economic Measures against Syria	7
+CH - Office of the Attorney General of Switzerland	6
+CH-State Secretariat for Economic Affairs	670
+CH-Swiss Competition Commission	16
+CH-Swiss Federal Gaming Board	11
+CN-Central Commission for Discipline Inspection	28
+CN-China Securities Regulatory Commission	83
+CN-Guangdong Taxation Bureau	53
+CN-Guangxi Taxation Bureau	1
+CN-Jiangsu Taxation Bureau	36
+CN-People's Procuratorate-Fujian	1
+CN-People's Procuratorate-Guangdong	41
+CN-People's Procuratorate-Jilin	2
+CN-People's Procuratorate-Ningxia	2
+CN-People's Procuratorate-Shanghai	1
+CN-People's Procuratorate-Sichuan	10
+CN-People's Procuratorate-Yunnan	12
+CN-Shanghai Stock Exchange	43
+CN-Shanghai Taxation Bureau	26
+CN-State Administration for Market Regulation - Anti-Monopoly Bureau	5
+CN-Supreme People's Procuratorate of China	5
+CO-Corte Suprema de Justicia, RepÃºblica de Colombia	14
+Consolidated Sanctions List	523
+CO-ProcuradurÃ­a General de la NaciÃ³n, RepÃºblica de Colombia	37
+CO-Superintendencia de Sociedades	1
+CZ-Czech Environmental Inspectorate	3
+DE-Bundeskartellamt (Federal Cartel Office)	5
+DE-Der Generalbundesanwalt beim Bundesgerichtshof (Attorney General of Germany)	14
+DK-The Danish Gambling Authority	3
+DO-PolicÃ­a Nacional Dominicana	33
+DO-ProcuradurÃ­a General de la RepÃºblica	2
+EE-Estonia-Courts	5
+EU-European Investment Bank - Exclusion List	1
+EU-Non-Cooperative Jurisdictions for Tax Purposes	1
+European Bank for Reconstruction and Development	10
+Financial Action Task Force	1
+FI-Supreme Court	1
+FR-Autorite de la Concurrence	18
+FR-Direction gÃ©nÃ©rale de la concurrence, de la consommation et de la rÃ©pression des fraudes (DGCCRF)	11
+GT - International Commission against Impunity in Guatemala	2
+HK-Monetary Authority-Sanctions	362
+HK-Securities and Futures Commission of Hong Kong	9
+HN-National Police of Honduras	3
+HU-Supervisory Authority for Regulated Activities	11
+ID-Indonesian Business Competition Supervisory Agency (KPPU)	4
+ID-Institution for Procurement of Goods	3
+IL - Israel Police	2
+IL-Bank of Israel	3
+IL-Israel Antitrust Authority	1
+IL-Israel Securities Authority (ISA)	4
+IL-Israel Security Agency	4
+IL-Ministry of Defense - Terrorism List	326
+IM-Isle of Man Financial Supervision Commission	1
+INâ€“Insurance Regulatory and Development Authority	3
+IN-Delhi Police	70
+IN-Directorate General of Foreign Trade	2
+IN-Indian Central Bureau of Investigation	92
+IN-Ministry of Defense	1
+IN-Ministry of Home Affairs of India	27
+IN-Securities and Exchange Board of India	157
+IT-Italian Regulatory Authority for Energy, Networks and Environment	2
+JP - Hokkaido Prefecture Police	110
+JP-Japan Osaka Prefectural Government	2
+JP-Japanese Financial Services Agency	67
+JP-Ministry of Defense	1
+JP-Ministry of Finance Japan	497
+JP-Securities and Exchange Surveillance Commission of Japan	1
+KE-Targeted Financial Sanctions-Domestic List	2
+KG-Prosecutor General of Kyrgyzskoy Republic	1
+KR-Korea Financial Intelligence Unit	221
+KW-Ministry of Foreign Affairs-National list	4
+KZ-Financial Monitoring Agency of the Republic of Kazakhstan-Involvement in terrorist activities	2
+LB-Internal Security Forces-National Terrorism Financial List	37
+LI-Financial Market Authority of Liechtenstein (Sanctions)	613
+LT- State Security Department	1
+LU-Commission de Surveillance du Secteur Financier Luxembourg	8
+LV- General Prosecutors Office	3
+LV-National Sanctions	2
+MK-Ministry of Internal Affairs of the Republic of Macedonia	3
+MK-Specialized Public Prosecutor's Office	7
+MN-The Independent Authority Against Corruption of Mongolia	1
+MX - UIF - Resolution 1718	20
+MX - UIF - Resolution 1988	20
+MX-Federal Commission of Economic Competition (COFECE)	2
+MY - Attorney-Generalâ€™s Chambers â€“ Enforcement	3
+MY-Malaysia Ministry of Investment Trade and Industry Restricted End-Users Country List	1
+NG-Central Bank of Nigeria (CBN)	1
+NG-Nigeria Sanctions Committee - Nigeria Sanctions List	3
+NI-Poder Judicial RepÃºblica de Nicaragua	11
+NL-Netherlands Authority for Consumers and Markets	4
+NL-Netherlands Courts	1
+NL-Public Prosecution Service	6
+NOâ€“Authority for Investigation and Prosecution of Economic and Environmental Crime	4
+NO-Norges Bank Observation and Exclusion of Companies	9
+NZ-New Zealand Police List: â€“ UNSC 1373	7
+PA-Ministerio Publico de Panama - Comunicados	7
+PA-Panama Superintendency of Banks	4
+PA-Superintendencia de Seguros y Reaseguros de PanamÃ¡	2
+PE - Instituto Nacional de Defensa de la Competencia y de la ProtecciÃ³n de la Propiedad Intelectual	1
+PE-Ministerio del Interior de PerÃº	24
+PEP	14098
+PE-Superintendencia de Mercado de Valores	2
+PH - Office of the Ombudsman	3
+PH-Anti-Terrorism Council Designation Announcements	11
+PH-Bangko Sentral ng Pilipinas BSP (Philippines Central BankPhilippines)	5
+PH-Philippine Drug Enforcement Agency	1
+PK-Central Depository Company	2
+PL-Most Wanted	95
+PL-Office of Competition and Consumer Protection	27
+PS-Palestine Monetary Authority - Local Freezing List	1
+PT-Autoridade da Concorrencia	1
+PT-Portuguese ComissÃ£o Do Mercado De Valores MobiliÃ¡rios	4
+US-United States Attorney - Southern District of Ohio	6
+US-United States Attorney - Western District of Michigan	4
+US-United States Attorney - Western District of Missouri	11
+US-United States Attorney - Western District of Pennsylvania	5
+US-United States Attorney - Western District of Tennessee	6
+US-United States Attorney - Western District of Texas	28
+US-United States Attorney - Western District of Washington State	66
+VA-Law N.XVIII, Title VI, Article 71 Sanctions	364
+VN-State Bank of Vietnam	2
+ZA- South African Reserve Bank	21
+US-U.S. Department of Justice	359
+US-U.S. Department of State - Cuba Restricted List	19
+US-U.S. Department of State - Executive Order 13382	5
+US-U.S. Department of State - Section 231 of CAATSA	13
+US-U.S. Environmental Protection Agency	12
+US-U.S. FBI Most Wanted - Criminal Enterprise Investigations	7
+US-U.S. FBI Most Wanted - Seeking Information - Terrorism	3
+US-U.S. Federal Bureau of Investigation	151
+US-U.S. Federal Deposit Insurance Corporation	5
+US-U.S. Federal Reserve Board	17
+US-U.S. Federal Reserve Board - Modification and Termination	1
+US-U.S. Marshalls	2
+US-U.S. National Futures Association	9
+US-U.S. Office of Foreign Asset Control (OFAC) - Enforcement Information	27
+US-U.S. Office of the Comptroller of the Currency	6
+US-U.S. Postal Inspection Service	4
+US-United States Attorney - Central District of Illinois	1
+US-United States Attorney - District of Columbia	21
+US-United States Attorney - District of Connecticut	3
+US-United States Attorney - District of Montana	1
+US-United States Attorney - District of New Hampshire	7
+US-United States Attorney - Eastern District of California	10
+US-United States Attorney - Eastern District of Missouri	7
+US-United States Attorney - Eastern District of Pennsylvania	8
+US-United States Attorney - Middle District of Florida	17
+US-United States Attorney - Middle District of North Carolina	1
+US-United States Attorney - Middle District of Tennessee	10
+US-United States Attorney - Southern District of Florida	72
+US-United States Attorney - Western District of New York	5
+US-United States Attorney - Western District of North Carolina	8
+US-Vermont Department of Banking, Insurance, Securities & Health Care Administration	1
+US-Washington State Office of the Insurance Commissioner	1
+US-Wisconsin Department of Justice - Office of the Attorney General	44
+US-Wyoming Attorney General	2
+VE-Tribunal Supremo de Justicia de Venezuela	3
+VG-British Virgin Islands Financial Services Commission	4
+VN-General Department of Taxation	21
+VN-Supreme People's Court 	31
+World Bank List of Debarred Firms	24
+XK- Kosovo Police	1
+ZA-Financial Intelligence Centre	7
+ZA-Financial Sector Conduct Authority	30
+ZA-Targeted Financial Sanctions List	361
+UK-Office of Gas and Electricity Markets	1
+UK-The Insolvency Service	24
+UN-Security Council Resolution 1970	11
+US- California Department of General Services	4
+USâ€“Department of Labor Employee Benefits Security Administration	2
+USâ€“Department of State Directorate of Defense Trade Controls	2
+US-Alabama Securities Commission	1
+US-Alaska Department of Law	42
+US-Arizona Corporation Commission Securities Division	3
+US-Arkansas Securities Department	1
+US-BIS Department of Commerce	10
+US-Bureau of Industry and Security Violated Commercial and Private Aircrafts	38
+US-Bureau of Industry and Security-Country List	1
+US-California Department of Business Oversight	1
+US-Chicago Board Options Exchange - Disciplinary Actions - EDGEX	1
+US-Consumer Financial Protection Bureau	7
+US-Department Homeland Security-UFLPA Entity List-Enforcement	7
+US-Department of Defense - Section 1260H of the National Defense Authorization Act	19
+US-Department of State-Directorate of Defense Trade Controls-Statutorily Debarred Parties	1
+US-Department of State-Enforcement	109
+US-Department of State-State Sponsor of Terrorism	1
+US-Dept of State Terrorist Exclusion List	17
+US-Florida Attorney General	79
+US-Illinois Attorney General	79
+US-Indiana Office of the Secretary of State Securities Division	1
+US-Kansas Attorney General	58
+US-Kentucky Attorney General	66
+US-Maine Attorney General	63
+US-Missouri Attorney General	74
+US-New Hampshire Department of Justice Office of the Attorney General	62
+US-New York Office of the Medicaid Inspector General	1
+US-North Dakota Attorney General	2
+US-Ohio Attorney General	54
+US-Oklahoma Securities Commission	1
+US-Tennessee Department of Commerce and Insurance	2
+US-U.S. Bureau of Alcohol, Tobacco, Firearms and Explosives (ATF)	99
+US-U.S. Department of Homeland Security	57
+US-U.S. Department of Justice - Tax Division	5
+US-U.S. Department of Labor Office of Inspector General	8
+US-U.S. Department of State, Narcotics Rewards Program	42
+US-U.S. FBI Most Wanted - Cyberâ€™s Most Wanted	1
+US-U.S. FBI Most Wanted - Most Wanted Terrorists	14
+US-U.S. FBI Top 10 Fugitives and Most Wanted Terrorists	3
+US-U.S. Federal Reserve Board - Cease and Desist Order	12
+US-U.S. Financial Crimes Enforcement Network, Section 311 - Special Measures	10
+US-U.S. Food and Drug Administration	1
+US-U.S. International Trade Commission	27
+US-U.S. OCC IAPs 1829 Removals (1829)	9
+US-U.S. Securities and Exchange Commission	85
+US-United States Attorney - District of Alaska	20
+US-United States Attorney - District of Arizona	9
+US-United States Attorney - District of Colorado	11
+US-United States Attorney - Eastern District of Louisiana	5
+US-United States Attorney - Eastern District of Michigan	9
+US-United States Attorney - Eastern District of North Carolina	8
+US-United States Attorney - Eastern District of Texas	8
+US-United States Attorney - Eastern District of Washington State	7
+US-United States Attorney - Middle District of Alabama	3
+US-United States Attorney - Middle District of Pennsylvania	2
+US-United States Attorney - Northern District of Florida	1
+US-United States Attorney - Northern District of Illinois	50
+US-United States Attorney - Southern District of Texas	13
+US-US Virgin Islands Department of Justice	35
+US-Utah Attorney General	67
+US-Virginia Attorney General	77
+US-Washington Attorney General	75
+PY - DirecciÃ³n Nacional de Contrataciones PÃºblicas	2
+PY-Ministerio PÃºblico de Paraguay	129
+QA - National Terrorists Designation List	6
+RO-Public Ministry of Romania	2
+RU-Courts	2
+RU-Federal Financial Monitoring Service	95
+RU-Federal Security Service of the Russian Federation (FSB) - Terrorist List	14
+RU-Investigative Committee at the Public Prosecutor's Office of the Russian Federation	30
+RU-Office of the Prosecutor General of the Russian Federation	89
+SE-Courts	1
+SE-Swedish Financial Supervisory Authority (Finansinspektionen)	19
+SG-Agri-Food & Veterinary Authority	1
+SG-Attorney Generalâ€™s Chambers	4
+SG-Police Force Case Studies	4
+SG-Singapore Internal Security Department	4
+SG-Trade Restrictions Country List	1
+SI-Slovene Securities Market Agency	2
+SK-General Prosecutor's Office	21
+SR-Suriname Police Force	2
+SV-FiscalÃ­a General de la RepÃºblica, El Salvador	90
+TH - The National Anti-Corruption Commission	1
+TR-Ministry of Treasury and Finance Article 6 of Law 6415	11
+TR-Turkish Competition Authority	1
+TWâ€“Financial Supervisory Commission	11
+TW-Ministry of Justice Investigation Bureau	6
+TW-Taiwan Maritime and Port Bureau	15
+UA-State Financial Monitoring Service  	370
+UK-Competition and Markets Authority	11
+UK-Department for Business and Trade-Country List	1
+UK-Dept Business Innovation and Skill	1
+UK-HM Revenue and Customs	19
+UK-HM Treasury-Investment Ban Targets	7
+UK-Home Office	6
+UK-Office of Financial Sanctions Implementation	2
+UN - United Nations Security Council Resolution 1988 (2011)	20
+US - Florida State Board of Administration	24
+US - Minnesota State Board of Investment	84
+US - Pennsylvania Treasury PERS	53
+US- Department of Defense	1
+US-Boston Options Exchange - Disciplinary Actions	1
+US-Bureau of Industry and Security (BIS)- Military End User List (MEU)	5
+US-California Attorney General	48
+US-Chicago Board Options Exchange - Disciplinary Actions - BZX	1
+US-Colorado Attorney General and the Department of Law	72
+US-Colorado Division of Securities	1
+US-Department of Commerce Press Releases	52
+US-Department of Defense Qualifying Entities Prepared in Response to Section 1237 of the National Defense Authorization Act for Fiscal Year 1999	5
+US-Federal Energy Regulatory Commission	1
+US-Federal Housing Finance Agency	7
+US-Hawaii Attorney General	47
+US-Hawaii Department of Commerce & Consumer Affairs	3
+US-Illinois Gaming Board-Exclusion List	12
+US-Indiana Attorney General	4
+US-Intercontinental Futures Exchange	7
+US-Louisiana Department of Justice Office of the Attorney General	39
+US-Maine Department of Professional and Financial Regulation	1
+US-Massachusetts Securities Division	1
+US-Miami International Securities Exchange - MIAX Options Disciplinary Actions	1
+US-Michigan Department of Insurance and Financial Services 	1
+US-Mississippi Attorney General	41
+US-Nebraska Attorney General	67
+US-Nevada Attorney General	46
+US-New Mexico Attorney General	13
+US-New York County District Attorney's Office	25
+US-New York State Department of Labor, Bureau of Public Work Debarment List	3
+US-New York Stock Exchange	2
+US-Occupational Safety & Health Administration (OSHA)	3
+US-OFAC Non-SDN Menu-Based Sanctions List	1
+US-OFAC Sectoral Sanctions Identifications	29
+US-Oklahoma Attorney General	9
+US-Pennsylvania Banking and Securities Commission	3
+US-Washington State Department of Financial Institutions Securities Division	23
+US-West Virginia Attorney General	3
+US-Wyoming Secretary of State Securities Division	1
+VE - Cuerpo de PolicÃ­a Nacional Bolivariana	1
+VN-Ministry of Public Security 	135
+ZA-Competition Commission	39
+ZA-National Prosecution Authority	9
+ZA-South African Financial Services Board	13
+ZA-South African Police Service	29
+US-South Dakota Attorney General	11
+US-Tennessee Attorney General	66
+US-Tennessee Securities Division	1
+US-Texas Attorney General	23
+US-Texas State Securities Board	5
+US-U.S. Bureau of Industry and Security (BIS)- Entity List	117
+US-U.S. Courts	125
+US-U.S. Drug Enforcement Administration	327
+US-U.S. Federal Trade Commission	9
+US-U.S. Immigration and Customs Enforcement (ICE)	159
+US-U.S. Internal Revenue Service	167
+US-U.S. National Credit Union Administration	10
+US-U.S. Office of Foreign Asset Control (OFAC) - SDN List	1392
+US-United States Attorney - Central District of California	42
+US-United States Attorney - District of Delaware	1
+US-United States Attorney - District of Maryland	10
+US-United States Attorney - District of Massachusetts	37
+US-United States Attorney - District of Minnesota	1
+US-United States Attorney - District of Oregon	1
+US-United States Attorney - District of Puerto Rico	8
+US-United States Attorney - District of Rhode Island	11
+US-United States Attorney - District of South Carolina	5
+US-United States Attorney - Eastern District of Virginia	18
+US-United States Attorney - Eastern District of Wisconsin	1
+US-United States Attorney - Middle District of Georgia	6
+US-United States Attorney - Middle District of Louisiana	2
+US-United States Attorney - Northern District of Iowa	1
+US-United States Attorney - Northern District of New York	2
+US-United States Attorney - Northern District of Texas	11
+US-United States Attorney - Southern District of New York	108
+US-United States Attorney - Western District of Kentucky	2
+US-United States Attorney - Western District of Louisiana	1
+US-Vermont Attorney General	52
+US-Wisconsin Department of Financial Institutions	1
+UZ-Department for Combating Economic Crimes-National List	153
+VE-Ministerio PÃºblico de Venezuela	3
+VN-State Securities Commission of Vietnam	5
+ZA-Competition Tribunal 	34
