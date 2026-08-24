@@ -136,9 +136,8 @@ def main():
         SELECT A.EntityGUID, B.tCountry AS Nationality
         INTO #TempNationalities
         FROM EntityCountryAssociation A WITH (NOLOCK)
-        INNER HASH JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
+        LEFT JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
         WHERE A.AssociationTypeDesc = 'Nationality'
-        OPTION (HASH JOIN, MIN_GRANT_PERCENT = 10)
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_TempNationalities_EntityGUID ON #TempNationalities(EntityGUID)")
 
