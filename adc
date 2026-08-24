@@ -11,29 +11,44 @@ def load_config() -> dict:
 def main():
     config = load_config()
     db = config["database"]
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={db['name']};Trusted_Connection=yes;"
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection=yes;"
     conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
-    ids = ['1000157', '1000158']
-    for eid in ids:
-        cursor.execute("SELECT EntityGUID, EntityTypeDesc, Gender, Name, FirstName, MiddleName, LastName, Title FROM Entity WHERE EntityID = ?", (eid,))
-        row = cursor.fetchone()
-        if row:
-            print(f"\nEntityID: {eid}")
-            print(f"  EntityGUID: {row[0]}")
-            print(f"  EntityTypeDesc: {row[1]}")
-            print(f"  Gender: {row[2]}")
-            print(f"  Name (SecondName source): {repr(row[3])}")
-            print(f"  FirstName: {repr(row[4])}")
-            print(f"  MiddleName: {repr(row[5])}")
-            print(f"  LastName: {repr(row[6])}")
-            print(f"  Title: {repr(row[7])}")
+    cursor.execute("""
+        SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, IS_NULLABLE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'NegativeList_New1'
+        ORDER BY ORDINAL_POSITION
+    """)
+    cols = cursor.fetchall()
+    
+    print("\n=== PRODUCTION SCHEMA OF NegativeList_New1 ===")
+    sql_defs = []
+    for col in cols:
+        name = col[0]
+        dtype = col[1]
+        length = col[2]
+        nullable = "NULL" if col[3] == "YES" else "NOT NULL"
+        
+        if length == -1 or length is None:
+            len_str = "MAX"
         else:
-            print(f"EntityID {eid} not found in raw Entity table.")
+            len_str = str(length)
+            
+        type_str = f"{dtype}({len_str})" if dtype in ["nvarchar", "varchar", "char", "nchar"] else dtype
+        
+        print(f"[{name}] [{type_str}] {nullable}")
+        sql_defs.append(f"            [{name}] [{type_str}] {nullable}")
+        
+    print("\n--- Copy-paste this SQL block for table creation: ---")
+    print("CREATE TABLE [dbo].[NegativeList_New1](")
+    print(",\n".join(sql_defs))
+    print(") WITH (DATA_COMPRESSION = PAGE)")
 
     cursor.close()
     conn.close()
 
 if __name__ == "__main__":
     main()
+
