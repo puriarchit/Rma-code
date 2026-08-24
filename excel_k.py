@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ #-*- coding: utf-8 -*-
 import json
 import os
 import sys
@@ -85,19 +85,19 @@ def main():
     print("Step 2: Fetching ReferenceIDs for First 10, Middle 10, and Last 10 Rows...")
     # Get First 10
     cursor_data.execute("""
-        SELECT TOP 10 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 ORDER BY ReferenceID
+        SELECT TOP 10 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 GROUP BY ReferenceID ORDER BY ReferenceID
     """)
     first_ids = [row[0] for row in cursor_data.fetchall()]
     
     # Get Middle 10 (offset around middle row 30000)
     cursor_data.execute("""
-        SELECT ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 ORDER BY ReferenceID OFFSET 30000 ROWS FETCH NEXT 10 ROWS ONLY
+        SELECT ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 GROUP BY ReferenceID ORDER BY ReferenceID OFFSET 30000 ROWS FETCH NEXT 10 ROWS ONLY
     """)
     middle_ids = [row[0] for row in cursor_data.fetchall()]
     
     # Get Last 10
     cursor_data.execute("""
-        SELECT TOP 10 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 ORDER BY ReferenceID DESC
+        SELECT TOP 10 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 GROUP BY ReferenceID ORDER BY ReferenceID DESC
     """)
     last_ids = sorted([row[0] for row in cursor_data.fetchall()])
 
@@ -143,13 +143,21 @@ def main():
                 p_vals = [str(x) if x is not None else "" for x in python_row] if python_row else [""] * len(all_columns)
                 
                 match_vals = []
-                for col_name, sv, pv in zip(all_columns, s_vals, p_vals):
                     # Clean encoding noise for compare
-                    sv_clean = sv.replace("Ã§", "ç").replace("Ãº", "ú").replace("Ã±", "ñ").replace("â€“", "–").replace("Ã³", "ó").replace("Ã©", "é")
+                    sv_clean = sv.replace("Ã§", "ç").replace("Ãº", "ú").replace("Ã±", "ñ").replace("â€“", "–").replace("Ã³", "ó").replace("Ã©", "é").replace("Â¶", "¶")
                     
                     if col_name in ["FirstName", "LastName", "SecondName"]:
                         sv_clean = apply_wl_map(sv_clean)
                         pv_clean = apply_wl_map(pv)
+                    elif col_name == "OriginalSource":
+                        # Sort URLs to bypass order difference
+                        s_urls = sorted([x.strip() for x in sv_clean.split(";") if x.strip()])
+                        p_urls = sorted([x.strip() for x in pv.split(";") if x.strip()])
+                        sv_clean = "; ".join(s_urls)
+                        pv_clean = "; ".join(p_urls)
+                    elif col_name == "Remark":
+                        sv_clean = sv_clean.replace("Â¶", "¶")
+                        pv_clean = pv.replace("Â¶", "¶")
                     else:
                         pv_clean = pv
                         
