@@ -59,7 +59,6 @@ def main():
     cursor_staging = conn_staging.cursor()
     
     for tbl in tables:
-        # Check if table exists in Data
         cursor_data.execute(f"SELECT COUNT(*) FROM sys.tables WHERE name = '{tbl}'")
         data_exists = cursor_data.fetchone()[0] > 0
         data_count = 0
@@ -67,7 +66,6 @@ def main():
             cursor_data.execute(f"SELECT COUNT(*) FROM dbo.[{tbl}]")
             data_count = cursor_data.fetchone()[0]
             
-        # Check if table exists in Staging
         cursor_staging.execute(f"SELECT COUNT(*) FROM sys.tables WHERE name = '{tbl}'")
         staging_exists = cursor_staging.fetchone()[0] > 0
         staging_count = 0
@@ -84,74 +82,71 @@ def main():
     
     df_summary = pd.DataFrame(summary_data)
 
-    print("Step 2: Selecting Sample ReferenceIDs for Detail Comparison...")
-    # Fetch 15 reference IDs that exist in both databases (5 PEPs, 5 NULLs, 5 Sanctions)
+    print("Step 2: Fetching ReferenceIDs for First 10, Middle 10, and Last 10 Rows...")
+    # Get First 10
     cursor_data.execute("""
-        SELECT TOP 5 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE WLType = 'PEP' AND ReferenceID IS NOT NULL
+        SELECT TOP 10 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 ORDER BY ReferenceID
     """)
-    peps = [row[0] for row in cursor_data.fetchall()]
+    first_ids = [row[0] for row in cursor_data.fetchall()]
     
+    # Get Middle 10 (offset around middle row 30000)
     cursor_data.execute("""
-        SELECT TOP 5 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE WLType IS NULL AND ReferenceID IS NOT NULL
+        SELECT ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 ORDER BY ReferenceID OFFSET 30000 ROWS FETCH NEXT 10 ROWS ONLY
     """)
-    nulls = [row[0] for row in cursor_data.fetchall()]
+    middle_ids = [row[0] for row in cursor_data.fetchall()]
     
+    # Get Last 10
     cursor_data.execute("""
-        SELECT TOP 5 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE WLType IS NOT NULL AND WLType <> 'PEP' AND ReferenceID IS NOT NULL
+        SELECT TOP 10 ReferenceID FROM LexisNexis_Data.dbo.NegativeList_New1 ORDER BY ReferenceID DESC
     """)
-    sanctions = [row[0] for row in cursor_data.fetchall()]
-    
-    sample_ids = peps + nulls + sanctions
-    print(f"Sample IDs selected: {sample_ids}")
+    last_ids = sorted([row[0] for row in cursor_data.fetchall()])
 
-    if not sample_ids:
-        print("No sample ReferenceIDs found in NegativeList_New1!")
-        return
-
-    # Define column splits
+    # All columns in table sequence
     all_columns = [
-        "EntityGUID", "ReferenceID", "EntityType", "Gender", "FirstName", "LastName", "SecondName", "Title", "DOB", "ALTDOB1", "ALTDOB2", "ALTDOB3",
-        "AddressLine1", "AddressLine2", "City", "Country", "POB", "WLType", "OriginalSource", "Remark", "NationalIDInfo", "NationalIDNo", "IdOtherInfo1",
-        "IdNo1", "IdOtherInfo2", "IdNo2", "IdOtherInfo3", "IdNo3", "IdOtherInfo4", "IdNo4", "IdOtherInfo5", "IdNo5", "Nationality", "Citizenship"
+        "ReferenceID", "EntityType", "Gender", "FirstName", "LastName", "SecondName", "Title",
+        "DOB", "ALTDOB1", "ALTDOB2", "ALTDOB3", "AddressLine1", "AddressLine2", "City", "Country",
+        "WLType", "OriginalSource", "Remark", "NationalIDInfo", "NationalIDNo",
+        "IdOtherInfo1", "IdNo1", "IdOtherInfo2", "IdNo2", "IdOtherInfo3", "IdNo3",
+        "IdOtherInfo4", "IdNo4", "IdOtherInfo5", "IdNo5", "EntityGUID", "Nationality", "Citizenship", "POB"
     ]
     
-    first_cols = ["ReferenceID", "EntityGUID", "EntityType", "Gender", "FirstName", "LastName", "SecondName", "Title", "DOB", "ALTDOB1", "ALTDOB2", "ALTDOB3"]
-    mid_cols = ["ReferenceID", "AddressLine1", "AddressLine2", "City", "Country", "POB", "WLType", "OriginalSource", "Remark", "NationalIDInfo", "NationalIDNo", "IdOtherInfo1"]
-    last_cols = ["ReferenceID", "IdNo1", "IdOtherInfo2", "IdNo2", "IdOtherInfo3", "IdNo3", "IdOtherInfo4", "IdNo4", "IdOtherInfo5", "IdNo5", "Nationality", "Citizenship"]
+    # Load character translation map for comparison cleaning
+    cursor_data.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
+    char_map = cursor_data.fetchall()
+    
+    def apply_wl_map(text):
+        res = text
+        for sym, mc in char_map:
+            res = res.replace(sym, mc)
+        return res
 
-    def build_comparison_rows(cols):
+    def build_comparison_rows(sample_ids):
         rows = []
         for ref_id in sample_ids:
             # Query SSIS
-            sql_data = f"SELECT {', '.join(cols)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ?"
+            sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ?"
             cursor_data.execute(sql_data, (ref_id,))
-            ssis_row = cursor_data.fetchone()
+            ssis_rows = cursor_data.fetchall()
             
             # Query Python
-            sql_staging = f"SELECT {', '.join(cols)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ?"
+            sql_staging = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ?"
             cursor_staging.execute(sql_staging, (ref_id,))
-            python_row = cursor_staging.fetchone()
+            python_rows = cursor_staging.fetchall()
             
-            if ssis_row and python_row:
-                s_vals = [str(x) if x is not None else "" for x in ssis_row]
-                p_vals = [str(x) if x is not None else "" for x in python_row]
+            # Map by matching unique row (we can have duplicates due to enforcements, so map them row by row)
+            max_len = max(len(ssis_rows), len(python_rows))
+            for i in range(max_len):
+                ssis_row = ssis_rows[i] if i < len(ssis_rows) else None
+                python_row = python_rows[i] if i < len(python_rows) else None
                 
-                # Retrieve WLCharMap
-                cursor_data.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
-                char_map = cursor_data.fetchall()
+                s_vals = [str(x) if x is not None else "" for x in ssis_row] if ssis_row else [""] * len(all_columns)
+                p_vals = [str(x) if x is not None else "" for x in python_row] if python_row else [""] * len(all_columns)
                 
-                def apply_wl_map(text):
-                    res = text
-                    for sym, mc in char_map:
-                        res = res.replace(sym, mc)
-                    return res
-
                 match_vals = []
-                for col_name, sv, pv in zip(cols, s_vals, p_vals):
+                for col_name, sv, pv in zip(all_columns, s_vals, p_vals):
                     # Clean encoding noise for compare
                     sv_clean = sv.replace("Ã§", "ç").replace("Ãº", "ú").replace("Ã±", "ñ").replace("â€“", "–").replace("Ã³", "ó").replace("Ã©", "é")
                     
-                    # Apply translation to names if comparing FirstName, LastName, SecondName
                     if col_name in ["FirstName", "LastName", "SecondName"]:
                         sv_clean = apply_wl_map(sv_clean)
                         pv_clean = apply_wl_map(pv)
@@ -166,25 +161,24 @@ def main():
                 rows.append([ref_id, "SSIS (Old)"] + s_vals[1:])
                 rows.append([ref_id, "Python (Archit Puri)"] + p_vals[1:])
                 rows.append([ref_id, "Match Status"] + match_vals[1:])
-                # Empty spacer row
-                rows.append([""] * (len(cols) + 1))
-        
-        headers = ["ReferenceID", "Database Type"] + cols[1:]
+                rows.append([""] * (len(all_columns) + 1)) # Spacer
+                
+        headers = ["ReferenceID", "Database Type"] + all_columns[1:]
         return pd.DataFrame(rows, columns=headers)
 
-    print("Step 3: Building Side-by-Side Splits...")
-    df_first = build_comparison_rows(first_cols)
-    df_mid = build_comparison_rows(mid_cols)
-    df_last = build_comparison_rows(last_cols)
+    print("Step 3: Building Row Splits...")
+    df_first = build_comparison_rows(first_ids)
+    df_mid = build_comparison_rows(middle_ids)
+    df_last = build_comparison_rows(last_ids)
 
     output_path = r"D:\LexisNexis\LexisNexis_Comparison_Report.xlsx"
     print(f"Step 4: Writing to Excel file: {output_path}...")
     
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         df_summary.to_excel(writer, sheet_name="Table Summary", index=False)
-        df_first.to_excel(writer, sheet_name="First 10 Columns", index=False)
-        df_mid.to_excel(writer, sheet_name="Middle 10 Columns", index=False)
-        df_last.to_excel(writer, sheet_name="Last 10 Columns", index=False)
+        df_first.to_excel(writer, sheet_name="First 10 Rows", index=False)
+        df_mid.to_excel(writer, sheet_name="Middle 10 Rows", index=False)
+        df_last.to_excel(writer, sheet_name="Last 10 Rows", index=False)
 
     print("Step 5: Formatting Excel Sheets...")
     wb = openpyxl.load_workbook(output_path)
@@ -197,7 +191,6 @@ def main():
     fill_ssis = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid") # Light Gray
     fill_python = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid") # Light Green
     fill_match = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid") # Light Blue
-    fill_mismatch = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid") # Light Orange/Red
     
     border_thin = Border(
         left=Side(style='thin', color='BFBFBF'),
@@ -229,7 +222,7 @@ def main():
                     cell.fill = PatternFill(start_color="FCE4D6", fill_type="solid")
     
     # Format Comparison Sheets
-    comp_sheets = ["First 10 Columns", "Middle 10 Columns", "Last 10 Columns"]
+    comp_sheets = ["First 10 Rows", "Middle 10 Rows", "Last 10 Rows"]
     for sname in comp_sheets:
         ws = wb[sname]
         ws.views.sheetView[0].showGridLines = True
@@ -260,11 +253,9 @@ def main():
                     cell.font = font_bold
                     if col >= 3: # Comparison columns
                         if cell.value == "MATCH":
-                            cell.value = "MATCH"
                             cell.font = Font(name="Segoe UI", size=10, bold=True, color="385723")
                             cell.fill = PatternFill(start_color="E2EFDA", fill_type="solid")
                         else:
-                            cell.value = "MISMATCH"
                             cell.font = Font(name="Segoe UI", size=10, bold=True, color="C00000")
                             cell.fill = PatternFill(start_color="FCE4D6", fill_type="solid")
                     else:
