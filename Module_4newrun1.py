@@ -278,31 +278,32 @@ def main():
     cursor.execute(f"""
         {cte_prefix}
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
-            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
+            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Nationality, Citizenship
+            EntityGUID, Nationality, Citizenship, POB
         )
         SELECT 
-            A.EntityGUID,
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
             {FN_Expr} as FirstName,
             {LN_Expr} as LastName,
             {SN_Expr} as SecondName,
-            CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
+            CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
-            C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB,
+            C.AddressLine1, C.AddressLine2, C.City, C.Country,
             'PEP' AS WLType,
-            E.SourceURI as OriginalSource,
+            CAST(SUBSTRING(E.SourceURI, 1, 4000) AS NVARCHAR(4000)) as OriginalSource,
             D.Remark,
             H.IdentificationTypeDesc as NationalIDInfo,
-            H.IdentificationNumber as NationalIDNo,
+            CAST(SUBSTRING(H.IdentificationNumber, 1, 50) AS NVARCHAR(50)) as NationalIDNo,
             I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+            A.EntityGUID,
             J.Nationality,
-            K.Citizenship
+            K.Citizenship,
+            C.POB
         {from_clause}
         INNER JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
         LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
