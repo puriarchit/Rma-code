@@ -148,6 +148,44 @@ def main():
             for sym, mc in char_mappings:
                 cursor.execute("INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES (?, ?)", (sym, mc))
             logging.info("WLCharMap populated with 96 records successfully.")
+
+        # Apply character translation to raw staging tables to ensure clean formatting
+        cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
+        mappings = cursor.fetchall()
+        if mappings:
+            logging.info("Applying character translation mapping to raw staging tables...")
+            for sym, mc in mappings:
+                cursor.execute("""
+                    UPDATE dbo.Entity 
+                    SET FirstName = REPLACE(FirstName, ?, ?), 
+                        LastName = REPLACE(LastName, ?, ?), 
+                        Name = REPLACE(Name, ?, ?), 
+                        Title = REPLACE(Title, ?, ?)
+                    WHERE FirstName LIKE ? OR LastName LIKE ? OR Name LIKE ? OR Title LIKE ?
+                """, (sym, mc, sym, mc, sym, mc, sym, mc, f"%{sym}%", f"%{sym}%", f"%{sym}%", f"%{sym}%"))
+                
+                cursor.execute("""
+                    UPDATE dbo.EntityAddress 
+                    SET Address1 = REPLACE(Address1, ?, ?), 
+                        Address2 = REPLACE(Address2, ?, ?), 
+                        City = REPLACE(City, ?, ?)
+                    WHERE Address1 LIKE ? OR Address2 LIKE ? OR City LIKE ?
+                """, (sym, mc, sym, mc, sym, mc, f"%{sym}%", f"%{sym}%", f"%{sym}%"))
+                
+                cursor.execute("""
+                    UPDATE dbo.EntityAlias 
+                    SET FirstName = REPLACE(FirstName, ?, ?), 
+                        LastName = REPLACE(LastName, ?, ?), 
+                        Name = REPLACE(Name, ?, ?)
+                    WHERE FirstName LIKE ? OR LastName LIKE ? OR Name LIKE ?
+                """, (sym, mc, sym, mc, sym, mc, f"%{sym}%", f"%{sym}%", f"%{sym}%"))
+                
+                cursor.execute("""
+                    UPDATE dbo.EntityRemark 
+                    SET Remark = REPLACE(Remark, ?, ?)
+                    WHERE Remark LIKE ?
+                """, (sym, mc, f"%{sym}%"))
+            logging.info("Character translation mapping applied successfully.")
     except Exception as e:
         logging.warning("Optional WLCharMap initialization note: %s", e)
 
