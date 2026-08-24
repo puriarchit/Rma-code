@@ -29,3 +29,12 @@ WHERE
 ORDER BY 
     t.NAME;
 GO
+
+
+
+
+-- 1. LexisNexis_Data (Purana Raw Data)
+SELECT COUNT(*) FROM LexisNexis_Data.dbo.Entity; -- Output: 54,108
+
+-- 2. LexisNexis_Staging (Fresh Raw Data)
+SELECT COUNT(*) FROM LexisNexis_Staging.dbo.Entity; -- Output: 50,438
