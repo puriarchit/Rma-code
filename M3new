@@ -234,11 +234,12 @@ def main():
             FROM EntityAddress3
         ),
         POB_Data AS (
-            SELECT DISTINCT EntityGUID, City AS POB, ISOStandard
+            SELECT EntityGUID, ISOStandard, MIN(City) AS POB
             FROM EntityAddress
             WHERE AddressTypeDesc = 'Place Of Birth'
               AND City IS NOT NULL
               AND City != ''
+            GROUP BY EntityGUID, ISOStandard
         ),
         Country_Data AS (
             SELECT tISO, tCountry AS CountryName
