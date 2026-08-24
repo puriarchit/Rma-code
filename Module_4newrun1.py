@@ -82,8 +82,8 @@ def main():
     logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](
-            [EntityGUID] [nvarchar](50) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](<
+            [EntityGUID] [nvarchar](50>) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -168,7 +168,7 @@ def main():
 
     logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
 
-    # Stage 1: Non-PEP Profiles
+    # Stage 1: Non-PEP Profiles (Strict AND Condition)
     logging.info("  [3/4] [Stage 1/2] Consolidating Non-PEP profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
@@ -216,6 +216,53 @@ def main():
     """)
     logging.info("  [3/4] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
 
+    # Stage 2: PEP Profiles
+    logging.info("  [3/4] [Stage 2/2] Consolidating PEP profiles...")
+    stage2_start = time.time()
+    cursor.execute(f"""
+        {cte_prefix}
+        INSERT INTO NegativeList_New1 WITH (TABLOCK) (
+            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
+            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+            Nationality, Citizenship
+        )
+        SELECT 
+            A.EntityGUID,
+            CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
+            CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
+            CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
+            CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
+            CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
+            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
+            C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB,
+            'PEP' AS WLType,
+            E.SourceURI as OriginalSource,
+            D.Remark,
+            H.IdentificationTypeDesc as NationalIDInfo,
+            H.IdentificationNumber as NationalIDNo,
+            I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+            J.Nationality,
+            K.Citizenship
+        {from_clause}
+        INNER JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
+        LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+        LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
+        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+        LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+        LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
+        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
+        LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
+        LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
+        OPTION (MERGE JOIN, RECOMPILE)
+    """)
+    logging.info("  [3/4] PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
+
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 
@@ -242,4 +289,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
