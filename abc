@@ -38,3 +38,20 @@ SELECT COUNT(*) FROM LexisNexis_Data.dbo.Entity; -- Output: 54,108
 
 -- 2. LexisNexis_Staging (Fresh Raw Data)
 SELECT COUNT(*) FROM LexisNexis_Staging.dbo.Entity; -- Output: 50,438
+
+
+
+
+
+
+
+
+-- 1. SSIS Production Database (LexisNexis_Data) ka breakdown
+SELECT WLType, COUNT(*) as Count 
+FROM LexisNexis_Data.dbo.NegativeList_New1 
+GROUP BY WLType;
+
+-- 2. Python Staging Database (LexisNexis_Staging) ka breakdown
+SELECT WLType, COUNT(*) as Count 
+FROM LexisNexis_Staging.dbo.NegativeList_New1 
+GROUP BY WLType;
