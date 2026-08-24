@@ -1,4 +1,5 @@
-SELECT IdentificationTypeDesc, COUNT(*) 
-FROM LexisNexis_Data.dbo.EntityIdentification 
-WHERE IdentificationTypeDesc LIKE 'national id%' 
-GROUP BY IdentificationTypeDesc;
+SELECT 'LexisNexis_Data' AS Db, 'EntityAddress_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityAddress_New
+UNION ALL
+SELECT 'LexisNexis_Data' AS Db, 'EntityDOB_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityDOB_New
+UNION ALL
+SELECT 'LexisNexis_Data' AS Db, 'EntityIdentification_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityIdentification_New;
