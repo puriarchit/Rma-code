@@ -1,3 +1,11 @@
-SELECT AddressTypeDesc, COUNT(*) 
-FROM LexisNexis_Data.dbo.EntityAddress 
-GROUP BY AddressTypeDesc;
+SELECT 'LexisNexis_Data' AS Db, 'EntityAddress_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityAddress_New
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, 'EntityAddress_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityAddress_New
+UNION ALL
+SELECT 'LexisNexis_Data' AS Db, 'EntityDOB_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityDOB_New
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, 'EntityDOB_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityDOB_New
+UNION ALL
+SELECT 'LexisNexis_Data' AS Db, 'EntityIdentification_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityIdentification_New
+UNION ALL
+SELECT 'LexisNexis_Staging' AS Db, 'EntityIdentification_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Staging.dbo.EntityIdentification_New;
