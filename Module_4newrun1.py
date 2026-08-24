@@ -23,7 +23,7 @@ def main():
     setup_logging()
     global_start = time.time()
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 4: Watchlist Consolidation (Mode: %s) [Started at %s] ===", mode, start_time_str)
+    logging.info("=== Starting Module 4: Watchlist Consolidation [Started at %s] ===", start_time_str)
 
     config = load_config()
     db = config["database"]
