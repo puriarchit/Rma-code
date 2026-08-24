@@ -234,14 +234,11 @@ def main():
             FROM EntityAddress3
         ),
         POB_Data AS (
-            SELECT EntityGUID, City AS POB
-            FROM (
-                SELECT EntityGUID, City,
-                       ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY (SELECT NULL)) as rn
-                FROM EntityAddress
-                WHERE AddressTypeDesc = 'Place Of Birth'
-            ) t
-            WHERE rn = 1
+            SELECT DISTINCT EntityGUID, City AS POB, ISOStandard
+            FROM EntityAddress
+            WHERE AddressTypeDesc = 'Place Of Birth'
+              AND City IS NOT NULL
+              AND City != ''
         ),
         Country_Data AS (
             SELECT tISO, tCountry AS CountryName
@@ -251,7 +248,7 @@ def main():
         SELECT 
             a.EntityGUID, a.AddressLine1, a.AddressLine2, a.City, a.CountryCode, p.POB, c.CountryName
         FROM AllAddresses a
-        LEFT JOIN POB_Data p ON a.EntityGUID = p.EntityGUID
+        LEFT JOIN POB_Data p ON a.EntityGUID = p.EntityGUID AND a.CountryCode = p.ISOStandard
         LEFT JOIN Country_Data c ON a.CountryCode = c.tISO
     """)
 
@@ -316,22 +313,24 @@ def main():
     cursor.execute("CREATE TABLE [dbo].[EntityDOB_Test]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [row_rank] [bigint] NULL)")
     cursor.execute("IF OBJECT_ID('EntityDOB_New', 'U') IS NOT NULL DROP TABLE EntityDOB_New")
     cursor.execute("CREATE TABLE [dbo].[EntityDOB_New]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [ALTDOB1] [datetime] NULL, [ALTDOB2] [datetime] NULL, [ALTDOB3] [datetime] NULL)")
-
     cursor.execute("""
         INSERT INTO EntityDOB_Test (EntityGUID, DOB, row_rank)
-        SELECT P.EntityGUID, p.DOB, 
-               ROW_NUMBER() OVER (PARTITION BY P.EntityGUID ORDER BY p.DOB DESC) as row_rank
+        SELECT EntityGUID, DOB, 
+               ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY MaxDOBGUID DESC) as row_rank
         FROM (
-            SELECT EntityGUID, 
-                   DOB = CASE 
-                       WHEN LEN(RTRIM(LTRIM(BirthMonth))) < 1 AND LEN(RTRIM(LTRIM(BirthDay))) < 1 THEN CAST(BirthYear as nvarchar) 
-                       ELSE CAST(BirthYear as nvarchar) + '-' + CAST(BirthMonth as nvarchar) + '-' + CAST(BirthDay as nvarchar) 
-                   END 
-            FROM EntityDOB
-        ) p
-        GROUP BY P.EntityGUID, p.DOB
+            SELECT EntityGUID, DOB,
+                   MAX(EntityDOBGUID) as MaxDOBGUID
+            FROM (
+                SELECT EntityGUID, EntityDOBGUID,
+                       DOB = CASE 
+                           WHEN LEN(RTRIM(LTRIM(BirthMonth))) < 1 AND LEN(RTRIM(LTRIM(BirthDay))) < 1 THEN CAST(BirthYear as nvarchar) 
+                           ELSE CAST(BirthYear as nvarchar) + '-' + CAST(BirthMonth as nvarchar) + '-' + CAST(BirthDay as nvarchar) 
+                       END 
+                FROM EntityDOB
+            ) t
+            GROUP BY EntityGUID, DOB
+        ) P
     """)
-
     cursor.execute("""
         INSERT INTO EntityDOB_New (EntityGUID, DOB, ALTDOB1, ALTDOB2, ALTDOB3)
         SELECT A.EntityGUID, A.DOB,
