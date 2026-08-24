@@ -82,8 +82,8 @@ def main():
     logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](
-            [EntityGUID] [nvarchar](50) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](<
+            [EntityGUID] [nvarchar](50>) NULL,
             [ReferenceID] [nvarchar](50) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
@@ -168,7 +168,7 @@ def main():
 
     logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
 
-    # Stage 1: Non-PEP Profiles
+    # Stage 1: Non-PEP Profiles (Strict AND Condition)
     logging.info("  [3/4] [Stage 1/2] Consolidating Non-PEP profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
@@ -211,7 +211,7 @@ def main():
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-        WHERE p.EntityGUID IS NULL OR (isnull(F.SourceName, G.SourceName) IS NOT NULL AND isnull(F.SourceName, G.SourceName) <> 'PEP')
+        WHERE p.EntityGUID IS NULL AND (isnull(F.SourceName, G.SourceName) IS NULL OR isnull(F.SourceName, G.SourceName) <> 'PEP')
         OPTION (MERGE JOIN, RECOMPILE)
     """)
     logging.info("  [3/4] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
