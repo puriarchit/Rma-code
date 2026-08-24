@@ -1,5 +1,19 @@
-SELECT 'LexisNexis_Data' AS Db, 'EntityAddress_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityAddress_New
+-- 1. Total count checks
+SELECT 'LexisNexis_Data' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Data.dbo.NegativeList_New1
 UNION ALL
-SELECT 'LexisNexis_Data' AS Db, 'EntityDOB_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityDOB_New
+SELECT 'LexisNexis_Staging' AS DbName, COUNT(*) AS TotalCount FROM LexisNexis_Staging.dbo.NegativeList_New1;
+
+-- 2. Category counts checks
+SELECT 'LexisNexis_Data' AS DbName, 
+       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
+       COUNT(*) AS Count 
+FROM LexisNexis_Data.dbo.NegativeList_New1 
+WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
+GROUP BY WLType
 UNION ALL
-SELECT 'LexisNexis_Data' AS Db, 'EntityIdentification_New' AS TableName, COUNT(*) AS Count FROM LexisNexis_Data.dbo.EntityIdentification_New;
+SELECT 'LexisNexis_Staging' AS DbName, 
+       CASE WHEN WLType IS NULL THEN 'NULL (None)' ELSE WLType COLLATE SQL_Latin1_General_CP1_CI_AS END AS Category, 
+       COUNT(*) AS Count 
+FROM LexisNexis_Staging.dbo.NegativeList_New1 
+WHERE WLType IS NULL OR (WLType COLLATE SQL_Latin1_General_CP1_CI_AS) = 'PEP'
+GROUP BY WLType;
