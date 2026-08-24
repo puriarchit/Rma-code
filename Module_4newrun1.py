@@ -192,7 +192,7 @@ def main():
         from_clause = "FROM Entity A WITH (NOLOCK)"
 
     # Load character translation map
-    cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
+    cursor.execute("SELECT Symbol, MapChar FROM LexisNexis_Data.dbo.WLCharMap")
     char_map = cursor.fetchall()
     
     def get_translate_sql(expr):
@@ -203,9 +203,12 @@ def main():
             sql = f"REPLACE({sql}, N'{sym_esc}', N'{mc_esc}')"
         return sql
 
-    T_FirstName = get_translate_sql("ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,'')")
-    T_LastName = get_translate_sql("ISNULL(A.LastName,'')")
-    T_SecondName = get_translate_sql("ISNULL(A.Name,'')")
+    def apply_formatting(expr):
+        return f"REPLACE(REPLACE(REPLACE({expr}, '-', ' '), ',', ''), '''', '')"
+
+    T_FirstName = get_translate_sql(apply_formatting("ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,'')"))
+    T_LastName = get_translate_sql(apply_formatting("ISNULL(A.LastName,'')"))
+    T_SecondName = get_translate_sql(apply_formatting("ISNULL(A.Name,'')"))
 
     FN_Expr = f"""CAST(SUBSTRING(
         CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
@@ -346,3 +349,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
