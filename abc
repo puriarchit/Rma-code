@@ -28,7 +28,7 @@ def main():
         
         # Query raw EntityIdentification
         cursor.execute("""
-            SELECT EntityIdentificationGUID, IDOtherInfo, IDNo
+            SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber
             FROM EntityIdentification
             WHERE EntityGUID = ?
         """, (guid,))
