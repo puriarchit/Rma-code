@@ -82,8 +82,8 @@ def main():
     logging.info("[2/4] Setting up target table NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
-        CREATE TABLE [dbo].[NegativeList_New1](
-            [ReferenceID] [nvarchar](50) NULL,
+        CREATE TABLE [dbo].[NegativeList_New1](<
+            [ReferenceID] [nvarchar](50>) NULL,
             [EntityType] [nvarchar](50) NULL,
             [Gender] [nvarchar](50) NULL,
             [FirstName] [nvarchar](300) NULL,
@@ -196,11 +196,12 @@ def main():
     char_map = cursor.fetchall()
     
     def get_translate_sql(expr):
-        sql = expr
+        collate_clause = "COLLATE SQL_Latin1_General_CP1_CS_AS"
+        sql = f"CAST({expr} AS NVARCHAR(MAX)) {collate_clause}"
         for sym, mc in char_map:
             sym_esc = sym.replace("'", "''")
             mc_esc = mc.replace("'", "''")
-            sql = f"REPLACE({sql}, N'{sym_esc}', N'{mc_esc}')"
+            sql = f"REPLACE({sql}, N'{sym_esc}' {collate_clause}, N'{mc_esc}' {collate_clause})"
         return sql
 
     def apply_formatting(expr):
@@ -349,4 +350,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
