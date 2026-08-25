@@ -118,7 +118,6 @@ def main():
         ]
         insert_cursor.executemany("INSERT INTO Country (tISO, tCountry) VALUES (?, ?)", countries)
 
-    # Ensure WLCharMap table exists and is populated with the 96 standard symbol mapping rows
     try:
         cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'WLCharMap'")
         if cursor.fetchone()[0] == 0:
