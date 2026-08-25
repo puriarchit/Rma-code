@@ -13,49 +13,38 @@ def main():
     db = config["database"]
     trusted = "yes" if db["trusted_connection"] else "no"
     
-    # Connect to Data (production/SSIS)
     conn_data = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};")
     cursor_data = conn_data.cursor()
-    
-    # Connect to Staging (python)
-    conn_staging = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};")
-    cursor_staging = conn_staging.cursor()
 
-    for ref_id in ['9998846', '9998851']:
-        print(f"\n================ Raw Identifications for ReferenceID {ref_id} ================")
-        
-        # Get EntityGUID
-        cursor_data.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ref_id,))
-        row = cursor_data.fetchone()
-        if not row:
-            print("Entity not found in LexisNexis_Data")
-            continue
-        guid = row[0]
-        
-        print("--- LexisNexis_Data.dbo.EntityIdentification ---")
-        cursor_data.execute("""
-            SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber 
-            FROM EntityIdentification 
-            WHERE EntityGUID = ?
-            ORDER BY EntityIdentificationGUID
-        """, (guid,))
-        for r in cursor_data.fetchall():
-            print(f"GUID: {r[0]} | Type: {r[1]} | Num: {r[2]}")
-            
-        print("--- LexisNexis_Staging.dbo.EntityIdentification ---")
-        cursor_staging.execute("""
-            SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber 
-            FROM EntityIdentification 
-            WHERE EntityGUID = ?
-            ORDER BY EntityIdentificationGUID
-        """, (guid,))
-        for r in cursor_staging.fetchall():
-            print(f"GUID: {r[0]} | Type: {r[1]} | Num: {r[2]}")
+    # Get EntityGUID
+    ref_id = '1828440'
+    cursor_data.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ref_id,))
+    guid = cursor_data.fetchone()[0]
+    
+    print(f"=== Raw IDs for {ref_id} ===")
+    cursor_data.execute("""
+        SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber 
+        FROM EntityIdentification 
+        WHERE EntityGUID = ?
+        ORDER BY IdentificationTypeDesc ASC, IdentificationNumber ASC
+    """, (guid,))
+    for r in cursor_data.fetchall():
+        print(f"Type: {r[1]} | Num: {r[2]}")
+
+    print("\n=== SSIS (Old) Final IDs for 1828440 ===")
+    cursor_data.execute("""
+        SELECT IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5
+        FROM NegativeList_New1
+        WHERE ReferenceID = ?
+    """, (ref_id,))
+    r = cursor_data.fetchone()
+    if r:
+        for i in range(5):
+            print(f"Rank {i+1}: Info: {r[i*2]} | No: {r[i*2+1]}")
 
     cursor_data.close()
     conn_data.close()
-    cursor_staging.close()
-    conn_staging.close()
 
 if __name__ == "__main__":
     main()
+
