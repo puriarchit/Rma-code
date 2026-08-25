@@ -15,38 +15,27 @@ def main():
     
     conn_data = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};")
     cursor_data = conn_data.cursor()
-    
-    conn_staging = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};")
-    cursor_staging = conn_staging.cursor()
 
     ref_id = '1828440'
+    cursor_data.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ref_id,))
+    guid = cursor_data.fetchone()[0]
     
-    cursor_data.execute("SELECT EntityGUID, Name FROM Entity WHERE EntityID = ?", (ref_id,))
-    row_data = cursor_data.fetchone()
-    print(f"Data DB: EntityGUID={row_data[0] if row_data else 'None'} | Name={row_data[1] if row_data else 'None'}")
+    # 1. Print all column names in EntityIdentification
+    cursor_data.execute("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'EntityIdentification'")
+    columns = [r[0] for r in cursor_data.fetchall()]
+    print("=== Columns in EntityIdentification ===")
+    print(columns)
     
-    cursor_staging.execute("SELECT EntityGUID, Name FROM Entity WHERE EntityID = ?", (ref_id,))
-    row_staging = cursor_staging.fetchone()
-    print(f"Staging DB: EntityGUID={row_staging[0] if row_staging else 'None'} | Name={row_staging[1] if row_staging else 'None'}")
-
-    if row_data and row_staging:
-        guid_data = row_data[0]
-        guid_staging = row_staging[0]
-        
-        print("\n--- LexisNexis_Data EntityIdentification ---")
-        cursor_data.execute("SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber FROM EntityIdentification WHERE EntityGUID = ?", (guid_data,))
-        for r in cursor_data.fetchall():
-            print(f"GUID: {r[0]} | Type: {r[1]} | Num: {r[2]}")
-            
-        print("\n--- LexisNexis_Staging EntityIdentification ---")
-        cursor_staging.execute("SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber FROM EntityIdentification WHERE EntityGUID = ?", (guid_staging,))
-        for r in cursor_staging.fetchall():
-            print(f"GUID: {r[0]} | Type: {r[1]} | Num: {r[2]}")
+    # 2. Print all rows with all columns for this EntityGUID
+    print(f"\n=== All Rows in EntityIdentification for {ref_id} ===")
+    cursor_data.execute(f"SELECT * FROM EntityIdentification WHERE EntityGUID = ?")
+    rows = cursor_data.fetchall()
+    for row in rows:
+        row_dict = dict(zip(columns, row))
+        print(row_dict)
 
     cursor_data.close()
     conn_data.close()
-    cursor_staging.close()
-    conn_staging.close()
 
 if __name__ == "__main__":
     main()
