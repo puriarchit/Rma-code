@@ -114,6 +114,23 @@ def main():
     cursor_data.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
     char_map = cursor_data.fetchall()
     
+    def normalize_text(text):
+        if not text:
+            return ""
+        text = text.replace("&amp;", "&")
+        replacements = {
+            "Ã¡": "á", "Ã©": "é", "Ã­": "í", "Ã³": "ó", "Ãº": "ú", "Ã±": "ñ",
+            "Ã": "Á", "Ã‰": "É", "Ã": "Í", "Ã“": "Ó", "Ãš": "Ú", "Ã‘": "Ñ",
+            "Ã¼": "ü", "Ãœ": "Ü",
+            "â€“": "–", "â€”": "—",
+            "â€œ": "“", "â€": "”",
+            "â€˜": "‘", "â€™": "’",
+            "Â¶": "¶", "Â": ""
+        }
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        return text
+
     def apply_wl_map(text):
         res = text
         for sym, mc in char_map:
@@ -124,12 +141,12 @@ def main():
         rows = []
         for ref_id in sample_ids:
             # Query SSIS
-            sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ?"
+            sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_data.execute(sql_data, (ref_id,))
             ssis_rows = cursor_data.fetchall()
             
             # Query Python
-            sql_staging = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ?"
+            sql_staging = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_staging.execute(sql_staging, (ref_id,))
             python_rows = cursor_staging.fetchall()
             
@@ -145,23 +162,19 @@ def main():
                 match_vals = []
                 for col_name, sv, pv in zip(all_columns, s_vals, p_vals):
                     # Clean encoding noise for compare
-                    sv_clean = sv.replace("Ã§", "ç").replace("Ãº", "ú").replace("Ã±", "ñ").replace("â€“", "–").replace("Ã³", "ó").replace("Ã©", "é").replace("Â¶", "¶")
+                    sv_clean = normalize_text(sv)
+                    pv_clean = normalize_text(pv)
                     
                     if col_name in ["FirstName", "LastName", "SecondName"]:
                         sv_clean = apply_wl_map(sv_clean)
-                        pv_clean = apply_wl_map(pv)
+                        pv_clean = apply_wl_map(pv_clean)
                     elif col_name == "OriginalSource":
                         # Sort URLs to bypass order difference
                         s_urls = sorted([x.strip() for x in sv_clean.split(";") if x.strip()])
-                        p_urls = sorted([x.strip() for x in pv.split(";") if x.strip()])
+                        p_urls = sorted([x.strip() for x in pv_clean.split(";") if x.strip()])
                         sv_clean = "; ".join(s_urls)
                         pv_clean = "; ".join(p_urls)
-                    elif col_name == "Remark":
-                        sv_clean = sv_clean.replace("Â¶", "¶")
-                        pv_clean = pv.replace("Â¶", "¶")
-                    else:
-                        pv_clean = pv
-                        
+                    
                     if sv_clean.lower().strip() == pv_clean.lower().strip():
                         match_vals.append("MATCH")
                     else:
