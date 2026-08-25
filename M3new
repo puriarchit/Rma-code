@@ -85,7 +85,7 @@ def main():
             ('LI', 'Liechtenstein'), ('LT', 'Lithuania'), ('LU', 'Luxembourg'), ('MO', 'Macau'), 
             ('MK', 'Macedonia'), ('MG', 'Madagascar'), ('MW', 'Malawi'), ('MY', 'Malaysia'), 
             ('MV', 'Maldives'), ('ML', 'Mali'), ('MT', 'Malta'), ('MH', 'Marshall Islands'), 
-            ('MQ', 'Martinique'), ('MR', 'Mauritania'), ('MU', 'Mini UI'), ('YT', 'Mayotte'), 
+            ('MQ', 'Martinique'), ('MR', 'Mauritania'), ('MU', 'Mauritius'), ('YT', 'Mayotte'), 
             ('MX', 'Mexico'), ('FM', 'Micronesia'), ('MD', 'Moldova'), ('MC', 'Monaco'), 
             ('MN', 'Mongolia'), ('ME', 'Montenegro'), ('MS', 'Montserrat'), ('MA', 'Morocco'), 
             ('MZ', 'Mozambique'), ('MM', 'Myanmar'), ('NA', 'Namibia'), ('NR', 'Nauru'), 
@@ -449,12 +449,11 @@ def main():
     cursor.execute("""
         INSERT INTO EntityIdentification_Test (EntityGUID, IdentificationTypeDesc, IdentificationNumber, row_rank)
         SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
-               ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY MinGUID ASC) as row_rank
+               ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY IdentificationTypeDesc ASC, IdentificationNumber ASC) as row_rank
         FROM (
-            SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
-                   MIN(EntityIdentificationGUID) as MinGUID
+            SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber
             FROM (
-                SELECT EntityGUID, EntityIdentificationGUID,
+                SELECT EntityGUID,
                        CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
                        CASE WHEN LEN(IdentificationNumber) < 50 THEN IdentificationNumber ELSE SUBSTRING(IdentificationNumber, 1, 50) END AS IdentificationNumber
                 FROM EntityIdentification e
@@ -598,4 +597,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
