@@ -1,12 +1,46 @@
 # -*- coding: utf-8 -*-
 import json
+import os
+import pyodbc
 
-def main():
+def load_config() -> dict:
     config_path = r"D:\LexisNexis\config.json"
     with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-    print("=== Server config.json ===")
-    print(json.dumps(config, indent=4))
+        return json.load(f)
+
+def main():
+    config = load_config()
+    db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};"
+    
+    conn = pyodbc.connect(conn_str, autocommit=True)
+    cursor = conn.cursor()
+
+    # 1. Check DOB for 10006425
+    print("=== Checking DOB in Staging NegativeList_New1 for 10006425 ===")
+    cursor.execute("SELECT DOB, ALTDOB1, ALTDOB2, ALTDOB3 FROM NegativeList_New1 WHERE ReferenceID = '10006425'")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(f"DOB: {row[0]} | ALT1: {row[1]} | ALT2: {row[2]} | ALT3: {row[3]}")
+
+    # 2. Check Identification ranks for 9998852
+    print("\n=== Checking Identifications in Staging NegativeList_New1 for 9998852 ===")
+    cursor.execute("SELECT IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2 FROM NegativeList_New1 WHERE ReferenceID = '9998852'")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(f"Info1: {row[0]} | No1: {row[1]}")
+        print(f"Info2: {row[2]} | No2: {row[3]}")
+
+    # 3. Check WLType rows for 9998845
+    print("\n=== Checking WLType and Sources in Staging NegativeList_New1 for 9998845 ===")
+    cursor.execute("SELECT WLType, OriginalSource FROM NegativeList_New1 WHERE ReferenceID = '9998845'")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(f"WLType: {row[0]} | Source: {row[1][:100]}...")
+
+    cursor.close()
+    conn.close()
 
 if __name__ == "__main__":
     main()
