@@ -12,35 +12,50 @@ def main():
     config = load_config()
     db = config["database"]
     trusted = "yes" if db["trusted_connection"] else "no"
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};"
     
-    conn = pyodbc.connect(conn_str, autocommit=True)
-    cursor = conn.cursor()
+    # Connect to Data (production/SSIS)
+    conn_data = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};")
+    cursor_data = conn_data.cursor()
+    
+    # Connect to Staging (python)
+    conn_staging = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};")
+    cursor_staging = conn_staging.cursor()
 
-    # 1. Check DOB for 10006425
-    print("=== Checking DOB in Staging NegativeList_New1 for 10006425 ===")
-    cursor.execute("SELECT DOB, ALTDOB1, ALTDOB2, ALTDOB3 FROM NegativeList_New1 WHERE ReferenceID = '10006425'")
-    rows = cursor.fetchall()
-    for row in rows:
-        print(f"DOB: {row[0]} | ALT1: {row[1]} | ALT2: {row[2]} | ALT3: {row[3]}")
+    for ref_id in ['9998846', '9998851']:
+        print(f"\n================ Raw Identifications for ReferenceID {ref_id} ================")
+        
+        # Get EntityGUID
+        cursor_data.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ref_id,))
+        row = cursor_data.fetchone()
+        if not row:
+            print("Entity not found in LexisNexis_Data")
+            continue
+        guid = row[0]
+        
+        print("--- LexisNexis_Data.dbo.EntityIdentification ---")
+        cursor_data.execute("""
+            SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber 
+            FROM EntityIdentification 
+            WHERE EntityGUID = ?
+            ORDER BY EntityIdentificationGUID
+        """, (guid,))
+        for r in cursor_data.fetchall():
+            print(f"GUID: {r[0]} | Type: {r[1]} | Num: {r[2]}")
+            
+        print("--- LexisNexis_Staging.dbo.EntityIdentification ---")
+        cursor_staging.execute("""
+            SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber 
+            FROM EntityIdentification 
+            WHERE EntityGUID = ?
+            ORDER BY EntityIdentificationGUID
+        """, (guid,))
+        for r in cursor_staging.fetchall():
+            print(f"GUID: {r[0]} | Type: {r[1]} | Num: {r[2]}")
 
-    # 2. Check Identification ranks for 9998852
-    print("\n=== Checking Identifications in Staging NegativeList_New1 for 9998852 ===")
-    cursor.execute("SELECT IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2 FROM NegativeList_New1 WHERE ReferenceID = '9998852'")
-    rows = cursor.fetchall()
-    for row in rows:
-        print(f"Info1: {row[0]} | No1: {row[1]}")
-        print(f"Info2: {row[2]} | No2: {row[3]}")
-
-    # 3. Check WLType rows for 9998845
-    print("\n=== Checking WLType and Sources in Staging NegativeList_New1 for 9998845 ===")
-    cursor.execute("SELECT WLType, OriginalSource FROM NegativeList_New1 WHERE ReferenceID = '9998845'")
-    rows = cursor.fetchall()
-    for row in rows:
-        print(f"WLType: {row[0]} | Source: {row[1][:100]}...")
-
-    cursor.close()
-    conn.close()
+    cursor_data.close()
+    conn_data.close()
+    cursor_staging.close()
+    conn_staging.close()
 
 if __name__ == "__main__":
     main()
