@@ -1,37 +1,21 @@
 # -*- coding: utf-8 -*-
 import os
-import xml.etree.ElementTree as ET
-
-def find_sql_queries(dtsx_path):
-    print(f"\n=== Parsing DTSX: {dtsx_path} ===")
-    try:
-        with open(dtsx_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-        
-        # Look for SQL Command tags or properties
-        # Typically: <property name="SqlCommand" ...>SELECT ...</property>
-        # Or in CDATA/text
-        import re
-        queries = re.findall(r'<property[^>]*name="SqlCommand"[^>]*>(.*?)</property>', content, re.DOTALL)
-        for i, q in enumerate(queries):
-            q_clean = q.strip().replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
-            if "EntityIdentification" in q_clean or "EntityDOB" in q_clean or "NegativeList" in q_clean:
-                print(f"\n[Query {i+1}]:")
-                print(q_clean)
-                
-    except Exception as e:
-        print(f"Error parsing: {e}")
 
 def main():
-    dtsx_dir = r"D:\LexisNexis"
-    if os.path.exists(dtsx_dir):
-        for file in os.listdir(dtsx_dir):
-            if file.endswith(".dtsx"):
-                find_sql_queries(os.path.join(dtsx_dir, file))
+    search_dir = r"D:\LexisNexis"
+    print(f"=== Searching for .dtsx files in {search_dir} ===")
+    found = False
+    if os.path.exists(search_dir):
+        for root, dirs, files in os.walk(search_dir):
+            for file in files:
+                if file.endswith(".dtsx"):
+                    print(f"Found: {os.path.join(root, file)}")
+                    found = True
     else:
-        print("D:\\LexisNexis does not exist locally.")
+        print("Directory does not exist")
+        
+    if not found:
+        print("No .dtsx files found in D:\\LexisNexis recursively.")
 
 if __name__ == "__main__":
     main()
-
-
