@@ -88,9 +88,9 @@ def main():
     def clean_val(v):
         if v is None or v == "None":
             return ""
-        # Normalize newlines and replace control characters to match ¶ representation
+        # Normalize newlines and replace control characters to match Â¶ representation
         val = str(v).strip()
-        val = val.replace("\r\n", "¶").replace("\r", "¶").replace("\n", "¶").replace("", "¶")
+        val = val.replace("\r\n", "Â¶").replace("\r", "Â¶").replace("\n", "Â¶").replace("", "Â¶")
         return val
 
     mismatches_summary = []
@@ -123,6 +123,38 @@ def main():
                 s_vals = [str(x) if x is not None else "" for x in ssis_row] if ssis_row else [""] * len(all_columns)
                 p_vals = [str(x) if x is not None else "" for x in python_row] if python_row else [""] * len(all_columns)
                 
+                # Align ID fields sets (including NationalIDInfo and NationalIDNo)
+                id_cols = [
+                    ("NationalIDInfo", "NationalIDNo"),
+                    ("IdOtherInfo1", "IdNo1"),
+                    ("IdOtherInfo2", "IdNo2"),
+                    ("IdOtherInfo3", "IdNo3"),
+                    ("IdOtherInfo4", "IdNo4"),
+                    ("IdOtherInfo5", "IdNo5")
+                ]
+                
+                s_ids = []
+                for o_col, n_col in id_cols:
+                    o_idx = all_columns.index(o_col)
+                    n_idx = all_columns.index(n_col)
+                    o_val = clean_val(s_vals[o_idx])
+                    n_val = clean_val(s_vals[n_idx])
+                    if o_val or n_val:
+                        s_ids.append((o_val, n_val))
+                s_ids = sorted(s_ids, key=lambda x: (x[0].lower(), x[1].lower()))
+                
+                p_ids = []
+                for o_col, n_col in id_cols:
+                    o_idx = all_columns.index(o_col)
+                    n_idx = all_columns.index(n_col)
+                    o_val = clean_val(p_vals[o_idx])
+                    n_val = clean_val(p_vals[n_idx])
+                    if o_val or n_val:
+                        p_ids.append((o_val, n_val))
+                p_ids = sorted(p_ids, key=lambda x: (x[0].lower(), x[1].lower()))
+                
+                ids_match = (s_ids == p_ids)
+                
                 match_vals = []
                 mismatched_cols = []
                 for col_idx, col_name in enumerate(all_columns):
@@ -135,10 +167,9 @@ def main():
                         p_urls = sorted([x.strip() for x in pv.split(";") if x.strip()])
                         if s_urls == p_urls:
                             sv = pv # Treat as match
-                    elif col_name in ["IdNo1", "IdNo2", "IdNo3", "IdNo4", "IdNo5", "IdOtherInfo1", "IdOtherInfo2", "IdOtherInfo3", "IdOtherInfo4", "IdOtherInfo5"]:
-                        # Compare trimmed values case-insensitively for ID fields
-                        if sv.lower().strip() == pv.lower().strip():
-                            sv = pv
+                    elif col_name in ["NationalIDInfo", "NationalIDNo", "IdNo1", "IdNo2", "IdNo3", "IdNo4", "IdNo5", "IdOtherInfo1", "IdOtherInfo2", "IdOtherInfo3", "IdOtherInfo4", "IdOtherInfo5"]:
+                        if ids_match:
+                            sv = pv # Treat as match (bypass column swaps if full set matches)
                     
                     if sv == pv:
                         match_vals.append("MATCH")
