@@ -63,7 +63,6 @@ def main():
         ("IX_EntityDOB_New_EntityGUID", "EntityDOB_New", "EntityGUID"),
         ("IX_EntityAddress_New_EntityGUID", "EntityAddress_New", "EntityGUID"),
         ("IX_EntityIdentification_New_EntityGUID", "EntityIdentification_New", "EntityGUID"),
-        ("IX_EntityIdentification_National_New_EntityGUID", "EntityIdentification_National_New", "EntityGUID"),
         ("IX_Entity_Citizenship_New_EntityGUID", "Entity_Citizenship_New", "EntityGUID"),
         ("IX_EntityRemark_New_EntityGUID", "EntityRemark_New", "EntityGUID"),
         ("IX_EntitySourceItem_New_EntityGUID", "EntitySourceItem_New", "EntityGUID")
@@ -253,9 +252,9 @@ def main():
             CAST(SUBSTRING(isnull(F.SourceName, G.SourceName), 1, 200) AS NVARCHAR(200)) as WLType,
             CAST(SUBSTRING(E.SourceURI, 1, 4000) AS NVARCHAR(4000)) as OriginalSource,
             D.Remark,
-            H.IdentificationTypeDesc as NationalIDInfo,
-            CAST(SUBSTRING(H.IdentificationNumber, 1, 50) AS NVARCHAR(50)) as NationalIDNo,
-            I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+            H.NationalIDInfo as NationalIDInfo,
+            CAST(SUBSTRING(H.NationalIDNo, 1, 50) AS NVARCHAR(50)) as NationalIDNo,
+            H.IdOtherInfo1, H.IdNo1, H.IdOtherInfo2, H.IdNo2, H.IdOtherInfo3, H.IdNo3, H.IdOtherInfo4, H.IdNo4, H.IdOtherInfo5, H.IdNo5,
             A.EntityGUID,
             J.Nationality,
             K.Citizenship,
@@ -268,14 +267,15 @@ def main():
         LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
         LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
         LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
-        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
+        LEFT JOIN EntityIdentification_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
         WHERE (p.EntityGUID IS NULL AND isnull(F.SourceName, G.SourceName) IS NULL)
            OR isnull(F.SourceName, G.SourceName) IS NOT NULL
         OPTION (MERGE JOIN, RECOMPILE)
     """)
+    logging.info("  [3/4] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
+
     # Stage 2: PEP Profiles
     logging.info("  [3/4] [Stage 2/2] Consolidating PEP profiles...")
     stage2_start = time.time()
@@ -301,9 +301,9 @@ def main():
             'PEP' AS WLType,
             CAST(SUBSTRING(E.SourceURI, 1, 4000) AS NVARCHAR(4000)) as OriginalSource,
             D.Remark,
-            H.IdentificationTypeDesc as NationalIDInfo,
-            CAST(SUBSTRING(H.IdentificationNumber, 1, 50) AS NVARCHAR(50)) as NationalIDNo,
-            I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
+            H.NationalIDInfo as NationalIDInfo,
+            CAST(SUBSTRING(H.NationalIDNo, 1, 50) AS NVARCHAR(50)) as NationalIDNo,
+            H.IdOtherInfo1, H.IdNo1, H.IdOtherInfo2, H.IdNo2, H.IdOtherInfo3, H.IdNo3, H.IdOtherInfo4, H.IdNo4, H.IdOtherInfo5, H.IdNo5,
             A.EntityGUID,
             J.Nationality,
             K.Citizenship,
@@ -316,8 +316,7 @@ def main():
         LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
         --LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
         --LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
-        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
+        LEFT JOIN EntityIdentification_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
         OPTION (MERGE JOIN, RECOMPILE)
@@ -332,7 +331,6 @@ def main():
         "EntityAddress_New",
         "EntityDOB_New",
         "EntityIdentification_New",
-        "EntityIdentification_National_New",
         "Entity_Citizenship_New",
         "EntityRemark_New",
         "EntitySourceItem_New"
