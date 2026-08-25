@@ -1,34 +1,12 @@
 # -*- coding: utf-8 -*-
 import json
-import os
-import pyodbc
-
-def load_config() -> dict:
-    config_path = r"D:\LexisNexis\config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 def main():
-    config = load_config()
-    db = config["database"]
-    trusted = "yes" if db["trusted_connection"] else "no"
-    
-    for dbname in ["LexisNexis_Staging", "LexisNexis_Data"]:
-        print(f"\n=== Tables in {dbname} ===")
-        conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={dbname};Trusted_Connection={trusted};"
-        try:
-            conn = pyodbc.connect(conn_str, autocommit=True)
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sys.tables ORDER BY name")
-            for r in cursor.fetchall():
-                print(f"  {r[0]}")
-            cursor.close()
-            conn.close()
-        except Exception as e:
-            print(f"  Error: {e}")
+    config_path = r"D:\LexisNexis\config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    print("=== Server config.json ===")
+    print(json.dumps(config, indent=4))
 
 if __name__ == "__main__":
     main()
-
-
-
