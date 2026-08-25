@@ -229,21 +229,31 @@ def main():
             vals[idx+1] = id_pairs[i][1]
 
     def build_comparison_rows(sample_ids):
+        def row_sort_key(row):
+            wl = normalize_text(str(row[15] if row[15] is not None else ""))
+            src = "".join(sorted([x.strip() for x in normalize_text(str(row[16] if row[16] is not None else "")).split(";") if x.strip()]))
+            rem = clean_compare_text(normalize_text(str(row[17] if row[17] is not None else "")))
+            return (wl.lower(), src.lower(), rem)
+
         rows = []
         for ref_id in sample_ids:
             # Query SSIS
-            sql_data = f"SELECT TOP 1 {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
+            sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_data.execute(sql_data, (ref_id,))
-            ssis_rows = cursor_data.fetchall()
+            ssis_rows = list(cursor_data.fetchall())
             
             # Query Python
-            sql_staging = f"SELECT TOP 1 {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
+            sql_staging = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_staging.execute(sql_staging, (ref_id,))
-            python_rows = cursor_staging.fetchall()
+            python_rows = list(cursor_staging.fetchall())
             
-            # Map by matching unique row (we can have duplicates due to enforcements, so map them row by row)
+            # Sort stably in Python using normalized keys
+            ssis_rows = sorted(ssis_rows, key=row_sort_key)
+            python_rows = sorted(python_rows, key=row_sort_key)
+            
+            # Compare and write only the first matched row block to make sheet clean
             max_len = max(len(ssis_rows), len(python_rows))
-            for i in range(max_len):
+            for i in range(min(1, max_len)):
                 ssis_row = ssis_rows[i] if i < len(ssis_rows) else None
                 python_row = python_rows[i] if i < len(python_rows) else None
                 
