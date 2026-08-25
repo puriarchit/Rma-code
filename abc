@@ -1,54 +1,25 @@
 # -*- coding: utf-8 -*-
-import json
 import os
-import pyodbc
-
-def load_config() -> dict:
-    config_path = r"D:\LexisNexis\config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+import re
 
 def main():
-    config = load_config()
-    db = config["database"]
-    trusted = "yes" if db["trusted_connection"] else "no"
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};"
+    dtsx_dir = r"D:\LexisNexis"
+    pattern = re.compile(r"EntityEnforcement", re.IGNORECASE)
     
-    conn = pyodbc.connect(conn_str, autocommit=True)
-    cursor = conn.cursor()
-
-    for ent_id in ['9998845']:
-        cursor.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ent_id,))
-        row = cursor.fetchone()
-        if not row:
-            print(f"Entity {ent_id} not found.")
-            continue
-        guid = row[0]
-        print(f"\n================ EntityID {ent_id} (GUID: {guid}) ================")
-        
-        # Query raw EntityEnforcement
-        cursor.execute("""
-            SELECT EntityEnforcementGUID, SourceName, LastUpdated
-            FROM EntityEnforcement
-            WHERE EntityGUID = ?
-        """, (guid,))
-        print("--- EntityEnforcement ---")
-        for r in cursor.fetchall():
-            print(f"GUID: {r[0]} | SourceName: {r[1]} | Updated: {r[2]}")
-
-        # Query raw EntitySanction
-        cursor.execute("""
-            SELECT EntitySanctionGUID, SourceName, LastUpdated
-            FROM EntitySanction
-            WHERE EntityGUID = ?
-        """, (guid,))
-        print("\n--- EntitySanction ---")
-        for r in cursor.fetchall():
-            print(f"GUID: {r[0]} | SourceName: {r[1]} | Updated: {r[2]}")
-
-    cursor.close()
-    conn.close()
+    for filename in os.listdir(dtsx_dir):
+        if filename.endswith(".dtsx"):
+            filepath = os.path.join(dtsx_dir, filename)
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            if pattern.search(content):
+                print(f"Found EntityEnforcement in {filename}")
+                # Print lines containing EntityEnforcement
+                lines = content.splitlines()
+                for i, line in enumerate(lines):
+                    if "EntityEnforcement" in line:
+                        print(f"  Line {i+1}: {line.strip()[:150]}")
 
 if __name__ == "__main__":
     main()
+
 
