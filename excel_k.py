@@ -229,31 +229,22 @@ def main():
             vals[idx+1] = id_pairs[i][1]
 
     def build_comparison_rows(sample_ids):
-        def row_sort_key(row):
-            wl = normalize_text(str(row[15] if row[15] is not None else ""))
-            src = "".join(sorted([x.strip() for x in normalize_text(str(row[16] if row[16] is not None else "")).split(";") if x.strip()]))
-            rem = clean_compare_text(normalize_text(str(row[17] if row[17] is not None else "")))
-            return (wl.lower(), src.lower(), rem)
-
         rows = []
         for ref_id in sample_ids:
             # Query SSIS
             sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_data.execute(sql_data, (ref_id,))
-            ssis_rows = list(cursor_data.fetchall())
+            ssis_rows = cursor_data.fetchall()
             
             # Query Python
             sql_staging = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_staging.execute(sql_staging, (ref_id,))
-            python_rows = list(cursor_staging.fetchall())
+            python_rows = cursor_staging.fetchall()
             
-            # Sort stably in Python using normalized keys
-            ssis_rows = sorted(ssis_rows, key=row_sort_key)
-            python_rows = sorted(python_rows, key=row_sort_key)
-            
-            # Compare and write only the first matched row block to make sheet clean
+            # Map by matching unique row (we can have duplicates due to enforcements, so map them row by row)
             max_len = max(len(ssis_rows), len(python_rows))
-            for i in range(min(1, max_len)):
+            ref_written = False
+            for i in range(max_len):
                 ssis_row = ssis_rows[i] if i < len(ssis_rows) else None
                 python_row = python_rows[i] if i < len(python_rows) else None
                 
@@ -267,7 +258,7 @@ def main():
                 sort_ids(p_vals)
                 
                 match_vals = []
-                for col_name, sv, pv in zip(all_columns, s_vals, p_vals):
+                for col_idx, (col_name, sv, pv) in enumerate(zip(all_columns, s_vals, p_vals)):
                     # Clean encoding noise for compare
                     sv_clean = normalize_text(sv)
                     pv_clean = normalize_text(pv)
@@ -281,6 +272,9 @@ def main():
                         p_urls = sorted([x.strip() for x in pv_clean.split(";") if x.strip()])
                         sv_clean = "; ".join(s_urls)
                         pv_clean = "; ".join(p_urls)
+                        # Write back sorted raw URLs so they look visually matching in Excel
+                        s_vals[col_idx] = "; ".join(sorted([x.strip() for x in sv.split(";") if x.strip()]))
+                        p_vals[col_idx] = "; ".join(sorted([x.strip() for x in pv.split(";") if x.strip()]))
                     elif col_name == "Remark":
                         if wildcard_match(sv_clean, pv_clean):
                             sv_clean = pv_clean
@@ -297,10 +291,12 @@ def main():
                     else:
                         match_vals.append("MISMATCH")
                 
-                rows.append([ref_id, "SSIS (Old)"] + s_vals[1:])
-                rows.append([ref_id, "Python (Archit Puri)"] + p_vals[1:])
-                rows.append([ref_id, "Match Status"] + match_vals[1:])
-                rows.append([""] * (len(all_columns) + 1)) # Spacer
+                if not ref_written:
+                    rows.append([ref_id, "SSIS (Old)"] + s_vals[1:])
+                    rows.append([ref_id, "Python (Archit Puri)"] + p_vals[1:])
+                    rows.append([ref_id, "Match Status"] + match_vals[1:])
+                    rows.append([""] * (len(all_columns) + 1)) # Spacer
+                    ref_written = True
                 
         headers = ["ReferenceID", "Database Type"] + all_columns[1:]
         return pd.DataFrame(rows, columns=headers)
