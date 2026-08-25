@@ -1,59 +1,24 @@
 # -*- coding: utf-8 -*-
-import json
 import os
-import pyodbc
-
-def load_config() -> dict:
-    config_path = r"D:\LexisNexis\config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
 
 def main():
-    config = load_config()
-    db = config["database"]
-    trusted = "yes" if db["trusted_connection"] else "no"
+    search_dir = r"D:\LexisNexis"
+    target = "LexisNexis_Comparison_Report"
     
-    # Connection to Python Staging database
-    conn_py = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};", autocommit=True)
-    cursor_py = conn_py.cursor()
-    
-    # Connection to SSIS Data database
-    conn_ssis = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};", autocommit=True)
-    cursor_ssis = conn_ssis.cursor()
-
-    ent_id = '9998845'
-    print(f"\n================ Comparing Rows for EntityID {ent_id} ================")
-    
-    # Query Python Staging
-    cursor_py.execute("""
-        SELECT WLType, OriginalSource, Remark
-        FROM NegativeList_New1
-        WHERE ReferenceID = ?
-    """, (ent_id,))
-    print("\n--- Python (Staging) NegativeList_New1 Rows ---")
-    for r in cursor_py.fetchall():
-        print(f"WLType: {r[0]}")
-        print(f"OriginalSource: {r[1][:200]}...")
-        print(f"Remark Length: {len(r[2]) if r[2] else 0}")
-        print("-" * 50)
-
-    # Query SSIS Production
-    cursor_ssis.execute("""
-        SELECT WLType, OriginalSource, Remark
-        FROM NegativeList_New1
-        WHERE ReferenceID = ?
-    """, (ent_id,))
-    print("\n--- SSIS (Production) NegativeList_New1 Rows ---")
-    for r in cursor_ssis.fetchall():
-        print(f"WLType: {r[0]}")
-        print(f"OriginalSource: {r[1][:200]}...")
-        print(f"Remark Length: {len(r[2]) if r[2] else 0}")
-        print("-" * 50)
-
-    cursor_py.close()
-    cursor_ssis.close()
-    conn_py.close()
-    conn_ssis.close()
+    if os.path.exists(search_dir):
+        for root, dirs, files in os.walk(search_dir):
+            for file in files:
+                if file.endswith(".py"):
+                    filepath = os.path.join(root, file)
+                    try:
+                        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                            content = f.read()
+                        if target in content:
+                            print(f"Found in remote: {filepath}")
+                    except Exception:
+                        pass
+    else:
+        print("D:\\LexisNexis does not exist locally to check.")
 
 if __name__ == "__main__":
     main()
