@@ -1,25 +1,59 @@
 # -*- coding: utf-8 -*-
+import json
 import os
-import re
+import pyodbc
+
+def load_config() -> dict:
+    config_path = r"D:\LexisNexis\config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def main():
-    dtsx_dir = r"D:\LexisNexis"
-    pattern = re.compile(r"EntityEnforcement", re.IGNORECASE)
+    config = load_config()
+    db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
     
-    for filename in os.listdir(dtsx_dir):
-        if filename.endswith(".dtsx"):
-            filepath = os.path.join(dtsx_dir, filename)
-            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-            if pattern.search(content):
-                print(f"Found EntityEnforcement in {filename}")
-                # Print lines containing EntityEnforcement
-                lines = content.splitlines()
-                for i, line in enumerate(lines):
-                    if "EntityEnforcement" in line:
-                        print(f"  Line {i+1}: {line.strip()[:150]}")
+    # Connection to Python Staging database
+    conn_py = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};", autocommit=True)
+    cursor_py = conn_py.cursor()
+    
+    # Connection to SSIS Data database
+    conn_ssis = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};", autocommit=True)
+    cursor_ssis = conn_ssis.cursor()
+
+    ent_id = '9998845'
+    print(f"\n================ Comparing Rows for EntityID {ent_id} ================")
+    
+    # Query Python Staging
+    cursor_py.execute("""
+        SELECT WLType, OriginalSource, Remark
+        FROM NegativeList_New1
+        WHERE ReferenceID = ?
+    """, (ent_id,))
+    print("\n--- Python (Staging) NegativeList_New1 Rows ---")
+    for r in cursor_py.fetchall():
+        print(f"WLType: {r[0]}")
+        print(f"OriginalSource: {r[1][:200]}...")
+        print(f"Remark Length: {len(r[2]) if r[2] else 0}")
+        print("-" * 50)
+
+    # Query SSIS Production
+    cursor_ssis.execute("""
+        SELECT WLType, OriginalSource, Remark
+        FROM NegativeList_New1
+        WHERE ReferenceID = ?
+    """, (ent_id,))
+    print("\n--- SSIS (Production) NegativeList_New1 Rows ---")
+    for r in cursor_ssis.fetchall():
+        print(f"WLType: {r[0]}")
+        print(f"OriginalSource: {r[1][:200]}...")
+        print(f"Remark Length: {len(r[2]) if r[2] else 0}")
+        print("-" * 50)
+
+    cursor_py.close()
+    cursor_ssis.close()
+    conn_py.close()
+    conn_ssis.close()
 
 if __name__ == "__main__":
     main()
-
-
