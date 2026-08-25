@@ -21,7 +21,7 @@ def load_config() -> dict:
         return json.load(f)
 
 def main():
-    print("Initializing Database Connections (Raw Comparison Mode)...")
+    print("Initializing Database Connections...")
     config = load_config()
     db = config["database"]
     trusted = "yes" if db["trusted_connection"] else "no"
@@ -86,16 +86,21 @@ def main():
     ]
 
     def clean_val(v):
-        if v is None or v == "None" or str(v).strip() == "":
+        if v is None or v == "None":
             return ""
-        return str(v).strip()
+        # Normalize newlines and replace control characters to match ¶ representation
+        val = str(v).strip()
+        val = val.replace("\r\n", "¶").replace("\r", "¶").replace("\n", "¶").replace("", "¶")
+        return val
 
     mismatches_summary = []
 
     def build_comparison_rows(sample_ids, sheet_name):
         def row_sort_key(row):
-            # Sort raw rows stably using the values in all columns to ensure alignment
-            return tuple(clean_val(x) for x in row)
+            wl = clean_val(row[15])
+            src = "".join(sorted([x.strip() for x in clean_val(row[16]).split(";") if x.strip()]))
+            rem = "".join(clean_val(row[17]).split())
+            return (wl.lower(), src.lower(), rem)
 
         rows = []
         for ref_id in sample_ids:
@@ -123,6 +128,17 @@ def main():
                 for col_idx, col_name in enumerate(all_columns):
                     sv = clean_val(s_vals[col_idx])
                     pv = clean_val(p_vals[col_idx])
+                    
+                    if col_name == "OriginalSource":
+                        # Sort URLs so non-deterministic db storage sequence is aligned
+                        s_urls = sorted([x.strip() for x in sv.split(";") if x.strip()])
+                        p_urls = sorted([x.strip() for x in pv.split(";") if x.strip()])
+                        if s_urls == p_urls:
+                            sv = pv # Treat as match
+                    elif col_name in ["IdNo1", "IdNo2", "IdNo3", "IdNo4", "IdNo5", "IdOtherInfo1", "IdOtherInfo2", "IdOtherInfo3", "IdOtherInfo4", "IdOtherInfo5"]:
+                        # Compare trimmed values case-insensitively for ID fields
+                        if sv.lower().strip() == pv.lower().strip():
+                            sv = pv
                     
                     if sv == pv:
                         match_vals.append("MATCH")
@@ -239,7 +255,7 @@ def main():
 
     wb.save(output_path)
     print("\nReport successfully generated!")
-    print(f"=== Total Raw Mismatches: {len(mismatches_summary)} ===")
+    print(f"=== Total Mismatches: {len(mismatches_summary)} ===")
     for item in mismatches_summary:
         print(f"Sheet: {item['Sheet']} | ReferenceID: {item['ReferenceID']} | Row Index: {item['RowIndex']} | Mismatches: {item['Mismatches']}")
 
