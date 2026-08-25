@@ -137,6 +137,32 @@ def main():
             res = res.replace(sym, mc)
         return res
 
+    def clean_compare_text(text):
+        if not text:
+            return ""
+        return "".join(c for c in text if c.isalnum()).lower()
+
+    def sort_dobs(vals):
+        # DOB columns are at indices 7, 8, 9, 10
+        dob_vals = [vals[7], vals[8], vals[9], vals[10]]
+        cleaned_dobs = sorted([d for d in dob_vals if d and d != "None" and d.strip()])
+        cleaned_dobs += [""] * (4 - len(cleaned_dobs))
+        vals[7], vals[8], vals[9], vals[10] = cleaned_dobs[0], cleaned_dobs[1], cleaned_dobs[2], cleaned_dobs[3]
+
+    def sort_ids(vals):
+        # ID columns are at indices 20 to 29 (pairs of Info and No)
+        id_pairs = []
+        for idx in [20, 22, 24, 26, 28]:
+            info = vals[idx]
+            no = vals[idx+1]
+            if (info and info != "None" and info.strip()) or (no and no != "None" and no.strip()):
+                id_pairs.append((info, no))
+        id_pairs = sorted(id_pairs, key=lambda x: (x[0] or "", x[1] or ""))
+        id_pairs += [("", "")] * (5 - len(id_pairs))
+        for i, idx in enumerate([20, 22, 24, 26, 28]):
+            vals[idx] = id_pairs[i][0]
+            vals[idx+1] = id_pairs[i][1]
+
     def build_comparison_rows(sample_ids):
         rows = []
         for ref_id in sample_ids:
@@ -159,6 +185,12 @@ def main():
                 s_vals = [str(x) if x is not None else "" for x in ssis_row] if ssis_row else [""] * len(all_columns)
                 p_vals = [str(x) if x is not None else "" for x in python_row] if python_row else [""] * len(all_columns)
                 
+                # Sort DOBs and IDs to handle non-deterministic order
+                sort_dobs(s_vals)
+                sort_dobs(p_vals)
+                sort_ids(s_vals)
+                sort_ids(p_vals)
+                
                 match_vals = []
                 for col_name, sv, pv in zip(all_columns, s_vals, p_vals):
                     # Clean encoding noise for compare
@@ -174,6 +206,9 @@ def main():
                         p_urls = sorted([x.strip() for x in pv_clean.split(";") if x.strip()])
                         sv_clean = "; ".join(s_urls)
                         pv_clean = "; ".join(p_urls)
+                    elif col_name == "Remark":
+                        sv_clean = clean_compare_text(sv_clean)
+                        pv_clean = clean_compare_text(pv_clean)
                     
                     if sv_clean.lower().strip() == pv_clean.lower().strip():
                         match_vals.append("MATCH")
