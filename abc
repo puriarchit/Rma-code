@@ -17,17 +17,24 @@ def main():
     conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
-    rows = cursor.fetchall()
-    
-    out_lines = []
-    for sym, mc in rows:
-        out_lines.append(f"Symbol: {repr(sym)} | MapChar: {repr(mc)}")
+    for ent_id in ['10006392', '9998852']:
+        cursor.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ent_id,))
+        row = cursor.fetchone()
+        if not row:
+            print(f"Entity {ent_id} not found.")
+            continue
+        guid = row[0]
+        print(f"\n================ EntityID {ent_id} (GUID: {guid}) ================")
         
-    with open("charmap.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(out_lines))
-        
-    print(f"Success: Wrote {len(rows)} rows to D:\\LexisNexis\\charmap.txt")
+        # Query raw EntityIdentification
+        cursor.execute("""
+            SELECT EntityIdentificationGUID, IDOtherInfo, IDNo
+            FROM EntityIdentification
+            WHERE EntityGUID = ?
+        """, (guid,))
+        print("--- Production Raw EntityIdentification ---")
+        for r in cursor.fetchall():
+            print(f"GUID: {r[0]} | Info: {r[1]} | No: {r[2]}")
 
     cursor.close()
     conn.close()
