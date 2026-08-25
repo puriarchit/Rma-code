@@ -1,24 +1,41 @@
 # -*- coding: utf-8 -*-
+import json
 import os
+import pyodbc
+
+def load_config() -> dict:
+    config_path = r"D:\LexisNexis\config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def main():
-    search_dir = r"D:\LexisNexis"
-    target = "LexisNexis_Comparison_Report"
+    config = load_config()
+    db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};"
     
-    if os.path.exists(search_dir):
-        for root, dirs, files in os.walk(search_dir):
-            for file in files:
-                if file.endswith(".py"):
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                            content = f.read()
-                        if target in content:
-                            print(f"Found in remote: {filepath}")
-                    except Exception:
-                        pass
+    conn = pyodbc.connect(conn_str, autocommit=True)
+    cursor = conn.cursor()
+
+    # 1. Check DOB for 10006425
+    print("=== Checking DOB in Staging for 10006425 ===")
+    cursor.execute("SELECT DOB, ALTDOB1 FROM EntityDOB_New WHERE EntityGUID = (SELECT EntityGUID FROM LexisNexis_Data.dbo.Entity WHERE EntityID = '10006425')")
+    row = cursor.fetchone()
+    print(f"DOB: {row[0] if row else 'NOT FOUND'} | ALTDOB1: {row[1] if row else 'NOT FOUND'}")
+
+    # 2. Check Identification ranks for 9998852
+    print("\n=== Checking Identification Ranks in Staging for 9998852 ===")
+    cursor.execute("SELECT IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2 FROM EntityIdentification_New WHERE EntityGUID = (SELECT EntityGUID FROM LexisNexis_Data.dbo.Entity WHERE EntityID = '9998852')")
+    row = cursor.fetchone()
+    if row:
+        print(f"Info1: {row[0]} | No1: {row[1]}")
+        print(f"Info2: {row[2]} | No2: {row[3]}")
     else:
-        print("D:\\LexisNexis does not exist locally to check.")
+        print("NOT FOUND")
+
+    cursor.close()
+    conn.close()
 
 if __name__ == "__main__":
     main()
+
