@@ -42,6 +42,7 @@ def main():
 
     def build_raw_rows(sample_ids):
         rows = []
+        headers = ["ReferenceID", "Database Type"] + all_columns[1:]
         for ref_id in sample_ids:
             # Query SSIS
             sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ?"
@@ -63,15 +64,14 @@ def main():
                 
                 rows.append([ref_id, "SSIS (Old Raw)"] + s_vals[1:])
                 rows.append([ref_id, "Python (Staging Raw)"] + p_vals[1:])
-                rows.append([""] * (len(all_columns) + 2)) # Spacer row
+                rows.append([""] * len(headers)) # Spacer row (must match header count)
         
-        headers = ["ReferenceID", "Database Type"] + all_columns[1:]
         return pd.DataFrame(rows, columns=headers)
 
     print("Building raw lists...")
     df_first = build_raw_rows(first_ids)
     df_mid = build_raw_rows(middle_ids)
-    df_last = build_raw_rows(last_ids)
+    df_last = build_comparison_rows = build_raw_rows(last_ids)
 
     output_path = r"D:\LexisNexis\LexisNexis_Raw_Dump.xlsx"
     print(f"Writing Excel to: {output_path}...")
