@@ -128,6 +128,11 @@ def main():
         if c1 == c2:
             return True
             
+        # Prefix match for truncated remarks (min length 20)
+        if len(c1) >= 20 and len(c2) >= 20:
+            if c2.startswith(c1) or c1.startswith(c2):
+                return True
+                
         if "\ufffd" in c1 or "\ufffd" in c2:
             pattern = re.escape(c2).replace("\ufffd", ".")
             if re.match("^" + pattern + "$", c1):
@@ -163,17 +168,32 @@ def main():
             return ""
         text = text.replace("&amp;", "&")
         replacements = {
-            "Ã¡": "á", "Ã©": "é", "Ã­": "í", "Ã³": "ó", "Ãº": "ú", "Ã±": "ñ",
-            "Ã": "Á", "Ã‰": "É", "Ã": "Í", "Ã“": "Ó", "Ãš": "Ú", "Ã‘": "Ñ",
-            "Ã¼": "ü", "Ãœ": "Ü",
-            "â€“": "–", "â€”": "—",
-            "â€œ": "“", "â€": "”",
-            "â€˜": "‘", "â€™": "’",
-            "Â¶": "¶", "Â": ""
+            "\u00c3\u00a1": "\u00e1",
+            "\u00c3\u00a9": "\u00e9",
+            "\u00c3\u00ad": "\u00ed",
+            "\u00c3\u00b3": "\u00f3",
+            "\u00c3\u00ba": "\u00fa",
+            "\u00c3\u00b1": "\u00f1",
+            "\u00c3\u0081": "\u00c1",
+            "\u00c3\u0089": "\u00c9",
+            "\u00c3\u008d": "\u00cd",
+            "\u00c3\u0093": "\u00d3",
+            "\u00c3\u009a": "\u00da",
+            "\u00c3\u0091": "\u00d1",
+            "\u00c3\u00bc": "\u00fc",
+            "\u00c3\u009c": "\u00dc",
+            "\u00e2\u0080\u0093": "\u2013",
+            "\u00e2\u0080\u0094": "\u2014",
+            "\u00e2\u0080\u009c": "\u201c",
+            "\u00e2\u0080\u009d": "\u201d",
+            "\u00e2\u0080\u0098": "\u2018",
+            "\u00e2\u0080\u0099": "\u2019",
+            "\u00c2\u00b6": "\u00b6",
+            "\u00c2": ""
         }
         for k, v in replacements.items():
             text = text.replace(k, v)
-        text = text.replace("Â", "")
+        text = text.replace("\u00c2", "")
         return text
 
     def apply_wl_map(text):
