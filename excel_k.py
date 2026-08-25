@@ -129,11 +129,11 @@ def main():
             return True
             
         if "\ufffd" in c1 or "\ufffd" in c2:
-            pattern = re.escape(c2).replace(r"\uFFFD", ".").replace(r"\ufffd", ".")
+            pattern = re.escape(c2).replace("\ufffd", ".")
             if re.match("^" + pattern + "$", c1):
                 return True
                 
-            pattern2 = re.escape(c1).replace(r"\uFFFD", ".").replace(r"\ufffd", ".")
+            pattern2 = re.escape(c1).replace("\ufffd", ".")
             if re.match("^" + pattern2 + "$", c2):
                 return True
                 
@@ -173,6 +173,7 @@ def main():
         }
         for k, v in replacements.items():
             text = text.replace(k, v)
+        text = text.replace("Â", "")
         return text
 
     def apply_wl_map(text):
@@ -211,12 +212,12 @@ def main():
         rows = []
         for ref_id in sample_ids:
             # Query SSIS
-            sql_data = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
+            sql_data = f"SELECT TOP 1 {', '.join(all_columns)} FROM LexisNexis_Data.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_data.execute(sql_data, (ref_id,))
             ssis_rows = cursor_data.fetchall()
             
             # Query Python
-            sql_staging = f"SELECT {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
+            sql_staging = f"SELECT TOP 1 {', '.join(all_columns)} FROM LexisNexis_Staging.dbo.NegativeList_New1 WHERE ReferenceID = ? ORDER BY WLType, CAST(OriginalSource AS NVARCHAR(MAX)), CAST(Remark AS NVARCHAR(MAX))"
             cursor_staging.execute(sql_staging, (ref_id,))
             python_rows = cursor_staging.fetchall()
             
