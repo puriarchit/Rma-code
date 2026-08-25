@@ -17,7 +17,7 @@ def main():
     conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
-    for ent_id in ['10006392', '9998852']:
+    for ent_id in ['10006425', '10006431', '10007380']:
         cursor.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ent_id,))
         row = cursor.fetchone()
         if not row:
@@ -26,18 +26,19 @@ def main():
         guid = row[0]
         print(f"\n================ EntityID {ent_id} (GUID: {guid}) ================")
         
-        # Query raw EntityIdentification
+        # Query raw EntityDOB
         cursor.execute("""
-            SELECT EntityIdentificationGUID, IdentificationTypeDesc, IdentificationNumber
-            FROM EntityIdentification
+            SELECT EntityDOBGUID, BirthYear, BirthMonth, BirthDay
+            FROM EntityDOB
             WHERE EntityGUID = ?
         """, (guid,))
-        print("--- Production Raw EntityIdentification ---")
+        print("--- Production Raw DOBs ---")
         for r in cursor.fetchall():
-            print(f"GUID: {r[0]} | Info: {r[1]} | No: {r[2]}")
+            print(f"GUID: {r[0]} | Year: {r[1]} | Month: {r[2]} | Day: {r[3]}")
 
     cursor.close()
     conn.close()
 
 if __name__ == "__main__":
     main()
+
