@@ -114,6 +114,50 @@ def main():
     cursor_data.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
     char_map = cursor_data.fetchall()
     
+    import re
+
+    def wildcard_match(s1, s2):
+        def clean_for_wildcard(text):
+            if not text:
+                return ""
+            return "".join(c for c in text if c.isalnum() or c == "\ufffd").lower()
+        
+        c1 = clean_for_wildcard(s1)
+        c2 = clean_for_wildcard(s2)
+        
+        if c1 == c2:
+            return True
+            
+        if "\ufffd" in c1 or "\ufffd" in c2:
+            pattern = re.escape(c2).replace(r"\uFFFD", ".").replace(r"\ufffd", ".")
+            if re.match("^" + pattern + "$", c1):
+                return True
+                
+            pattern2 = re.escape(c1).replace(r"\uFFFD", ".").replace(r"\ufffd", ".")
+            if re.match("^" + pattern2 + "$", c2):
+                return True
+                
+        return False
+
+    raw_ids_cache = {}
+
+    def get_raw_ids(ref_id, cursor_data):
+        ref_str = str(ref_id)
+        if ref_str.endswith(".0"):
+            ref_str = ref_str[:-2]
+        if ref_str in raw_ids_cache:
+            return raw_ids_cache[ref_str]
+        
+        cursor_data.execute("""
+            SELECT DISTINCT IdentificationNumber 
+            FROM LexisNexis_Data.dbo.EntityIdentification 
+            WHERE EntityGUID = (SELECT EntityGUID FROM LexisNexis_Data.dbo.Entity WHERE EntityID = ?)
+        """, (ref_str,))
+        raw_ids = {r[0].strip().lower() for r in cursor_data.fetchall() if r[0]}
+        
+        raw_ids_cache[ref_str] = raw_ids
+        return raw_ids
+
     def normalize_text(text):
         if not text:
             return ""
@@ -207,8 +251,15 @@ def main():
                         sv_clean = "; ".join(s_urls)
                         pv_clean = "; ".join(p_urls)
                     elif col_name == "Remark":
-                        sv_clean = clean_compare_text(sv_clean)
-                        pv_clean = clean_compare_text(pv_clean)
+                        if wildcard_match(sv_clean, pv_clean):
+                            sv_clean = pv_clean
+                    elif col_name in ["IdNo1", "IdNo2", "IdNo3", "IdNo4", "IdNo5"]:
+                        if sv_clean.lower().strip() != pv_clean.lower().strip():
+                            raw_ids = get_raw_ids(ref_id, cursor_data)
+                            sv_stripped = sv_clean.lower().strip()
+                            pv_stripped = pv_clean.lower().strip()
+                            if (not sv_stripped or sv_stripped in raw_ids) and (not pv_stripped or pv_stripped in raw_ids):
+                                sv_clean = pv_clean
                     
                     if sv_clean.lower().strip() == pv_clean.lower().strip():
                         match_vals.append("MATCH")
@@ -334,4 +385,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
