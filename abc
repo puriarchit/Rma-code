@@ -12,30 +12,23 @@ def main():
     config = load_config()
     db = config["database"]
     trusted = "yes" if db["trusted_connection"] else "no"
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};"
     
-    conn = pyodbc.connect(conn_str, autocommit=True)
-    cursor = conn.cursor()
-
-    # 1. Check DOB for 10006425
-    print("=== Checking DOB in Staging for 10006425 ===")
-    cursor.execute("SELECT DOB, ALTDOB1 FROM EntityDOB_New WHERE EntityGUID = (SELECT EntityGUID FROM LexisNexis_Data.dbo.Entity WHERE EntityID = '10006425')")
-    row = cursor.fetchone()
-    print(f"DOB: {row[0] if row else 'NOT FOUND'} | ALTDOB1: {row[1] if row else 'NOT FOUND'}")
-
-    # 2. Check Identification ranks for 9998852
-    print("\n=== Checking Identification Ranks in Staging for 9998852 ===")
-    cursor.execute("SELECT IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2 FROM EntityIdentification_New WHERE EntityGUID = (SELECT EntityGUID FROM LexisNexis_Data.dbo.Entity WHERE EntityID = '9998852')")
-    row = cursor.fetchone()
-    if row:
-        print(f"Info1: {row[0]} | No1: {row[1]}")
-        print(f"Info2: {row[2]} | No2: {row[3]}")
-    else:
-        print("NOT FOUND")
-
-    cursor.close()
-    conn.close()
+    for dbname in ["LexisNexis_Staging", "LexisNexis_Data"]:
+        print(f"\n=== Tables in {dbname} ===")
+        conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={dbname};Trusted_Connection={trusted};"
+        try:
+            conn = pyodbc.connect(conn_str, autocommit=True)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sys.tables ORDER BY name")
+            for r in cursor.fetchall():
+                print(f"  {r[0]}")
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            print(f"  Error: {e}")
 
 if __name__ == "__main__":
     main()
+
+
 
