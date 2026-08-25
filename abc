@@ -1,21 +1,42 @@
 # -*- coding: utf-8 -*-
+import json
 import os
+import pyodbc
+
+def load_config() -> dict:
+    config_path = r"D:\LexisNexis\config.json"
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def main():
-    search_dir = r"D:\LexisNexis"
-    print(f"=== Searching for .dtsx files in {search_dir} ===")
-    found = False
-    if os.path.exists(search_dir):
-        for root, dirs, files in os.walk(search_dir):
-            for file in files:
-                if file.endswith(".dtsx"):
-                    print(f"Found: {os.path.join(root, file)}")
-                    found = True
-    else:
-        print("Directory does not exist")
+    config = load_config()
+    db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
+    
+    conn_data = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};")
+    cursor_data = conn_data.cursor()
+    
+    conn_staging = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};")
+    cursor_staging = conn_staging.cursor()
+
+    ref_id = '1828440'
+    
+    print("=== SSIS (Old) National IDs ===")
+    cursor_data.execute("SELECT NationalIDInfo, NationalIDNo FROM NegativeList_New1 WHERE ReferenceID = ?", (ref_id,))
+    row = cursor_data.fetchone()
+    if row:
+        print(f"Info: {row[0]} | No: {row[1]}")
         
-    if not found:
-        print("No .dtsx files found in D:\\LexisNexis recursively.")
+    print("\n=== Python (Archit) National IDs ===")
+    cursor_staging.execute("SELECT NationalIDInfo, NationalIDNo FROM NegativeList_New1 WHERE ReferenceID = ?", (ref_id,))
+    row = cursor_staging.fetchone()
+    if row:
+        print(f"Info: {row[0]} | No: {row[1]}")
+
+    cursor_data.close()
+    conn_data.close()
+    cursor_staging.close()
+    conn_staging.close()
 
 if __name__ == "__main__":
     main()
