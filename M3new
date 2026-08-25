@@ -508,7 +508,7 @@ def main():
 
     cursor.execute("""
         INSERT INTO EntityRemark_New (EntityGUID, Remark)
-        SELECT r.EntityGUID, SUBSTRING(r.Remark, 1, 4000)
+        SELECT r.EntityGUID, REPLACE(REPLACE(REPLACE(SUBSTRING(r.Remark, 1, 4000), CHAR(13)+CHAR(10), N'¶'), CHAR(13), N'¶'), CHAR(10), N'¶')
         FROM EntityRemark r
         INNER JOIN #UniqueGUIDs u ON r.EntityGUID = u.EntityGUID
     """)
@@ -551,7 +551,7 @@ def main():
             if guid != current_guid:
                 if current_guid is not None:
                     unique_remarks = list(dict.fromkeys(current_remarks))
-                    merged_remarks = "; ".join(unique_remarks)[:4000]
+                    merged_remarks = "; ".join(unique_remarks)[:4000].replace("\r\n", "¶").replace("\r", "¶").replace("\n", "¶")
                     batch_remark.append((current_guid, merged_remarks))
                     
                     if len(batch_remark) >= batch_size:
@@ -566,7 +566,7 @@ def main():
 
     if current_guid is not None:
         unique_remarks = list(dict.fromkeys(current_remarks))
-        merged_remarks = "; ".join(unique_remarks)[:4000]
+        merged_remarks = "; ".join(unique_remarks)[:4000].replace("\r\n", "¶").replace("\r", "¶").replace("\n", "¶")
         batch_remark.append((current_guid, merged_remarks))
 
     if batch_remark:
