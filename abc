@@ -1,42 +1,37 @@
 # -*- coding: utf-8 -*-
-import json
 import os
-import pyodbc
+import xml.etree.ElementTree as ET
 
-def load_config() -> dict:
-    config_path = r"D:\LexisNexis\config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+def find_sql_queries(dtsx_path):
+    print(f"\n=== Parsing DTSX: {dtsx_path} ===")
+    try:
+        with open(dtsx_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        
+        # Look for SQL Command tags or properties
+        # Typically: <property name="SqlCommand" ...>SELECT ...</property>
+        # Or in CDATA/text
+        import re
+        queries = re.findall(r'<property[^>]*name="SqlCommand"[^>]*>(.*?)</property>', content, re.DOTALL)
+        for i, q in enumerate(queries):
+            q_clean = q.strip().replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+            if "EntityIdentification" in q_clean or "EntityDOB" in q_clean or "NegativeList" in q_clean:
+                print(f"\n[Query {i+1}]:")
+                print(q_clean)
+                
+    except Exception as e:
+        print(f"Error parsing: {e}")
 
 def main():
-    config = load_config()
-    db = config["database"]
-    trusted = "yes" if db["trusted_connection"] else "no"
-    
-    conn_data = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};")
-    cursor_data = conn_data.cursor()
-
-    ref_id = '1828440'
-    cursor_data.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ref_id,))
-    guid = cursor_data.fetchone()[0]
-    
-    # 1. Print all column names in EntityIdentification
-    cursor_data.execute("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'EntityIdentification'")
-    columns = [r[0] for r in cursor_data.fetchall()]
-    print("=== Columns in EntityIdentification ===")
-    print(columns)
-    
-    # 2. Print all rows with all columns for this EntityGUID
-    print(f"\n=== All Rows in EntityIdentification for {ref_id} ===")
-    cursor_data.execute(f"SELECT * FROM EntityIdentification WHERE EntityGUID = ?")
-    rows = cursor_data.fetchall()
-    for row in rows:
-        row_dict = dict(zip(columns, row))
-        print(row_dict)
-
-    cursor_data.close()
-    conn_data.close()
+    dtsx_dir = r"D:\LexisNexis"
+    if os.path.exists(dtsx_dir):
+        for file in os.listdir(dtsx_dir):
+            if file.endswith(".dtsx"):
+                find_sql_queries(os.path.join(dtsx_dir, file))
+    else:
+        print("D:\\LexisNexis does not exist locally.")
 
 if __name__ == "__main__":
     main()
+
 
