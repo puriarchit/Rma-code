@@ -56,24 +56,11 @@ def main():
     cursor.execute("""
         INSERT INTO dbo.EntitySourceItem_New WITH (TABLOCK) (EntityGUID, SourceURI)
         SELECT
-            D.EntityGUID,
-            COALESCE(
-                STRING_AGG(
-                    CONVERT(NVARCHAR(MAX), D.SourceURI),
-                    N'; '
-                ) WITHIN GROUP (ORDER BY D.SourceURI ASC),
-                N''
-            ) AS SourceURI
-        FROM
-        (
-            SELECT DISTINCT
-                EntityGUID,
-                NULLIF(SourceURI, N'') AS SourceURI
-            FROM dbo.EntitySourceItem WITH (NOLOCK)
-            WHERE EntityGUID IS NOT NULL
-        ) AS D
-        GROUP BY
-            D.EntityGUID;
+            EntityGUID,
+            ISNULL(N' ' + STRING_AGG(CONVERT(NVARCHAR(MAX), SourceURI), N'; ') WITHIN GROUP (ORDER BY EntitySourceItemGUID ASC), N'')
+        FROM dbo.EntitySourceItem WITH (NOLOCK)
+        WHERE EntityGUID IS NOT NULL AND SourceURI IS NOT NULL AND SourceURI != N''
+        GROUP BY EntityGUID;
     """)
 
     merge_time = time.time() - step_start
