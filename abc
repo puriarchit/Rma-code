@@ -11,40 +11,23 @@ def load_config() -> dict:
 def main():
     config = load_config()
     db = config["database"]
+    trusted = "yes" if db["trusted_connection"] else "no"
+    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};"
     
-    # Connect to LexisNexis_Data
-    conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection=yes;"
     conn = pyodbc.connect(conn_str, autocommit=True)
     cursor = conn.cursor()
 
-    for ent_id in ['1828137', '1828222']:
-        cursor.execute("SELECT EntityGUID FROM Entity WHERE EntityID = ?", (ent_id,))
-        row = cursor.fetchone()
-        if not row:
-            print(f"Entity {ent_id} not found in production.")
-            continue
-        guid = row[0]
-        print(f"\n================ EntityID {ent_id} (GUID: {guid}) ================")
+    cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
+    rows = cursor.fetchall()
+    
+    out_lines = []
+    for sym, mc in rows:
+        out_lines.append(f"Symbol: {repr(sym)} | MapChar: {repr(mc)}")
         
-        # Query raw EntityAddress in LexisNexis_Data
-        cursor.execute("""
-            SELECT AddressTypeDesc, City, ISOStandard, Address1, Address2
-            FROM EntityAddress
-            WHERE EntityGUID = ?
-        """, (guid,))
-        print("--- Production Raw EntityAddress ---")
-        for r in cursor.fetchall():
-            print(f"Type: {r[0]} | City: {r[1]} | ISO: {r[2]} | Addr1: {r[3]} | Addr2: {r[4]}")
-            
-        # Query EntityAddress_New in LexisNexis_Data
-        cursor.execute("""
-            SELECT AddressLine1, AddressLine2, City, CountryCode, POB, Country
-            FROM EntityAddress_New
-            WHERE EntityGUID = ?
-        """, (guid,))
-        print("--- Production EntityAddress_New ---")
-        for r in cursor.fetchall():
-            print(f"Addr1: {r[0]} | Addr2: {r[1]} | City: {r[2]} | ISO: {r[3]} | POB: {r[4]} | Country: {r[5]}")
+    with open("charmap.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(out_lines))
+        
+    print(f"Success: Wrote {len(rows)} rows to D:\\LexisNexis\\charmap.txt")
 
     cursor.close()
     conn.close()
