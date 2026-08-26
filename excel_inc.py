@@ -117,10 +117,23 @@ def main():
 
     def build_comparison_rows(sample_ids, table_name, columns, sheet_name):
         rows = []
+        def row_sort_key(row):
+            col_map = {col: idx for idx, col in enumerate(columns)}
+            fn = clean_val(row[col_map["FirstName"]]) if "FirstName" in col_map else ""
+            ln = clean_val(row[col_map["LastName"]]) if "LastName" in col_map else ""
+            wl = clean_val(row[col_map["WLType"]]) if "WLType" in col_map else ""
+            guid = ""
+            if "EntityAliasGUID" in col_map:
+                guid = clean_val(row[col_map["EntityAliasGUID"]])
+            elif "Basis" in col_map:
+                guid = clean_val(row[col_map["Basis"]])
+            elif "ID" in col_map:
+                guid = str(row[col_map["ID"]])
+            return (fn.lower(), ln.lower(), wl.lower(), guid.lower())
+
         for ref_id in sample_ids:
             # Query from Python (LexisNexis_Staging)
             if table_name == "NegativeListFilter":
-                # For filter table, match by ID of the reference
                 sql_py = f"SELECT {', '.join(columns)} FROM LexisNexis_Staging.dbo.{table_name} WHERE ID IN (SELECT ID FROM LexisNexis_Staging.dbo.NegativeList WHERE ReferenceID = ?)"
                 cursor_py.execute(sql_py, (ref_id,))
             else:
@@ -137,9 +150,9 @@ def main():
                 cursor_ssis.execute(sql_ssis, (ref_id,))
             ssis_rows = cursor_ssis.fetchall()
 
-            # Sort rows by their full contents to align them (prevents row-order mismatch)
-            py_rows = sorted(py_rows, key=lambda x: [clean_val(val) for val in x])
-            ssis_rows = sorted(ssis_rows, key=lambda x: [clean_val(val) for val in x])
+            # Sort rows by stable business key to align them perfectly
+            py_rows = sorted(py_rows, key=row_sort_key)
+            ssis_rows = sorted(ssis_rows, key=row_sort_key)
 
             max_len = max(len(ssis_rows), len(py_rows))
             for i in range(max_len):
@@ -154,6 +167,12 @@ def main():
                 for col_idx, col_name in enumerate(columns):
                     sv = clean_val(s_vals[col_idx])
                     pv = clean_val(p_vals[col_idx])
+
+                    if col_name == "OriginalSource":
+                        s_urls = sorted([x.strip() for x in sv.split(";") if x.strip()])
+                        p_urls = sorted([x.strip() for x in pv.split(";") if x.strip()])
+                        if s_urls == p_urls:
+                            sv = pv
 
                     if sv == pv:
                         match_vals.append("MATCH")
