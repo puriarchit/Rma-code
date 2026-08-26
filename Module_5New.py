@@ -356,7 +356,7 @@ def bulk_insert_alias(cursor, run_version_id):
         WHERE B.AliasTypeDesc NOT IN (
               'Acronym','Call Sign','Chinese Commercial Code (CCC)',
               'Native Script For Alias','Native Script For Entity')
-        ORDER BY A.ReferenceID, B.EntityAliasID;
+        ORDER BY A.ReferenceID, B.EntityAliasGUID;
         """,
         (run_version_id,)
     )
