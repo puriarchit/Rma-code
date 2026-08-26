@@ -1,71 +1,14 @@
 USE MoneyWaveRemit;
 
-IF OBJECT_ID('dbo.NegativeList', 'U') IS NOT NULL
-  DROP TABLE dbo.NegativeList;
+IF OBJECT_ID('dbo.NegativeListFilter', 'U') IS NOT NULL
+  DROP TABLE dbo.NegativeListFilter;
 
-CREATE TABLE [dbo].[NegativeList](<
-	[ID] [int] IDENTITY(1,1>) NOT NULL PRIMARY KEY,
-	[ReferenceID] [nvarchar](100) NULL,
-	[WLType] [nvarchar](255) NULL,
-	[FileName] [nvarchar](100) NULL,
-	[VersionID] [nvarchar](15) NULL,
-	[EntityType] [numeric](<2, 0>) NULL,
-	[Source] [nvarchar](255) NULL,
-	[OriginalSource] [nvarchar](4000) NULL,
-	[Action] [nchar](3) NULL,
-	[Gender] [nvarchar](7) NULL,
-	[Deceased] [nchar](3) NULL,
-	[LastName] [nvarchar](150) NULL,
-	[FirstName] [nvarchar](300) NULL,
-	[SecondName] [nvarchar](300) NULL,
-	[ThirdName] [nvarchar](150) NULL,
-	[FourthName] [nvarchar](150) NULL,
-	[POB] [nvarchar](255) NULL,
-	[ALTPOB] [nvarchar](50) NULL,
-	[DOB] [nvarchar](255) NULL,
-	[ALTDOB1] [datetime] NULL,
-	[ALTDOB2] [datetime] NULL,
-	[ALTDOB3] [datetime] NULL,
-	[Nationality] [nvarchar](255) NULL,
-	[Citizenship] [nvarchar](70) NULL,
-	[Alias4] [nvarchar](255) NULL,
-	[Alias3] [nvarchar](255) NULL,
-	[Alias2] [nvarchar](255) NULL,
-	[Alias1] [nvarchar](255) NULL,
-	[Alias] [nvarchar](300) NULL,
-	[AliasType] [nvarchar](25) NULL,
-	[Title] [nvarchar](255) NULL,
-	[Designation] [nvarchar](500) NULL,
-	[AddressLine1] [nvarchar](200) NULL,
-	[AddressLine2] [nvarchar](200) NULL,
-	[City] [nvarchar](255) NULL,
-	[IdNo1] [nvarchar](255) NULL,
-	[IdOtherInfo1] [nvarchar](255) NULL,
-	[IdNo2] [nvarchar](255) NULL,
-	[IdOtherInfo2] [nvarchar](255) NULL,
-	[IdNo3] [nvarchar](255) NULL,
-	[IdOtherInfo3] [nvarchar](255) NULL,
-	[IdNo4] [nvarchar](255) NULL,
-	[IdOtherInfo4] [nvarchar](255) NULL,
-	[IdNo5] [nvarchar](255) NULL,
-	[IdOtherInfo5] [nvarchar](255) NULL,
-	[NationalIDNo] [nvarchar](50) NULL,
-	[NationalIDInfo] [nvarchar](255) NULL,
-	[Program] [nvarchar](150) NULL,
-	[OtherInfo] [text] NULL,
-	[Sdf] [nvarchar](255) NULL,
-	[SdfName] [nvarchar](255) NULL,
-	[Basis] [nvarchar](50) NULL,
-	[Remarks] [text] NULL,
-	[Status] [tinyint] NULL,
-	[Country] [nvarchar](255) NULL,
-	[SystemSource] [nchar](1) NULL,
-	[CreatedBy] [int] NULL,
-	[ApprovedBy] [int] NULL,
-	[CreationDate] [datetime] NULL,
-	[ApprovalDate] [datetime] NULL,
-	[LastUpdatedBy] [int] NULL,
-	[LastUpdatedDate] [datetime] NULL,
-	[LastApprovedBy] [int] NULL,
-	[LastApprovalDate] [datetime] NULL
+IF OBJECT_ID('dbo.NegativeListFilter', 'V') IS NOT NULL
+  DROP VIEW dbo.NegativeListFilter;
+
+CREATE TABLE [dbo].[NegativeListFilter](<
+	[ID] [int] NOT NULL,
+	[FirstName] [nvarchar](600>) NULL,
+	[LastName] [nvarchar](600) NULL,
+	[Nationality] [nvarchar](255) NULL
 );
