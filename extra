@@ -2,3 +2,8 @@ SELECT COUNT(*) FROM OmniRemitPro.dbo.NegativeList;
 
 
 SELECT COUNT(*) FROM MoneyWaveRemit.dbo.NegativeList;
+
+
+
+USE MoneyWaveRemit;
+SELECT TOP 0 * INTO dbo.NegativeList FROM LexisNexis_Data.dbo.NegativeList;
