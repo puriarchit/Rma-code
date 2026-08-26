@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--action", default="all", choices=["all", "pep", "sync"],
                         help="Action to perform: 'pep' (Consolidate PEPs), 'sync' (Master Sync), or 'all'")
+    parser.add_argument("--cleanup", action="store_true", help="Drop staging table at the end")
     return parser.parse_args()
 
 def load_config(config_path: str) -> dict:
@@ -433,12 +434,13 @@ def populate_master_and_filter(cursor, inserted_total):
     # NegativeList_History_Summary table logic (previously corresponding to NegativeList_4_6)
     # has been removed as per decommissioned package execution lists.
 
-def post_sync_cleanup(cursor, config):
-    try:
-        cursor.execute("TRUNCATE TABLE dbo.[NegativeList_New1]")
-        cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
-    except Exception:
-        pass
+def post_sync_cleanup(cursor, config, cleanup=False):
+    if cleanup:
+        try:
+            cursor.execute("TRUNCATE TABLE dbo.[NegativeList_New1]")
+            cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1]")
+        except Exception:
+            pass
     try:
         cursor.execute("CHECKPOINT;")
         cursor.execute("DBCC SHRINKFILE (2, TRUNCATEONLY);")
@@ -456,7 +458,7 @@ def check_existing_progress(cursor):
         return True, row_count
     return False, 0
 
-def run_sync(cursor, config):
+def run_sync(cursor, config, cleanup=False):
     global_start = time.time()
     logging.info("=== [Module 5] Stage: Database Sync (NegativeList_Master) ===")
     
@@ -486,7 +488,7 @@ def run_sync(cursor, config):
 
     build_post_load_indexes(cursor)
     populate_master_and_filter(cursor, inserted_total)
-    post_sync_cleanup(cursor, config)
+    post_sync_cleanup(cursor, config, cleanup)
 
     logging.info("Database Sync completed successfully in %.2f minutes.", (time.time() - global_start) / 60)
 
@@ -513,10 +515,10 @@ def main():
         if action == "pep":
             run_pep(cursor, config)
         elif action == "sync":
-            run_sync(cursor, config)
+            run_sync(cursor, config, args.cleanup)
         else: # "all"
             run_pep(cursor, config)
-            run_sync(cursor, config)
+            run_sync(cursor, config, args.cleanup)
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
