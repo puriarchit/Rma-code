@@ -1,11 +1,1 @@
-USE MoneyWaveRemit;
-GO
-
--- 1. EntityGUID aur EntityAliasGUID columns add karein
-ALTER TABLE dbo.NegativeList ADD EntityGUID NVARCHAR(50) NULL;
-ALTER TABLE dbo.NegativeList ADD EntityAliasGUID NVARCHAR(50) NULL;
-GO
-
--- 2. Remarks column ko rename karke Remark karein
-EXEC sp_rename 'dbo.NegativeList.Remarks', 'Remark', 'COLUMN';
-GO
+SELECT COUNT(*) FROM LexisNexis_Staging.dbo.EntityAlias;
