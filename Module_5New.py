@@ -460,6 +460,11 @@ def run_sync(cursor, config):
     global_start = time.time()
     logging.info("=== [Module 5] Stage: Database Sync (NegativeList_Master) ===")
     
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
+    if cursor.fetchone()[0] == 0:
+        logging.info("Source table NegativeList_New1 does not exist. Nothing to sync. Skipping.")
+        return
+        
     pre_sync_cleanup(cursor)
     ensure_sequence(cursor)
     ensure_indexes(cursor)
