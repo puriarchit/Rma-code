@@ -26,14 +26,19 @@ def main():
     db = config["database"]
     trusted = "yes" if db["trusted_connection"] else "no"
     
-    conn_str_staging = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Staging;Trusted_Connection={trusted};"
-    conn_str_ssis_data = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=LexisNexis_Data;Trusted_Connection={trusted};"
-    conn_str_ssis_prod = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=MoneyWaveRemit;Trusted_Connection={trusted};"
-    
+    def connect_with_fallback(db_name):
+        for svr in [db["server"], ".", "localhost", "(local)"]:
+            try:
+                conn_str = f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE={db_name};Trusted_Connection={trusted};"
+                return pyodbc.connect(conn_str, autocommit=True)
+            except Exception:
+                continue
+        raise Exception(f"Could not connect to database {db_name} on any server name.")
+
     try:
-        conn_py = pyodbc.connect(conn_str_staging, autocommit=True)
-        conn_ssis_data = pyodbc.connect(conn_str_ssis_data, autocommit=True)
-        conn_ssis_prod = pyodbc.connect(conn_str_ssis_prod, autocommit=True)
+        conn_py = connect_with_fallback("LexisNexis_Staging")
+        conn_ssis_data = connect_with_fallback("LexisNexis_Data")
+        conn_ssis_prod = connect_with_fallback("MoneyWaveRemit")
     except Exception as ex:
         print(f"Error connecting to databases: {ex}")
         return
