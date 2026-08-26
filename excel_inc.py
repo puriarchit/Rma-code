@@ -106,6 +106,15 @@ def main():
     # Columns configuration for NegativeListFilter
     cols_filter = ["ID", "FirstName", "LastName", "Nationality"]
 
+    # Columns configuration for NegativeList_Master View (uses Remarks and Basis)
+    cols_master = [
+        "ReferenceID", "EntityType", "Gender", "FirstName", "LastName", "SecondName", "Title",
+        "DOB", "ALTDOB1", "ALTDOB2", "ALTDOB3", "AddressLine1", "AddressLine2", "City", "Country",
+        "WLType", "OriginalSource", "Remarks", "NationalIDInfo", "NationalIDNo",
+        "IdOtherInfo1", "IdNo1", "IdOtherInfo2", "IdNo2", "IdOtherInfo3", "IdNo3",
+        "IdOtherInfo4", "IdNo4", "IdOtherInfo5", "IdNo5", "Basis", "Nationality", "Citizenship", "POB"
+    ]
+
     def build_comparison_rows(sample_ids, table_name, columns, sheet_name):
         rows = []
         for ref_id in sample_ids:
