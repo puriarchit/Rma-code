@@ -215,6 +215,7 @@ def prepare_page_compressed_heap(cursor):
             IdNo4               NVARCHAR(255)  NULL,
             IdOtherInfo5        NVARCHAR(MAX)  NULL,
             IdNo5               NVARCHAR(255)  NULL,
+            Basis               NVARCHAR(50)   NULL,
             EntityGUID          NVARCHAR(50)   NULL,
             EntityAliasGUID     NVARCHAR(50)   NULL,
             Nationality         NVARCHAR(255)  NULL,
@@ -249,7 +250,7 @@ def bulk_insert_base(cursor, run_version_id):
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
         )
         SELECT
             A.ReferenceID,
@@ -264,7 +265,7 @@ def bulk_insert_base(cursor, run_version_id):
             A.City, A.Country,
             A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
             A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
-            A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
+            A.EntityGUID, A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
             ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
         FROM dbo.NegativeList_New1 AS A WITH (NOLOCK);
         """,
@@ -315,7 +316,7 @@ def bulk_insert_alias(cursor, run_version_id):
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
         )
         SELECT
             A.ReferenceID,
@@ -339,6 +340,7 @@ def bulk_insert_alias(cursor, run_version_id):
             A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4,
             A.IdOtherInfo5, A.IdNo5,
             A.EntityGUID,
+            A.EntityGUID,
             B.EntityAliasGUID,
             A.Nationality,
             SUBSTRING(A.Citizenship,1,70),
@@ -353,7 +355,8 @@ def bulk_insert_alias(cursor, run_version_id):
             ON A.EntityGUID = B.EntityGUID
         WHERE B.AliasTypeDesc NOT IN (
               'Acronym','Call Sign','Chinese Commercial Code (CCC)',
-              'Native Script For Alias','Native Script For Entity');
+              'Native Script For Alias','Native Script For Entity')
+        ORDER BY A.ReferenceID, B.EntityAliasID;
         """,
         (run_version_id,)
     )
@@ -523,3 +526,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
