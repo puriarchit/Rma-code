@@ -362,9 +362,7 @@ def bulk_insert_alias(cursor, run_version_id):
         cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WITH (NOLOCK) WHERE EntityAliasGUID IS NOT NULL")
         inserted = cursor.fetchone()[0]
 
-    logging.info("Reclaiming space: dropping consumed staging table NegativeList_New1...")
     try:
-        cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_New1;")
         cursor.execute("CHECKPOINT;")
     except Exception:
         pass
