@@ -23,19 +23,8 @@ def parse_args():
 def reset_raw_tables_schema(cursor):
     logging.info("[0/16] Resetting, purging production objects & recreating clean raw staging tables...")
     
-    # 1. Drop production target tables & views first to instantly reclaim disk space
-    prod_cleanup_sql = """
-    DROP VIEW IF EXISTS dbo.NegativeList_Master;
-    DROP VIEW IF EXISTS dbo.NegativeListFilter;
-    DROP TABLE IF EXISTS dbo.NegativeList;
-    DROP TABLE IF EXISTS dbo.NegativeList_New1;
-    DROP TABLE IF EXISTS dbo.NegativeList_History_Summary;
-    DROP SEQUENCE IF EXISTS dbo.NegativeListVersionSeq;
-    """
-    for stmt in prod_cleanup_sql.split(";"):
-        if stmt.strip():
-            cursor.execute(stmt)
-    logging.info("[0/16] Production target tables, views & sequences dropped (Disk space reclaimed).")
+    # 1. Retain production target tables & views to prevent data loss in incremental runs
+    logging.info("[0/16] Retaining production target tables, views, and sequences.")
 
     # 2. Drop and recreate all 16 raw staging tables freshly from exact DDL script
     raw_ddl_sql = """
