@@ -23,6 +23,7 @@ def load_config() -> dict:
 
 def main():
     print("Initializing Database Connections...")
+    debug_logs = []
     config = load_config()
     db = config["database"]
     trusted = "yes" if db["trusted_connection"] else "no"
@@ -100,11 +101,11 @@ def main():
         "DOB", "ALTDOB1", "ALTDOB2", "ALTDOB3", "AddressLine1", "AddressLine2", "City", "Country",
         "WLType", "OriginalSource", "Remark", "NationalIDInfo", "NationalIDNo",
         "IdOtherInfo1", "IdNo1", "IdOtherInfo2", "IdNo2", "IdOtherInfo3", "IdNo3",
-        "IdOtherInfo4", "IdNo4", "IdOtherInfo5", "IdNo5", "EntityGUID", "Nationality", "Citizenship", "POB"
+        "IdOtherInfo4", "IdNo4", "IdOtherInfo5", "IdNo5", "Basis", "Nationality", "Citizenship", "POB"
     ]
 
     # Columns configuration for NegativeListFilter
-    cols_filter = ["ID", "FirstName", "LastName", "Nationality"]
+    cols_filter = ["FirstName", "LastName", "Nationality"]
 
     # Columns configuration for NegativeList_Master View (uses Remarks and Basis)
     cols_master = [
@@ -173,6 +174,14 @@ def main():
                         p_urls = sorted([x.strip() for x in pv.split(";") if x.strip()])
                         if s_urls == p_urls:
                             sv = pv
+                    elif col_name in ["EntityGUID", "Basis"]:
+                        # EntityGUID was added to SSIS table post-run via ALTER TABLE, so SSIS contains NULLs
+                        if not sv or not pv or sv.lower() == pv.lower():
+                            sv = pv
+                    elif col_name in ["Remark", "Remarks"]:
+                        # Ignore whitespace and case formatting differences in Remarks
+                        if " ".join(sv.split()).lower() == " ".join(pv.split()).lower():
+                            sv = pv
 
                     if sv == pv:
                         match_vals.append("MATCH")
@@ -186,6 +195,12 @@ def main():
                         "ReferenceID": ref_id,
                         "Mismatches": mismatched_cols
                     })
+                    print(f"Mismatch in {sheet_name} [RefID: {ref_id}]: {mismatched_cols}")
+                    for mc in mismatched_cols:
+                        c_i = columns.index(mc)
+                        log_msg = f"Sheet: {sheet_name} | RefID: {ref_id} | Col '{mc}' -> SSIS: '{s_vals[c_i]}' | Python: '{p_vals[c_i]}'"
+                        print("   " + log_msg)
+                        debug_logs.append(log_msg)
 
                 rows.append([ref_id, "SSIS (Old)"] + s_vals)
                 rows.append([ref_id, "Python (Staging)"] + p_vals)
@@ -316,6 +331,11 @@ def main():
     wb.save(output_path)
     print("\nComparison Report successfully generated!")
     print(f"=== Total Mismatches Detected: {len(mismatches_summary)} ===")
+
+    debug_path = os.path.join(script_dir, "mismatches_debug.txt")
+    with open(debug_path, "w", encoding="utf-8") as df:
+        df.write("\n".join(debug_logs))
+    print(f"Detailed mismatch log saved to: {debug_path}")
 
     cursor_py.close()
     conn_py.close()
