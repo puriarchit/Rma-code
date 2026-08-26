@@ -35,7 +35,7 @@ def main():
 
     steps = [
         ("Module 1: Ingestion (Files_1, Files_2)", "Module1.py", []),
-        ("Module 5: Database Sync (NegativeList_Master)", "Module5.py", ["--action", "sync", "--cleanup"]),
+        ("Module 5: Database Sync (NegativeList_Master)", "Module5.py", ["--action", "sync"]),
         ("Module 2: Source URI Merging (EntitySourceItem_1 to 5)", "Module2_SourceItem.py", []),
         ("Module 3: Field Formatting (EntityAddress, DOB, Citizenship, ID, Remark)", "Module3_Formatting.py", []),
         ("Module 4: Watchlist Consolidation (NegativeList_1_1 to 1_3)", "Module4_Consolidation.py", []),
@@ -78,3 +78,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
