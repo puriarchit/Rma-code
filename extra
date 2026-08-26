@@ -1,33 +1,11 @@
 USE MoneyWaveRemit;
 GO
 
-CREATE VIEW dbo.NegativeList_Master AS
-SELECT
-    A.ID,
-    A.ReferenceID, A.WLType, A.FileName, A.VersionID,
-    CASE WHEN ISNUMERIC(A.EntityType)=1 THEN CAST(A.EntityType AS NUMERIC(2,0))
-         WHEN A.EntityType='Individual' THEN 3
-         WHEN A.EntityType='Country' THEN 1
-         WHEN A.EntityType='Organization' THEN 9
-         WHEN A.EntityType='Vessel' THEN 4
-         ELSE 6 END AS EntityType,
-    CAST(NULL AS NVARCHAR(50)) AS Source,
-    A.OriginalSource, A.Action,
-    CAST(SUBSTRING(A.Gender,1,7) AS NVARCHAR(7)) AS Gender,
-    CAST(SUBSTRING(A.LastName,1,150) AS NVARCHAR(150)) AS LastName,
-    A.FirstName,
-    CAST(SUBSTRING(A.SecondName,1,300) AS NVARCHAR(300)) AS SecondName,
-    A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
-    A.Nationality,
-    CAST(SUBSTRING(A.Citizenship,1,70) AS NVARCHAR(70)) AS Citizenship,
-    A.Alias,
-    CAST(SUBSTRING(A.Title,1,255) AS NVARCHAR(255)) AS Title,
-    CAST(SUBSTRING(A.AddressLine1,1,200) AS NVARCHAR(200)) AS AddressLine1,
-    CAST(SUBSTRING(A.AddressLine2,1,200) AS NVARCHAR(200)) AS AddressLine2,
-    A.City,
-    A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3,
-    A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5,
-    A.NationalIDNo, A.NationalIDInfo,
-    A.EntityGUID AS Basis, A.Remark AS Remarks, A.Country,
-    A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-FROM dbo.NegativeList A WITH (NOLOCK);
+-- 1. EntityGUID aur EntityAliasGUID columns add karein
+ALTER TABLE dbo.NegativeList ADD EntityGUID NVARCHAR(50) NULL;
+ALTER TABLE dbo.NegativeList ADD EntityAliasGUID NVARCHAR(50) NULL;
+GO
+
+-- 2. Remarks column ko rename karke Remark karein
+EXEC sp_rename 'dbo.NegativeList.Remarks', 'Remark', 'COLUMN';
+GO
