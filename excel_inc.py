@@ -188,9 +188,9 @@ def main():
     df_nlf_last = build_comparison_rows(last_ids, "NegativeListFilter", cols_filter, "Filter Last 10")
 
     # NegativeList_Master comparison sheets
-    df_nlm_first = build_comparison_rows(first_ids, "NegativeList_Master", cols_negativelist, "Master First 10")
-    df_nlm_mid = build_comparison_rows(middle_ids, "NegativeList_Master", cols_negativelist, "Master Middle 10")
-    df_nlm_last = build_comparison_rows(last_ids, "NegativeList_Master", cols_negativelist, "Master Last 10")
+    df_nlm_first = build_comparison_rows(first_ids, "NegativeList_Master", cols_master, "Master First 10")
+    df_nlm_mid = build_comparison_rows(middle_ids, "NegativeList_Master", cols_master, "Master Middle 10")
+    df_nlm_last = build_comparison_rows(last_ids, "NegativeList_Master", cols_master, "Master Last 10")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(script_dir, "LexisNexis_Incremental_Comparison_Report.xlsx")
@@ -305,4 +305,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
