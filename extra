@@ -1,4 +1,54 @@
-E:\LexisNexis_New_Dev_2022.09.26(Anil)_MoneyWave\LexisNexis_New_Dev\Config_Conn.dtsConfig
 
 
-D:\LexisNexis\Omni_DataMart_Lexisnexis_Test\OmniData_Process\Jobs\Config_Conn.dtsConfig
+
+
+
+<?xml version="1.0"?>
+<DTSConfiguration>-
+ <DTSConfigurationHeading>
+    <DTSConfigurationFileInfo GeneratedDate="8/21/2026 6:51:00 PM" GeneratedFromPackageID="{00000000-0000-0000-0000-000000000000}" GeneratedFromPackageName="Files_1" GeneratedBy="WIN-Q6F1HDK5R4D\User2"/>
+  </DTSConfigurationHeading>
+
+
+-<Configuration ValueType="String" Path="\Package.Variables[User::DataSource].Properties[Value]" ConfiguredType="Property">
+
+<ConfiguredValue>D:\LexisNexis\New_Files\MWV01T7D_WorldCompliancePlus_20260814_130624</ConfiguredValue>
+
+</Configuration>
+
+
+-<Configuration ValueType="String" Path="\Package.Variables[User::DestinationDatabaseName].Properties[Value]" ConfiguredType="Property">
+
+<ConfiguredValue>MoneyWaveRemit</ConfiguredValue>
+
+</Configuration>
+
+
+-<Configuration ValueType="String" Path="\Package.Variables[User::SqlDatabaseName].Properties[Value]" ConfiguredType="Property">
+
+<ConfiguredValue>LexisNexis_Data</ConfiguredValue>
+
+</Configuration>
+
+
+-<Configuration ValueType="String" Path="\Package.Variables[User::SqlPwd].Properties[Value]" ConfiguredType="Property">
+
+<ConfiguredValue>asdf@123</ConfiguredValue>
+
+</Configuration>
+
+
+-<Configuration ValueType="String" Path="\Package.Variables[User::SqlServerName].Properties[Value]" ConfiguredType="Property">
+
+<ConfiguredValue>WIN-Q6F1HDK5R4D</ConfiguredValue>
+
+</Configuration>
+
+
+-<Configuration ValueType="String" Path="\Package.Variables[User::SqlUserID].Properties[Value]" ConfiguredType="Property">
+
+<ConfiguredValue>sa</ConfiguredValue>
+
+</Configuration>
+
+</DTSConfiguration>
