@@ -1,14 +1,23 @@
-USE MoneyWaveRemit;
+-- 1. Compare Main Production Table (NegativeList)
+PRINT '=== main Production Table (NegativeList) ===';
+SELECT 'Python (LexisNexis_Staging)' AS [System], COUNT(*) AS [RowCount] FROM LexisNexis_Staging.dbo.NegativeList
+UNION ALL
+SELECT 'SSIS (MoneyWaveRemit)' AS [System], COUNT(*) AS [RowCount] FROM MoneyWaveRemit.dbo.NegativeList;
 
-IF OBJECT_ID('dbo.NegativeListFilter', 'U') IS NOT NULL
-  DROP TABLE dbo.NegativeListFilter;
+-- 2. Compare Search Filter Table (NegativeListFilter)
+PRINT '=== Search Filter Table (NegativeListFilter) ===';
+SELECT 'Python (LexisNexis_Staging)' AS [System], COUNT(*) AS [RowCount] FROM LexisNexis_Staging.dbo.NegativeListFilter
+UNION ALL
+SELECT 'SSIS (MoneyWaveRemit)' AS [System], COUNT(*) AS [RowCount] FROM MoneyWaveRemit.dbo.NegativeListFilter;
 
-IF OBJECT_ID('dbo.NegativeListFilter', 'V') IS NOT NULL
-  DROP VIEW dbo.NegativeListFilter;
+-- 3. Compare Master View/Table (NegativeList_Master)
+PRINT '=== Master View/Table (NegativeList_Master) ===';
+SELECT 'Python (LexisNexis_Staging)' AS [System], COUNT(*) AS [RowCount] FROM LexisNexis_Staging.dbo.NegativeList_Master
+UNION ALL
+SELECT 'SSIS (MoneyWaveRemit)' AS [System], COUNT(*) AS [RowCount] FROM MoneyWaveRemit.dbo.NegativeList_Master;
 
-CREATE TABLE [dbo].[NegativeListFilter](<
-	[ID] [int] NOT NULL,
-	[FirstName] [nvarchar](600>) NULL,
-	[LastName] [nvarchar](600) NULL,
-	[Nationality] [nvarchar](255) NULL
-);
+-- 4. Compare Staging Table
+PRINT '=== Staging Table (Staging Data) ===';
+SELECT 'Python (LexisNexis_Staging)' AS [System], COUNT(*) AS [RowCount] FROM LexisNexis_Staging.dbo.NegativeList_New1
+UNION ALL
+SELECT 'SSIS (LexisNexis_Data)' AS [System], COUNT(*) AS [RowCount] FROM LexisNexis_Data.dbo.NegativeList;
