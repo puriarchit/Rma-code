@@ -1,34 +1,15 @@
--- -------------------------------------------------------------------------------
--- QUERY 3: DYNAMIC ID SLOT SORTING COMPARISON (AUTOMATIC MATCHING)
--- -------------------------------------------------------------------------------
-SELECT 
-    'SSIS Production (MoneyWaveRemit - Random)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
-    ReferenceID, 
-    IdOtherInfo1, 
-    IdNo1, 
-    IdOtherInfo2, 
-    IdNo2
-FROM MoneyWaveRemit.dbo.NegativeList
-WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL
-  AND ReferenceID IN (
-      SELECT TOP 1 ReferenceID 
-      FROM MoneyWaveRemit.dbo.NegativeList 
-      WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL
-  )
+-- Query 3A: SSIS Legacy Output (LexisNexis_Data)
+SELECT TOP 2 
+    'SSIS Staging (LexisNexis_Data - Random)' AS Engine_And_Database, 
+    EntityGUID, 
+    IdentificationTypeDesc, 
+    IdentificationNumber
+FROM LexisNexis_Data.dbo.EntityIdentification;
 
-UNION ALL
-
-SELECT 
-    'Python Production (LexisNexis_Staging - Alphabetical)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
-    ReferenceID, 
-    IdOtherInfo1, 
-    IdNo1, 
-    IdOtherInfo2, 
-    IdNo2
-FROM LexisNexis_Staging.dbo.NegativeList
-WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL
-  AND ReferenceID IN (
-      SELECT TOP 1 ReferenceID 
-      FROM MoneyWaveRemit.dbo.NegativeList 
-      WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL
-  );
+-- Query 3B: Python Migrated Output (LexisNexis_Staging)
+SELECT TOP 2 
+    'Python Staging (LexisNexis_Staging - Alphabetical)' AS Engine_And_Database, 
+    EntityGUID, 
+    IdentificationTypeDesc, 
+    IdentificationNumber
+FROM LexisNexis_Staging.dbo.EntityIdentification;
