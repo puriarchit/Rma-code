@@ -1,45 +1,72 @@
--- Single Screenshot Query: Base Profiles Staging Match
+-- ===============================================================================
+-- LEXISNEXIS PYTHON MIGRATION - ALL-IN-ONE MASTER COMPARISON SUITE
+-- Author: Archit Puri (Data Analyst)
+-- Press F5 ONCE in SSMS to generate all 3 Comparison Result Grids together!
+-- ===============================================================================
+
+-- -------------------------------------------------------------------------------
+-- GRID 1: PRODUCTION TARGET TABLES MATCH (253,946 ROWS)
+-- -------------------------------------------------------------------------------
 SELECT 
-    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1)' AS Environment, 
-    COUNT(*) AS BaseProfilesCount 
-FROM LexisNexis_Data.dbo.NegativeList_New1
-
-UNION ALL
-
-SELECT 
-    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1)' AS Environment, 
-    COUNT(*) AS BaseProfilesCount 
-FROM LexisNexis_Staging.dbo.NegativeList_New1;
-
-
-
-
--- Single Screenshot Query: Production Main & Search Filter Tables Match
-SELECT 
-    'dbo.NegativeList (Production Target Table)' AS TableName, 
+    'SSIS Legacy Engine (MoneyWaveRemit.dbo.NegativeList)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
     COUNT(*) AS TotalRows 
 FROM MoneyWaveRemit.dbo.NegativeList
 
 UNION ALL
 
 SELECT 
-    'dbo.NegativeListFilter (Search Filter Table)' AS TableName, 
+    'Python Migrated Engine (LexisNexis_Staging.dbo.NegativeList)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
     COUNT(*) AS TotalRows 
-FROM MoneyWaveRemit.dbo.NegativeListFilter;
+FROM LexisNexis_Staging.dbo.NegativeList
 
+UNION ALL
 
-
--- Single Screenshot Query: ID Slot Alphabetical Ranking Comparison
 SELECT 
-    'SSIS Output (LexisNexis_Data - Random)' AS PipelineEngine, 
-    EntityGUID, IdentificationTypeDesc, IdentificationNumber
+    'SSIS Legacy Engine (MoneyWaveRemit.dbo.NegativeListFilter)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    COUNT(*) AS TotalRows 
+FROM MoneyWaveRemit.dbo.NegativeListFilter
+
+UNION ALL
+
+SELECT 
+    'Python Migrated Engine (LexisNexis_Staging.dbo.NegativeListFilter)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging.dbo.NegativeListFilter;
+
+
+-- -------------------------------------------------------------------------------
+-- GRID 2: STAGING BASE PROFILES MATCH (65,448 BASE PROFILES)
+-- -------------------------------------------------------------------------------
+SELECT 
+    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    COUNT(*) AS BaseProfilesCount 
+FROM LexisNexis_Data.dbo.NegativeList_New1
+
+UNION ALL
+
+SELECT 
+    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    COUNT(*) AS BaseProfilesCount 
+FROM LexisNexis_Staging.dbo.NegativeList_New1;
+
+
+-- -------------------------------------------------------------------------------
+-- GRID 3: ID CARD SLOT SORTING COMPARISON (SSIS RANDOM VS PYTHON ALPHABETICAL)
+-- -------------------------------------------------------------------------------
+SELECT 
+    'SSIS Staging (LexisNexis_Data - Random)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    EntityGUID COLLATE DATABASE_DEFAULT AS EntityGUID, 
+    IdentificationTypeDesc COLLATE DATABASE_DEFAULT AS IdentificationTypeDesc, 
+    IdentificationNumber COLLATE DATABASE_DEFAULT AS IdentificationNumber
 FROM LexisNexis_Data.dbo.EntityIdentification
 WHERE EntityGUID = '00002167-93C0-466D-B0DC-F07A3B7E9871'
 
 UNION ALL
 
 SELECT 
-    'Python Output (LexisNexis_Staging - Alphabetical)' AS PipelineEngine, 
-    EntityGUID, IdentificationTypeDesc, IdentificationNumber
+    'Python Staging (LexisNexis_Staging - Alphabetical)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    EntityGUID COLLATE DATABASE_DEFAULT AS EntityGUID, 
+    IdentificationTypeDesc COLLATE DATABASE_DEFAULT AS IdentificationTypeDesc, 
+    IdentificationNumber COLLATE DATABASE_DEFAULT AS IdentificationNumber
 FROM LexisNexis_Staging.dbo.EntityIdentification
 WHERE EntityGUID = '00002167-93C0-466D-B0DC-F07A3B7E9871';
