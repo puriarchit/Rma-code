@@ -1,22 +1,13 @@
--- Single Result Grid: NegativeList_New1 ID Slot Comparison (SSIS vs Python)
+-- Query 3A: SSIS NegativeList_New1 Output
 SELECT TOP 1 
-    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1 - Random)' AS Engine_And_Database, 
-    ReferenceID, 
-    IdOtherInfo1, 
-    IdNo1, 
-    IdOtherInfo2, 
-    IdNo2
+    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1)' AS Engine_And_Database, 
+    ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
 FROM LexisNexis_Data.dbo.NegativeList_New1
-WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL
+WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL;
 
-UNION ALL
-
+-- Query 3B: Python NegativeList_New1 Output
 SELECT TOP 1 
-    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1 - Alphabetical)' AS Engine_And_Database, 
-    ReferenceID, 
-    IdOtherInfo1, 
-    IdNo1, 
-    IdOtherInfo2, 
-    IdNo2
+    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1)' AS Engine_And_Database, 
+    ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
 FROM LexisNexis_Staging.dbo.NegativeList_New1
 WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL;
