@@ -1,24 +1,118 @@
-USE master;
-GO
+-- ===============================================================================
+-- LEXISNEXIS PYTHON MIGRATION - COMPLETE SSMS VERIFICATION & AUDIT SUITE
+-- Author: Archit Puri (Data Analyst)
+-- ===============================================================================
 
--- 1. Database ko safely drop karke fresh create karein
-IF EXISTS (SELECT name FROM sys.databases WHERE name = N'LexisNexis_Staging')
-BEGIN
-    ALTER DATABASE LexisNexis_Staging SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-    DROP DATABASE LexisNexis_Staging;
-END
-GO
+-- -------------------------------------------------------------------------------
+-- 1. CHAPTER 13: SSIS VS PYTHON FINAL PRODUCTION PARITY MATCH (253,946 ROWS)
+-- (Run this query to get a single grid comparing SSIS & Python row counts)
+-- -------------------------------------------------------------------------------
+SELECT 
+    'SSIS Target Database (MoneyWaveRemit.dbo.NegativeList)' AS DatabaseEngine, 
+    COUNT(*) AS TotalProductionRows 
+FROM MoneyWaveRemit.dbo.NegativeList
 
-CREATE DATABASE LexisNexis_Staging;
-GO
+UNION ALL
 
--- 2. Configuration settings (Instantly apply hongi)
-ALTER DATABASE LexisNexis_Staging SET RECOVERY SIMPLE;
-ALTER DATABASE LexisNexis_Staging SET DELAYED_DURABILITY = FORCED;
-ALTER DATABASE LexisNexis_Staging SET COMPATIBILITY_LEVEL = 140;
-GO
+SELECT 
+    'Python Target Database (LexisNexis_Staging_Run.dbo.NegativeList)' AS DatabaseEngine, 
+    COUNT(*) AS TotalProductionRows 
+FROM LexisNexis_Staging_Run.dbo.NegativeList
 
--- 3. Sirf filegrowth 1GB set karein (Ye bhi 1 second mein ho jayega)
-ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging, FILEGROWTH = 1024MB);
-ALTER DATABASE LexisNexis_Staging MODIFY FILE (NAME = LexisNexis_Staging_log, FILEGROWTH = 1024MB);
-GO
+UNION ALL
+
+SELECT 
+    'Python Search Filter Table (LexisNexis_Staging_Run.dbo.NegativeListFilter)' AS DatabaseEngine, 
+    COUNT(*) AS TotalProductionRows 
+FROM LexisNexis_Staging_Run.dbo.NegativeListFilter;
+
+
+
+-- -------------------------------------------------------------------------------
+-- 2. CHAPTER 8: ID SLOT POSITION SORTING COMPARISON (SSIS VS PYTHON)
+-- (Run this query to show side-by-side ID card slot sorting for ReferenceID 10003457)
+-- -------------------------------------------------------------------------------
+SELECT 
+    'SSIS Output (Random Order)' AS Engine, 
+    ReferenceID, 
+    IdOtherInfo1, 
+    IdNo1, 
+    IdOtherInfo2, 
+    IdNo2
+FROM MoneyWaveRemit.dbo.NegativeList
+WHERE ReferenceID = '10003457'
+
+UNION ALL
+
+SELECT 
+    'Python Output (Alphabetical Order)' AS Engine, 
+    ReferenceID, 
+    IdOtherInfo1, 
+    IdNo1, 
+    IdOtherInfo2, 
+    IdNo2
+FROM LexisNexis_Staging_Run.dbo.NegativeList
+WHERE ReferenceID = '10003457';
+
+
+
+-- -------------------------------------------------------------------------------
+-- 3. CHAPTER 6: STAGING BASE PROFILE CONSOLIDATION (65,448 BASE PROFILES)
+-- (Run this query to verify intermediate staging table NegativeList_New1)
+-- -------------------------------------------------------------------------------
+SELECT 
+    'dbo.NegativeList_New1 (Staging Base Table)' AS TableName, 
+    COUNT(*) AS BaseProfilesCount 
+FROM LexisNexis_Staging_Run.dbo.NegativeList_New1;
+
+
+
+-- -------------------------------------------------------------------------------
+-- 4. CHAPTER 12 AUDIT QUERY 1: ALL TARGET PRODUCTION TABLES ROW COUNTS
+-- (Run this query to generate the exact 3-row grid screenshot)
+-- -------------------------------------------------------------------------------
+SELECT 
+    'dbo.NegativeList (Production Table)' AS TableName, 
+    COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging_Run.dbo.NegativeList
+
+UNION ALL
+
+SELECT 
+    'dbo.NegativeListFilter (Search Table)' AS TableName, 
+    COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging_Run.dbo.NegativeListFilter
+
+UNION ALL
+
+SELECT 
+    'dbo.NegativeList_Master (Master View)' AS TableName, 
+    COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging_Run.dbo.NegativeList_Master;
+
+
+
+-- -------------------------------------------------------------------------------
+-- 5. CHAPTER 12 AUDIT QUERY 2: NON-NULL GUID & BASIS COLUMN INTEGRITY CHECK
+-- (Run this query to verify zero null values in Basis GUID column)
+-- -------------------------------------------------------------------------------
+SELECT 
+    COUNT(*) AS TotalRows, 
+    COUNT(Basis) AS NonNullBasisCount,
+    COUNT(CASE WHEN Basis IS NULL THEN 1 END) AS NullBasisCount
+FROM LexisNexis_Staging_Run.dbo.NegativeList;
+
+
+
+-- -------------------------------------------------------------------------------
+-- 6. GENERAL AUDIT: PROFILES WITH 2+ NON-NULL ID CARDS
+-- (Run this query if you want to inspect other profiles having multi-slot IDs)
+-- -------------------------------------------------------------------------------
+SELECT TOP 10 
+    ReferenceID, 
+    IdOtherInfo1, 
+    IdNo1, 
+    IdOtherInfo2, 
+    IdNo2
+FROM LexisNexis_Staging_Run.dbo.NegativeList
+WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL;
