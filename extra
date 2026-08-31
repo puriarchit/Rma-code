@@ -1,1 +1,28 @@
-SELECT COUNT(*) FROM LexisNexis_Staging.dbo.EntityAlias;
+-- Query 1A: SSIS Database Output (Random Order)
+SELECT ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
+FROM MoneyWaveRemit.dbo.NegativeList
+WHERE ReferenceID = '10003457';
+
+-- Query 1B: Python Database Output (Alphabetical Order)
+SELECT ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
+FROM LexisNexis_Staging.dbo.NegativeList
+WHERE ReferenceID = '10003457';
+
+
+
+
+-- Query 2: Production Row Count Parity Query
+SELECT 'dbo.NegativeList (Production Table)' AS TableName, COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging.dbo.NegativeList
+UNION ALL
+SELECT 'dbo.NegativeListFilter (Search Table)' AS TableName, COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging.dbo.NegativeListFilter
+UNION ALL
+SELECT 'dbo.NegativeList_Master (Master View)' AS TableName, COUNT(*) AS TotalRows 
+FROM LexisNexis_Staging.dbo.NegativeList_Master;
+
+
+
+-- Query 3: Staging Base Profiles Count Query
+SELECT COUNT(*) AS TotalBaseProfiles 
+FROM LexisNexis_Staging.dbo.NegativeList_New1;
