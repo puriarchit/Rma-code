@@ -1,15 +1,22 @@
--- Query 3A: SSIS Legacy Output (LexisNexis_Data)
-SELECT TOP 2 
-    'SSIS Staging (LexisNexis_Data - Random)' AS Engine_And_Database, 
-    EntityGUID, 
-    IdentificationTypeDesc, 
-    IdentificationNumber
-FROM LexisNexis_Data.dbo.EntityIdentification;
+-- Single Result Grid: NegativeList_New1 ID Slot Comparison (SSIS vs Python)
+SELECT TOP 1 
+    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1 - Random)' AS Engine_And_Database, 
+    ReferenceID, 
+    IdOtherInfo1, 
+    IdNo1, 
+    IdOtherInfo2, 
+    IdNo2
+FROM LexisNexis_Data.dbo.NegativeList_New1
+WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL
 
--- Query 3B: Python Migrated Output (LexisNexis_Staging)
-SELECT TOP 2 
-    'Python Staging (LexisNexis_Staging - Alphabetical)' AS Engine_And_Database, 
-    EntityGUID, 
-    IdentificationTypeDesc, 
-    IdentificationNumber
-FROM LexisNexis_Staging.dbo.EntityIdentification;
+UNION ALL
+
+SELECT TOP 1 
+    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1 - Alphabetical)' AS Engine_And_Database, 
+    ReferenceID, 
+    IdOtherInfo1, 
+    IdNo1, 
+    IdOtherInfo2, 
+    IdNo2
+FROM LexisNexis_Staging.dbo.NegativeList_New1
+WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL;
