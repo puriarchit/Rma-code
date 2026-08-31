@@ -1,28 +1,45 @@
--- Query 1A: SSIS Database Output (Random Order)
-SELECT ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
-FROM MoneyWaveRemit.dbo.NegativeList
-WHERE ReferenceID = '10003457';
+-- Single Screenshot Query: Base Profiles Staging Match
+SELECT 
+    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1)' AS Environment, 
+    COUNT(*) AS BaseProfilesCount 
+FROM LexisNexis_Data.dbo.NegativeList_New1
 
--- Query 1B: Python Database Output (Alphabetical Order)
-SELECT ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
-FROM LexisNexis_Staging.dbo.NegativeList
-WHERE ReferenceID = '10003457';
-
-
-
-
--- Query 2: Production Row Count Parity Query
-SELECT 'dbo.NegativeList (Production Table)' AS TableName, COUNT(*) AS TotalRows 
-FROM LexisNexis_Staging.dbo.NegativeList
 UNION ALL
-SELECT 'dbo.NegativeListFilter (Search Table)' AS TableName, COUNT(*) AS TotalRows 
-FROM LexisNexis_Staging.dbo.NegativeListFilter
-UNION ALL
-SELECT 'dbo.NegativeList_Master (Master View)' AS TableName, COUNT(*) AS TotalRows 
-FROM LexisNexis_Staging.dbo.NegativeList_Master;
 
-
-
--- Query 3: Staging Base Profiles Count Query
-SELECT COUNT(*) AS TotalBaseProfiles 
+SELECT 
+    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1)' AS Environment, 
+    COUNT(*) AS BaseProfilesCount 
 FROM LexisNexis_Staging.dbo.NegativeList_New1;
+
+
+
+
+-- Single Screenshot Query: Production Main & Search Filter Tables Match
+SELECT 
+    'dbo.NegativeList (Production Target Table)' AS TableName, 
+    COUNT(*) AS TotalRows 
+FROM MoneyWaveRemit.dbo.NegativeList
+
+UNION ALL
+
+SELECT 
+    'dbo.NegativeListFilter (Search Filter Table)' AS TableName, 
+    COUNT(*) AS TotalRows 
+FROM MoneyWaveRemit.dbo.NegativeListFilter;
+
+
+
+-- Single Screenshot Query: ID Slot Alphabetical Ranking Comparison
+SELECT 
+    'SSIS Output (LexisNexis_Data - Random)' AS PipelineEngine, 
+    EntityGUID, IdentificationTypeDesc, IdentificationNumber
+FROM LexisNexis_Data.dbo.EntityIdentification
+WHERE EntityGUID = '00002167-93C0-466D-B0DC-F07A3B7E9871'
+
+UNION ALL
+
+SELECT 
+    'Python Output (LexisNexis_Staging - Alphabetical)' AS PipelineEngine, 
+    EntityGUID, IdentificationTypeDesc, IdentificationNumber
+FROM LexisNexis_Staging.dbo.EntityIdentification
+WHERE EntityGUID = '00002167-93C0-466D-B0DC-F07A3B7E9871';
