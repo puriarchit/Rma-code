@@ -1,13 +1,22 @@
--- Query 3A: SSIS NegativeList_New1 Output
-SELECT TOP 1 
-    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1)' AS Engine_And_Database, 
-    ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
+-- Single Query to Compare EXACT SAME Entity (ReferenceID = '7440341')
+SELECT 
+    'SSIS Staging (LexisNexis_Data.dbo.NegativeList_New1 - Random)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    ReferenceID COLLATE DATABASE_DEFAULT AS ReferenceID, 
+    IdOtherInfo1 COLLATE DATABASE_DEFAULT AS IdOtherInfo1, 
+    IdNo1 COLLATE DATABASE_DEFAULT AS IdNo1, 
+    IdOtherInfo2 COLLATE DATABASE_DEFAULT AS IdOtherInfo2, 
+    IdNo2 COLLATE DATABASE_DEFAULT AS IdNo2
 FROM LexisNexis_Data.dbo.NegativeList_New1
-WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL;
+WHERE ReferenceID = '7440341'
 
--- Query 3B: Python NegativeList_New1 Output
-SELECT TOP 1 
-    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1)' AS Engine_And_Database, 
-    ReferenceID, IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2
+UNION ALL
+
+SELECT 
+    'Python Staging (LexisNexis_Staging.dbo.NegativeList_New1 - Alphabetical)' COLLATE DATABASE_DEFAULT AS Engine_And_Database, 
+    ReferenceID COLLATE DATABASE_DEFAULT AS ReferenceID, 
+    IdOtherInfo1 COLLATE DATABASE_DEFAULT AS IdOtherInfo1, 
+    IdNo1 COLLATE DATABASE_DEFAULT AS IdNo1, 
+    IdOtherInfo2 COLLATE DATABASE_DEFAULT AS IdOtherInfo2, 
+    IdNo2 COLLATE DATABASE_DEFAULT AS IdNo2
 FROM LexisNexis_Staging.dbo.NegativeList_New1
-WHERE IdOtherInfo1 IS NOT NULL AND IdOtherInfo2 IS NOT NULL;
+WHERE ReferenceID = '7440341';
