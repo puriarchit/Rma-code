@@ -18,9 +18,8 @@ def setup_logging(level: str = "INFO"):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
+    parser.add_argument("--mode", default="first", choices=["first", "inc"])
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    parser.add_argument("--mode", default="auto", choices=["auto", "first", "inc"],
-                        help="Execution mode: 'first' (VersionID=1), 'inc' (VersionID=max+1), or 'auto'")
     return parser.parse_args()
 
 def load_config(config_path: str) -> dict:
@@ -38,118 +37,110 @@ def get_connection(config: dict) -> pyodbc.Connection:
     )
     return pyodbc.connect(conn_str, autocommit=True)
 
-def get_target_version_id(cursor, mode: str) -> str:
+def set_recovery_model(config: dict, model: str = "SIMPLE"):
+    db = config["database"]
+    try:
+        conn = get_connection(config)
+        cur = conn.cursor()
+        cur.execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY {model};")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.warning("Note setting database recovery model: %s", e)
+
+def get_target_version_id(cursor, mode: str) -> int:
+    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
+    if cursor.fetchone()[0] == 0:
+        return 1
+
+    cursor.execute("SELECT MAX(ISNULL(VersionID, 0)) FROM dbo.NegativeList WITH (NOLOCK)")
+    max_ver = cursor.fetchone()[0] or 0
+
     if mode == "first":
-        cursor.execute("""
-            IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq' AND schema_id = SCHEMA_ID('dbo'))
-                CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1;
-            ELSE
-                ALTER SEQUENCE dbo.NegativeListVersionSeq RESTART WITH 1;
-        """)
-        cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
-        version_id = str(cursor.fetchone()[0])
-        return version_id
+        return 1
+    return max_ver + 1
 
-    elif mode == "inc":
-        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
-        if cursor.fetchone()[0] > 0:
-            cursor.execute("""
-                SELECT ISNULL(MAX(CAST(VersionID AS INT)), 0) + 1 
-                FROM dbo.NegativeList WITH (NOLOCK) 
-                WHERE ISNUMERIC(VersionID) = 1
-            """)
-            version_id = str(cursor.fetchone()[0])
-        else:
-            version_id = "1"
-        return version_id
-
-    else:
-        cursor.execute("""
-            IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq' AND schema_id = SCHEMA_ID('dbo'))
-                CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1;
-        """)
-        cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
-        version_id = str(cursor.fetchone()[0])
-        return version_id
+def prepare_page_compressed_heap(cursor):
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo'))
+        BEGIN
+            CREATE TABLE dbo.NegativeList (
+                ID int IDENTITY(1,1) NOT NULL,
+                ReferenceID nvarchar(50) NULL,
+                EntityType nvarchar(50) NULL,
+                Gender nvarchar(50) NULL,
+                FirstName nvarchar(4000) NULL,
+                LastName nvarchar(250) NULL,
+                SecondName nvarchar(500) NULL,
+                Title nvarchar(500) NULL,
+                DOB nvarchar(92) NULL,
+                ALTDOB1 datetime NULL,
+                ALTDOB2 datetime NULL,
+                ALTDOB3 datetime NULL,
+                AddressLine1 nvarchar(255) NULL,
+                AddressLine2 nvarchar(255) NULL,
+                City nvarchar(50) NULL,
+                Country nvarchar(100) NULL,
+                WLType nvarchar(200) NULL,
+                OriginalSource nvarchar(4000) NULL,
+                Remark nvarchar(4000) NULL,
+                NationalIDInfo nvarchar(250) NULL,
+                NationalIDNo nvarchar(50) NULL,
+                IdOtherInfo1 nvarchar(250) NULL,
+                IdNo1 nvarchar(250) NULL,
+                IdOtherInfo2 nvarchar(250) NULL,
+                IdNo2 nvarchar(250) NULL,
+                IdOtherInfo3 nvarchar(250) NULL,
+                IdNo3 nvarchar(250) NULL,
+                IdOtherInfo4 nvarchar(250) NULL,
+                IdNo4 nvarchar(250) NULL,
+                IdOtherInfo5 nvarchar(250) NULL,
+                IdNo5 nvarchar(250) NULL,
+                EntityGUID nvarchar(50) NULL,
+                EntityAliasGUID nvarchar(50) NULL,
+                Nationality nvarchar(100) NULL,
+                Citizenship nvarchar(100) NULL,
+                POB nvarchar(50) NULL,
+                Alias nvarchar(500) NULL,
+                VersionID int NULL,
+                Action nvarchar(10) NULL,
+                FileName nvarchar(255) NULL,
+                CreationDate nvarchar(50) NULL,
+                LastUpdatedBy nvarchar(50) NULL,
+                LastUpdatedDate datetime NULL
+            ) WITH (DATA_COMPRESSION = PAGE);
+        END
+        """
+    )
 
 def ensure_indexes(cursor):
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
     if cursor.fetchone()[0] == 0:
         return
+
     cursor.execute(
         """
-        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EntityAlias_EntityGUID_Covering'
-                       AND object_id = OBJECT_ID('EntityAlias'))
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_New1_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList_New1'))
         BEGIN
-            CREATE NONCLUSTERED INDEX IX_EntityAlias_EntityGUID_Covering
-                ON EntityAlias(EntityGUID, AliasTypeDesc)
-                INCLUDE (EntityAliasGUID, FirstName, MiddleName, LastName, Name);
+            CREATE CLUSTERED INDEX IX_NegativeList_New1_EntityGUID
+                ON dbo.NegativeList_New1(EntityGUID);
+        END
+        """
+    )
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EntityAlias_EntityGUID' AND object_id = OBJECT_ID('dbo.EntityAlias'))
+        BEGIN
+            CREATE NONCLUSTERED INDEX IX_EntityAlias_EntityGUID
+                ON dbo.EntityAlias(EntityGUID)
+                INCLUDE (EntityAliasGUID, AliasTypeDesc, FirstName, MiddleName, LastName, Name)
+                WITH (DATA_COMPRESSION = PAGE);
         END
         """
     )
 
-def prepare_page_compressed_heap(cursor):
-    cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList")
-    cursor.execute("""
-        CREATE TABLE dbo.NegativeList (
-            ID                  INT IDENTITY(1,1) NOT NULL,
-            ReferenceID         NVARCHAR(255)  NULL,
-            EntityType          NVARCHAR(50)   NULL,
-            Gender              NVARCHAR(10)   NULL,
-            FirstName           NVARCHAR(300)  NULL,
-            LastName            NVARCHAR(255)  NULL,
-            SecondName          NVARCHAR(500)  NULL,
-            Title               NVARCHAR(255)  NULL,
-            DOB                 NVARCHAR(100)  NULL,
-            ALTDOB1             DATETIME       NULL,
-            ALTDOB2             DATETIME       NULL,
-            ALTDOB3             DATETIME       NULL,
-            AddressLine1        NVARCHAR(500)  NULL,
-            AddressLine2        NVARCHAR(500)  NULL,
-            City                NVARCHAR(255)  NULL,
-            Country             NVARCHAR(255)  NULL,
-            WLType              NVARCHAR(250)  NULL,
-            OriginalSource      NVARCHAR(MAX)  NULL,
-            Remark              NVARCHAR(MAX)  NULL,
-            NationalIDInfo      NVARCHAR(MAX)  NULL,
-            NationalIDNo        NVARCHAR(255)  NULL,
-            IdOtherInfo1        NVARCHAR(MAX)  NULL,
-            IdNo1               NVARCHAR(255)  NULL,
-            IdOtherInfo2        NVARCHAR(MAX)  NULL,
-            IdNo2               NVARCHAR(255)  NULL,
-            IdOtherInfo3        NVARCHAR(MAX)  NULL,
-            IdNo3               NVARCHAR(255)  NULL,
-            IdOtherInfo4        NVARCHAR(MAX)  NULL,
-            IdNo4               NVARCHAR(255)  NULL,
-            IdOtherInfo5        NVARCHAR(MAX)  NULL,
-            IdNo5               NVARCHAR(255)  NULL,
-            EntityGUID          NVARCHAR(50)   NULL,
-            EntityAliasGUID     NVARCHAR(50)   NULL,
-            Nationality         NVARCHAR(255)  NULL,
-            Citizenship         NVARCHAR(100)  NULL,
-            POB                 NVARCHAR(500)  NULL,
-            Alias               NVARCHAR(500)  NULL,
-            VersionID           NVARCHAR(50)   NULL,
-            Action              NVARCHAR(10)   NULL,
-            FileName            NVARCHAR(100)  NULL,
-            CreationDate        DATETIME       NULL,
-            LastUpdatedBy       INT            NULL,
-            LastUpdatedDate     DATETIME       NULL
-        ) WITH (DATA_COMPRESSION = PAGE);
-    """)
-
-def set_recovery_model(config: dict, model: str):
-    try:
-        db = config["database"]
-        trusted = "yes" if db["trusted_connection"] else "no"
-        admin_conn_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE=master;Trusted_Connection={trusted};"
-        admin_conn = pyodbc.connect(admin_conn_str, autocommit=True)
-        admin_conn.cursor().execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY {model}")
-        admin_conn.close()
-    except Exception:
-        pass
-
-def bulk_insert_base(cursor, run_version_id):
+def bulk_insert_base(cursor, run_version_id: int):
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -157,15 +148,20 @@ def bulk_insert_base(cursor, run_version_id):
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias,
+            VersionID, Action, FileName, CreationDate
         )
         SELECT
             A.ReferenceID,
-            CASE WHEN A.EntityType='Individual' THEN '3' WHEN A.EntityType='Country' THEN '1' WHEN A.EntityType='Organization' THEN '9' WHEN A.EntityType='Vessel' THEN '4' ELSE '6' END,
+            CASE WHEN A.EntityType = 'Individual'   THEN '3'
+                 WHEN A.EntityType = 'Country'      THEN '1'
+                 WHEN A.EntityType = 'Organization' THEN '9'
+                 WHEN A.EntityType = 'Vessel'       THEN '4'
+                 ELSE '6' END,
             SUBSTRING(A.Gender, 1, 7),
             A.FirstName,
-            SUBSTRING(A.LastName, 1, 150),
-            SUBSTRING(A.SecondName, 1, 300),
+            A.LastName,
+            A.SecondName,
             SUBSTRING(A.Title, 1, 255),
             A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
             SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200),
@@ -202,9 +198,19 @@ def bulk_insert_alias(cursor, run_version_id, inserted_base):
                  WHEN A.EntityType='Vessel'       THEN '4'
                  ELSE '6' END,
             SUBSTRING(A.Gender,1,7),
-            CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''),1,300) AS NVARCHAR(300)),
-            CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)),
-            CAST(SUBSTRING(B.Name,1,500)     AS NVARCHAR(500)),
+            CAST(SUBSTRING(
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(B.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(B.LastName)), '') IS NOT NULL 
+                    THEN LTRIM(RTRIM(B.LastName))
+                    ELSE LTRIM(RTRIM(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,'')))
+                END, 1, 300) AS NVARCHAR(300)),
+            CAST(SUBSTRING(
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(B.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(B.LastName)), '') IS NOT NULL 
+                    THEN NULL
+                    ELSE NULLIF(LTRIM(RTRIM(B.LastName)), '')
+                END, 1, 255) AS NVARCHAR(255)),
+            CAST(SUBSTRING(REPLACE(ISNULL(B.Name, ''), ',', ''), 1, 500) AS NVARCHAR(500)),
             SUBSTRING(A.Title,1,255),
             A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
             SUBSTRING(A.AddressLine1,1,200),
@@ -220,7 +226,7 @@ def bulk_insert_alias(cursor, run_version_id, inserted_base):
             A.Nationality,
             SUBSTRING(A.Citizenship,1,70),
             A.POB,
-            SUBSTRING(B.Name,1,500),
+            CAST(SUBSTRING(REPLACE(ISNULL(B.Name, ''), ',', ''), 1, 500) AS NVARCHAR(500)),
             ?,
             'add',
             CONVERT(char(10),GETDATE(),126),
@@ -271,7 +277,13 @@ def populate_master_and_filter(cursor):
     cursor.execute(
         """
         CREATE VIEW dbo.NegativeList_Master AS
-        SELECT * FROM dbo.NegativeList WITH (NOLOCK);
+        SELECT 
+            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
+            WLType, OriginalSource, Remark AS Remarks, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3,
+            IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5, EntityGUID AS Basis, Nationality, Citizenship, POB
+        FROM dbo.NegativeList WITH (NOLOCK);
         """
     )
 
