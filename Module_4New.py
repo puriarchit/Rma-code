@@ -151,18 +151,18 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(REPLACE(
+            CAST(SUBSTRING(REPLACE(REPLACE(
                 CASE 
                     WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
                     THEN LTRIM(RTRIM(A.LastName))
                     ELSE LTRIM(RTRIM(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, '')))
-                END, '-', ' '), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(REPLACE(
+                END, ',', ''), '-', ' '), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(REPLACE(REPLACE(
                 CASE 
                     WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
                     THEN NULL
                     ELSE NULLIF(LTRIM(RTRIM(A.LastName)), '')
-                END, '-', ' '), 1, 250) AS NVARCHAR(250)) as LastName,
+                END, ',', ''), '-', ' '), 1, 250) AS NVARCHAR(250)) as LastName,
             CAST(SUBSTRING(REPLACE(REPLACE(ISNULL(A.Name, ''), ',', ''), '-', ' '), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
@@ -209,18 +209,18 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(REPLACE(
+            CAST(SUBSTRING(REPLACE(REPLACE(
                 CASE 
                     WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
                     THEN LTRIM(RTRIM(A.LastName))
                     ELSE LTRIM(RTRIM(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, '')))
-                END, '-', ' '), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(REPLACE(
+                END, ',', ''), '-', ' '), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(REPLACE(REPLACE(
                 CASE 
                     WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
                     THEN NULL
                     ELSE NULLIF(LTRIM(RTRIM(A.LastName)), '')
-                END, '-', ' '), 1, 250) AS NVARCHAR(250)) as LastName,
+                END, ',', ''), '-', ' '), 1, 250) AS NVARCHAR(250)) as LastName,
             CAST(SUBSTRING(REPLACE(REPLACE(ISNULL(A.Name, ''), ',', ''), '-', ' '), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
@@ -277,6 +277,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
