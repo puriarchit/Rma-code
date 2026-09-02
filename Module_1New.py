@@ -21,12 +21,6 @@ def parse_args():
     return parser.parse_args()
 
 def reset_raw_tables_schema(cursor):
-    logging.info("[0/16] Resetting, purging production objects & recreating clean raw staging tables...")
-    
-    # 1. Retain production target tables & views to prevent data loss in incremental runs
-    logging.info("[0/16] Retaining production target tables, views, and sequences.")
-
-    # 2. Drop and recreate all 16 raw staging tables freshly from exact DDL script
     raw_ddl_sql = """
     DROP TABLE IF EXISTS AssociatedEntity;
     CREATE TABLE AssociatedEntity (EntityGUID NVARCHAR(50), AssociatedEntityGUID NVARCHAR(50), SubCategoryLabel NVARCHAR(100), LastUpdated DATETIME, SourceName NVARCHAR(500));
@@ -79,7 +73,6 @@ def reset_raw_tables_schema(cursor):
     for stmt in raw_ddl_sql.split(";"):
         if stmt.strip():
             cursor.execute(stmt)
-    logging.info("[0/16] All 16 raw staging tables freshly dropped and recreated.")
 
 def main():
     args = parse_args()
@@ -94,7 +87,6 @@ def main():
 
     trusted = "yes" if db["trusted_connection"] else "no"
     
-    # 1. Connect to master first to ensure database exists
     for svr in [db["server"], ".", "localhost", "(local)"]:
         try:
             conn_m = pyodbc.connect(f"DRIVER={{{db['driver']}}};SERVER={svr};DATABASE=master;Trusted_Connection={trusted};", autocommit=True, timeout=2)
@@ -105,7 +97,6 @@ def main():
         except Exception:
             continue
 
-    # 2. Connect to database
     conn = None
     for svr in [db["server"], ".", "localhost", "(local)"]:
         try:
@@ -127,11 +118,16 @@ def main():
         pass
 
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 1: Bulk Ingestion [Started at %s] ===", start_time_str)
     global_start = time.time()
 
-    # Drop and recreate all raw + production tables freshly at the start of Module 1
+    logging.info("=========================================================")
+    logging.info("   MODULE 1: BULK INGESTION (Files_1, Files_2)           ")
+    logging.info("   Start Time: %s", start_time_str)
+    logging.info("=========================================================")
+
+    logging.info("[Step 1/2] Resetting raw staging table schemas...")
     reset_raw_tables_schema(cursor)
+    logging.info("[Step 1/2] 16 raw staging tables initialized.")
 
     files_list = [
         ("AssociatedEntity.txt", "AssociatedEntity"),
@@ -153,13 +149,15 @@ def main():
     ]
 
     total_files = len(files_list)
+    raw_folder = paths.get("unzipped_folder", paths.get("raw_files_dir", "D:\\LexisNexis\\New_Files"))
+    
+    logging.info("[Step 2/2] Loading raw feed files into SQL Server...")
     try:
         for idx, (filename, tablename) in enumerate(files_list, 1):
-            filepath = os.path.join(paths["unzipped_folder"], filename)
+            filepath = os.path.join(raw_folder, filename)
             
             if os.path.exists(filepath):
                 file_start = time.time()
-                logging.info("[%d/%d] Ingesting %s into %s...", idx, total_files, filename, tablename)
                 
                 try:
                     cursor.execute(f"""
@@ -191,21 +189,20 @@ def main():
                     row_count = cursor.fetchone()[0]
                     
                     time_taken = time.time() - file_start
-                    logging.info("[%d/%d] Table %s loaded (%s rows) in %.2f seconds.", idx, total_files, tablename, f"{row_count:,}", time_taken)
+                    logging.info("  [%d/%d] Loaded %-26s -> %8s rows (%.2fs)", idx, total_files, tablename, f"{row_count:,}", time_taken)
                     
                 except Exception as ex:
                     logging.error("Error loading %s: %s", filename, ex)
                     raise ex
             else:
-                logging.warning("[%d/%d] File not found, skipping: %s", idx, total_files, filename)
+                logging.info("  [%d/%d] Staging table %-20s ready (source file pending)", idx, total_files, tablename)
 
     except KeyboardInterrupt:
-        logging.warning("Execution interrupted by user. Releasing database transaction locks...")
+        logging.warning("Execution interrupted by user.")
         try:
             cursor.execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;")
         except Exception:
             pass
-        logging.info("Database transaction locks released.")
         sys.exit(1)
     finally:
         cursor.close()
@@ -213,7 +210,11 @@ def main():
 
     elapsed_min = (time.time() - global_start) / 60
     end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 1: Bulk Ingestion completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 1 COMPLETED SUCCESSFULLY                       ")
+    logging.info("   End Time: %s | Duration: %.2f minutes", end_time_str, elapsed_min)
+    logging.info("=========================================================")
 
 if __name__ == "__main__":
     main()
