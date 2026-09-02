@@ -19,8 +19,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.json")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    parser.add_argument("--action", default="all", choices=["all", "pep", "sync"],
-                        help="Action to perform: 'pep' (Consolidate PEPs), 'sync' (Master Sync), or 'all'")
+    parser.add_argument("--mode", default="auto", choices=["auto", "first", "inc"],
+                        help="Execution mode: 'first' (VersionID=1), 'inc' (VersionID=max+1), or 'auto'")
     return parser.parse_args()
 
 def load_config(config_path: str) -> dict:
@@ -38,16 +38,11 @@ def get_connection(config: dict) -> pyodbc.Connection:
     )
     return pyodbc.connect(conn_str, autocommit=True)
 
-# =====================================================================
-# ACTION 1: PEP WATCHLIST CONSOLIDATION (13 PACKAGES: 2_1 TO 4_4)
-# =====================================================================
-def run_pep(cursor, config):
-    global_start = time.time()
-    logging.info("=== [Module 5] Stage: PEP Watchlist Consolidation (NegativeList_2_1 to 4_4) ===")
+def run_pep_consolidation(cursor, config):
+    logging.info("[Step 1/3] Consolidating PEP watchlists...")
     ROW_LIMIT = config.get("benchmark_row_limit", None)
-
-    logging.info("Building temporary lookup tables...")
     step_start = time.time()
+
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("""
         SELECT A.EntityGUID, B.tCountry AS Nationality
@@ -67,8 +62,6 @@ def run_pep(cursor, config):
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 
-    logging.info("Temporary lookup tables created in %.2f seconds.", time.time() - step_start)
-
     if ROW_LIMIT is not None:
         cte_prefix = f"""
         ;WITH Batch AS (
@@ -82,8 +75,6 @@ def run_pep(cursor, config):
         cte_prefix = ""
         from_clause = "FROM Entity A WITH (NOLOCK)"
 
-    logging.info("Consolidating PEP profiles...")
-    stage2_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
@@ -98,71 +89,67 @@ def run_pep(cursor, config):
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(A.LastName, 1, 250) AS NVARCHAR(250)) as LastName,
-            CAST(SUBSTRING(A.Name, 1, 500) AS NVARCHAR(500)) as SecondName,
-            CAST(SUBSTRING(A.Title, 1, 250) AS NVARCHAR(250)) as Title,
-            B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
-            C.AddressLine1, C.AddressLine2, C.City, C.Country, C.POB,
-            'PEP' AS WLType,
-            E.SourceURI as OriginalSource,
-            D.Remark,
-            H.IdentificationTypeDesc as NationalIDInfo,
-            H.IdentificationNumber as NationalIDNo,
-            I.IdOtherInfo1, I.IdNo1, I.IdOtherInfo2, I.IdNo2, I.IdOtherInfo3, I.IdNo3, I.IdOtherInfo4, I.IdNo4, I.IdOtherInfo5, I.IdNo5,
-            J.Nationality,
-            K.Citizenship
+            CAST(B.FirstName AS NVARCHAR(300)) as FirstName,
+            CAST(B.LastName AS NVARCHAR(255)) as LastName,
+            CAST(B.SecondName AS NVARCHAR(500)) as SecondName,
+            CAST(A.Title AS NVARCHAR(255)) as Title,
+            C.DOB, C.ALTDOB1, C.ALTDOB2, C.ALTDOB3,
+            D.Address1 as AddressLine1, D.Address2 as AddressLine2, D.City, D.Country,
+            CAST(NULL AS NVARCHAR(500)) as POB,
+            'PEP' as WLType,
+            CAST(G.OriginalSource AS NVARCHAR(MAX)) as OriginalSource,
+            CAST(F.Remark AS NVARCHAR(MAX)) as Remark,
+            CAST(NULL AS NVARCHAR(MAX)) as NationalIDInfo,
+            CAST(NULL AS NVARCHAR(255)) as NationalIDNo,
+            E.IdOtherInfo1, E.IdNo1, E.IdOtherInfo2, E.IdNo2, E.IdOtherInfo3, E.IdNo3, E.IdOtherInfo4, E.IdNo4, E.IdOtherInfo5, E.IdNo5,
+            H.Nationality,
+            CAST(I.CountryName AS NVARCHAR(100)) as Citizenship
         {from_clause}
-        INNER JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
-        LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-        LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
-        LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
-        LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
-        LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
-        LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-        LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
-        LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
-        LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
-        LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-        OPTION (MERGE JOIN, RECOMPILE)
+        INNER JOIN #PEP_GUIDs PG ON A.EntityGUID = PG.EntityGUID
+        LEFT JOIN EntityAlias_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
+        LEFT JOIN EntityDOB_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
+        LEFT JOIN EntityAddress_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
+        LEFT JOIN EntityIdentification_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
+        LEFT JOIN EntityRemark_New F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
+        LEFT JOIN EntitySourceItem_New G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
+        LEFT JOIN #TempNationalities H ON A.EntityGUID = H.EntityGUID
+        LEFT JOIN Entity_Citizenship_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
     """)
-    logging.info("PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
+    logging.info("[Step 1/3] PEP watchlist consolidation completed in %.2f seconds.", time.time() - step_start)
 
-    cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
-    cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
+def get_target_version_id(cursor, mode: str) -> str:
+    if mode == "first":
+        cursor.execute("""
+            IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq' AND schema_id = SCHEMA_ID('dbo'))
+                CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1;
+            ELSE
+                ALTER SEQUENCE dbo.NegativeListVersionSeq RESTART WITH 1;
+        """)
+        cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
+        version_id = str(cursor.fetchone()[0])
+        return version_id
 
-    logging.info("Cleaning up intermediate staging tables...")
-    intermediate_tables = [
-        "EntityAddress_New", "EntityDOB_New", "EntityIdentification_New",
-        "EntityIdentification_National_New", "Entity_Citizenship_New",
-        "EntityRemark_New", "EntitySourceItem_New"
-    ]
-    for tbl in intermediate_tables:
-        try:
-            cursor.execute(f"DROP TABLE IF EXISTS dbo.[{tbl}]")
-        except Exception:
-            pass
+    elif mode == "inc":
+        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
+        if cursor.fetchone()[0] > 0:
+            cursor.execute("""
+                SELECT ISNULL(MAX(CAST(VersionID AS INT)), 0) + 1 
+                FROM dbo.NegativeList WITH (NOLOCK) 
+                WHERE ISNUMERIC(VersionID) = 1
+            """)
+            version_id = str(cursor.fetchone()[0])
+        else:
+            version_id = "1"
+        return version_id
 
-    logging.info("PEP Watchlist Consolidation completed successfully in %.2f minutes.", (time.time() - global_start) / 60)
-
-# =====================================================================
-# ACTION 2: DATABASE SYNC & VIEW CREATION (NEGATIVE LIST MASTER)
-# =====================================================================
-def pre_sync_cleanup(cursor):
-    try:
-        cursor.execute("DROP TABLE IF EXISTS dbo.[NegativeList_New1_Temp]")
-    except Exception:
-        pass
-
-def ensure_sequence(cursor):
-    cursor.execute(
-        """
-        IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq' AND schema_id = SCHEMA_ID('dbo'))
-        BEGIN
-            CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1;
-        END
-        """
-    )
+    else:
+        cursor.execute("""
+            IF NOT EXISTS (SELECT 1 FROM sys.sequences WHERE name = 'NegativeListVersionSeq' AND schema_id = SCHEMA_ID('dbo'))
+                CREATE SEQUENCE dbo.NegativeListVersionSeq AS INT START WITH 1 INCREMENT BY 1;
+        """)
+        cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
+        version_id = str(cursor.fetchone()[0])
+        return version_id
 
 def ensure_indexes(cursor):
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
@@ -250,172 +237,79 @@ def bulk_insert_base(cursor, run_version_id):
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID
         )
         SELECT
-            A.ReferenceID,
-            CASE WHEN A.EntityType='Individual' THEN '3' WHEN A.EntityType='Country' THEN '1' WHEN A.EntityType='Organization' THEN '9' WHEN A.EntityType='Vessel' THEN '4' ELSE '6' END,
-            SUBSTRING(A.Gender, 1, 7),
-            A.FirstName,
-            SUBSTRING(A.LastName, 1, 150),
-            SUBSTRING(A.SecondName, 1, 300),
-            SUBSTRING(A.Title, 1, 255),
-            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
-            SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200),
-            A.City, A.Country,
-            A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
-            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
-            A.EntityGUID, A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
-            ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-        FROM dbo.NegativeList_New1 AS A WITH (NOLOCK);
+            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
+            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
+            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
+            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
+            Basis, EntityGUID, NULL, Nationality, Citizenship, POB, NULL, ?
+        FROM dbo.NegativeList_New1 WITH (NOLOCK)
         """,
-        (run_version_id,)
+        (run_version_id,),
     )
     return cursor.rowcount
 
 def bulk_insert_alias(cursor, run_version_id):
-    # Load character translation map
-    cursor.execute("SELECT Symbol, MapChar FROM LexisNexis_Data.dbo.WLCharMap")
-    char_map = cursor.fetchall()
-    
-    def get_translate_sql(expr):
-        collate_clause = "COLLATE SQL_Latin1_General_CP1_CS_AS"
-        sql = f"CAST({expr} AS NVARCHAR(MAX)) {collate_clause}"
-        for sym, mc in char_map:
-            sym_esc = sym.replace("'", "''")
-            mc_esc = mc.replace("'", "''")
-            sql = f"REPLACE({sql}, N'{sym_esc}' {collate_clause}, N'{mc_esc}' {collate_clause})"
-        return sql
-
-    def apply_formatting(expr):
-        return f"REPLACE(REPLACE(REPLACE({expr}, '-', ' '), ',', ''), '''', '')"
-
-    T_FirstName = get_translate_sql(apply_formatting("ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,'')"))
-    T_LastName = get_translate_sql(apply_formatting("ISNULL(B.LastName,'')"))
-    T_SecondName = get_translate_sql(apply_formatting("ISNULL(B.Name,'')"))
-
-    FN_Expr = f"""CAST(SUBSTRING(
-        CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
-             THEN {T_LastName} 
-             ELSE {T_FirstName} 
-        END, 1, 300) AS NVARCHAR(300))"""
-
-    LN_Expr = f"""CAST(SUBSTRING(
-        CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
-             THEN '' 
-             ELSE {T_LastName} 
-        END, 1, 255) AS NVARCHAR(255))"""
-
-    SN_Expr = f"""CAST(SUBSTRING(
-        REPLACE(REPLACE(REPLACE({T_SecondName}, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500))"""
-
     cursor.execute(
-        f"""
+        """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
+            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID
         )
         SELECT
-            A.ReferenceID,
-            CASE WHEN A.EntityType='Individual'  THEN '3'
-                 WHEN A.EntityType='Country'      THEN '1'
-                 WHEN A.EntityType='Organization' THEN '9'
-                 WHEN A.EntityType='Vessel'       THEN '4'
-                 ELSE '6' END,
-            SUBSTRING(A.Gender,1,7),
-            {FN_Expr},
-            {LN_Expr},
-            {SN_Expr},
-            SUBSTRING(A.Title,1,255),
-            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
-            SUBSTRING(A.AddressLine1,1,200),
-            SUBSTRING(A.AddressLine2,1,200),
-            A.City, A.Country,
-            A.WLType, A.OriginalSource, A.Remark,
-            A.NationalIDInfo, A.NationalIDNo,
-            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2,
-            A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4,
-            A.IdOtherInfo5, A.IdNo5,
-            A.EntityGUID,
-            A.EntityGUID,
-            B.EntityAliasGUID,
-            A.Nationality,
-            SUBSTRING(A.Citizenship,1,70),
-            A.POB,
-            SUBSTRING(B.Name,1,500),
-            ?,
-            'add',
-            CONVERT(char(10),GETDATE(),126),
-            GETDATE()
-        FROM dbo.NegativeList_New1 AS A WITH (NOLOCK)
-        INNER JOIN dbo.EntityAlias B WITH (NOLOCK)
-            ON A.EntityGUID = B.EntityGUID
-        WHERE B.AliasTypeDesc NOT IN (
-              'Acronym','Call Sign','Chinese Commercial Code (CCC)',
-              'Native Script For Alias','Native Script For Entity')
-        ORDER BY A.ReferenceID, B.EntityAliasGUID;
+            n.ReferenceID, n.EntityType, n.Gender,
+            CASE WHEN a.FirstName IS NOT NULL AND a.FirstName <> '' THEN a.FirstName ELSE n.FirstName END,
+            CASE WHEN a.LastName  IS NOT NULL AND a.LastName  <> '' THEN a.LastName  ELSE n.LastName  END,
+            n.SecondName, n.Title,
+            n.DOB, n.ALTDOB1, n.ALTDOB2, n.ALTDOB3, n.AddressLine1, n.AddressLine2, n.City, n.Country,
+            n.WLType, n.OriginalSource, n.Remark, n.NationalIDInfo, n.NationalIDNo,
+            n.IdOtherInfo1, n.IdNo1, n.IdOtherInfo2, n.IdNo2, n.IdOtherInfo3, n.IdNo3, n.IdOtherInfo4, n.IdNo4, n.IdOtherInfo5, n.IdNo5,
+            n.Basis, n.EntityGUID, a.EntityAliasGUID, n.Nationality, n.Citizenship, n.POB, a.Name, ?
+        FROM dbo.NegativeList_New1 n WITH (NOLOCK)
+        INNER JOIN dbo.EntityAlias a WITH (NOLOCK)
+            ON n.EntityGUID = a.EntityGUID
+        WHERE a.AliasTypeDesc IN ('Also Known As', 'Formerly Known As', 'Maiden Name', 'Spelling Variation')
         """,
-        (run_version_id,)
+        (run_version_id,),
     )
-    inserted = cursor.rowcount
-    if inserted < 0:
-        cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList WITH (NOLOCK) WHERE EntityAliasGUID IS NOT NULL")
-        inserted = cursor.fetchone()[0]
-
-    try:
-        cursor.execute("CHECKPOINT;")
-    except Exception:
-        pass
-    return inserted
+    return cursor.rowcount
 
 def build_post_load_indexes(cursor):
-    cursor.execute("SELECT COUNT(*) FROM sys.indexes WHERE name = 'PK_NegativeList' AND object_id = OBJECT_ID('dbo.NegativeList')")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("ALTER TABLE dbo.NegativeList ADD CONSTRAINT PK_NegativeList PRIMARY KEY NONCLUSTERED (ID)")
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID ON NegativeList(EntityGUID)")
-    cursor.execute("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityAliasGUID' AND object_id = OBJECT_ID('dbo.NegativeList')) CREATE NONCLUSTERED INDEX IX_NegativeList_EntityAliasGUID ON NegativeList(EntityAliasGUID)")
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_EntityGUID' AND object_id = OBJECT_ID('dbo.NegativeList'))
+        BEGIN
+            CREATE NONCLUSTERED INDEX IX_NegativeList_EntityGUID
+                ON dbo.NegativeList(EntityGUID)
+                INCLUDE (ReferenceID, FirstName, LastName, VersionID)
+                WITH (DATA_COMPRESSION = PAGE);
+        END
+        """
+    )
+    cursor.execute(
+        """
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_NegativeList_ReferenceID' AND object_id = OBJECT_ID('dbo.NegativeList'))
+        BEGIN
+            CREATE NONCLUSTERED INDEX IX_NegativeList_ReferenceID
+                ON dbo.NegativeList(ReferenceID)
+                WITH (DATA_COMPRESSION = PAGE);
+        END
+        """
+    )
 
-def populate_master_and_filter(cursor, inserted_total):
-    cursor.execute("IF OBJECT_ID('dbo.NegativeList_Master', 'U') IS NOT NULL DROP TABLE dbo.NegativeList_Master;")
-    cursor.execute("IF OBJECT_ID('dbo.NegativeList_Master', 'V') IS NOT NULL DROP VIEW dbo.NegativeList_Master;")
-    cursor.execute("IF OBJECT_ID('dbo.NegativeListFilter', 'U') IS NOT NULL DROP TABLE dbo.NegativeListFilter;")
-    cursor.execute("IF OBJECT_ID('dbo.NegativeListFilter', 'V') IS NOT NULL DROP VIEW dbo.NegativeListFilter;")
+def populate_master_and_filter(cursor):
+    cursor.execute("DROP VIEW IF EXISTS dbo.NegativeList_Master;")
+    cursor.execute("DROP VIEW IF EXISTS dbo.NegativeListFilter;")
 
     cursor.execute(
         """
         CREATE VIEW dbo.NegativeList_Master AS
-        SELECT
-            A.ID,
-            A.ReferenceID, A.WLType, A.FileName, A.VersionID,
-            CASE WHEN ISNUMERIC(A.EntityType)=1 THEN CAST(A.EntityType AS NUMERIC(2,0))
-                 WHEN A.EntityType='Individual' THEN 3
-                 WHEN A.EntityType='Country' THEN 1
-                 WHEN A.EntityType='Organization' THEN 9
-                 WHEN A.EntityType='Vessel' THEN 4
-                 ELSE 6 END AS EntityType,
-            CAST(NULL AS NVARCHAR(50)) AS Source,
-            A.OriginalSource, A.Action,
-            CAST(SUBSTRING(A.Gender,1,7) AS NVARCHAR(7)) AS Gender,
-            CAST(SUBSTRING(A.LastName,1,150) AS NVARCHAR(150)) AS LastName,
-            A.FirstName,
-            CAST(SUBSTRING(A.SecondName,1,300) AS NVARCHAR(300)) AS SecondName,
-            A.POB, A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
-            A.Nationality,
-            CAST(SUBSTRING(A.Citizenship,1,70) AS NVARCHAR(70)) AS Citizenship,
-            A.Alias,
-            CAST(SUBSTRING(A.Title,1,255) AS NVARCHAR(255)) AS Title,
-            CAST(SUBSTRING(A.AddressLine1,1,200) AS NVARCHAR(200)) AS AddressLine1,
-            CAST(SUBSTRING(A.AddressLine2,1,200) AS NVARCHAR(200)) AS AddressLine2,
-            A.City,
-            A.IdNo1, A.IdOtherInfo1, A.IdNo2, A.IdOtherInfo2, A.IdNo3, A.IdOtherInfo3,
-            A.IdNo4, A.IdOtherInfo4, A.IdNo5, A.IdOtherInfo5,
-            A.NationalIDNo, A.NationalIDInfo,
-            A.EntityGUID AS Basis, A.Remark AS Remarks, A.Country,
-            A.CreationDate, A.LastUpdatedBy, A.LastUpdatedDate
-        FROM dbo.NegativeList A WITH (NOLOCK);
+        SELECT * FROM dbo.NegativeList WITH (NOLOCK);
         """
     )
 
@@ -431,9 +325,6 @@ def populate_master_and_filter(cursor, inserted_total):
         """
     )
 
-    # NegativeList_History_Summary table logic (previously corresponding to NegativeList_4_6)
-    # has been removed as per decommissioned package execution lists.
-
 def post_sync_cleanup(cursor, config):
     try:
         cursor.execute("CHECKPOINT;")
@@ -442,59 +333,38 @@ def post_sync_cleanup(cursor, config):
         pass
     set_recovery_model(config, "SIMPLE")
 
-def check_existing_progress(cursor):
-    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
-    if cursor.fetchone()[0] == 0:
-        return False, 0
-    cursor.execute("SELECT SUM(row_count) FROM sys.dm_db_partition_stats WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
-    row_count = cursor.fetchone()[0] or 0
-    if row_count >= 3000000:
-        return True, row_count
-    return False, 0
-
-def run_sync(cursor, config):
-    global_start = time.time()
-    logging.info("=== [Module 5] Stage: Database Sync (NegativeList_Master) ===")
-    
-    cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList_New1' AND schema_id = SCHEMA_ID('dbo')")
-    if cursor.fetchone()[0] == 0:
-        logging.info("Source table NegativeList_New1 does not exist. Nothing to sync. Skipping.")
-        return
-        
-    pre_sync_cleanup(cursor)
-    ensure_sequence(cursor)
+def run_production_sync(cursor, config, mode: str):
+    logging.info("[Step 2/3] Synchronizing production table dbo.NegativeList...")
     ensure_indexes(cursor)
 
-    cursor.execute("SELECT NEXT VALUE FOR dbo.NegativeListVersionSeq")
-    run_version_id = str(cursor.fetchone()[0])
+    run_version_id = get_target_version_id(cursor, mode)
 
-    is_resumable, existing_rows = check_existing_progress(cursor)
+    prepare_page_compressed_heap(cursor)
+    set_recovery_model(config, 'SIMPLE')
+    
+    inserted_base = bulk_insert_base(cursor, run_version_id)
+    inserted_alias = bulk_insert_alias(cursor, run_version_id)
+    total_rows = inserted_base + inserted_alias
+    
+    logging.info("  Base Profiles: %s rows | Aliases: %s rows | VersionID: %s", f"{inserted_base:,}", f"{inserted_alias:,}", run_version_id)
+    logging.info("[Step 2/3] Total Production Rows: %s rows populated.", f"{total_rows:,}")
 
-    if not is_resumable:
-        prepare_page_compressed_heap(cursor)
-        set_recovery_model(config, 'SIMPLE')
-        inserted_base = bulk_insert_base(cursor, run_version_id)
-        inserted_alias = bulk_insert_alias(cursor, run_version_id)
-        inserted_total = inserted_base + inserted_alias
-    else:
-        inserted_total = existing_rows
-        set_recovery_model(config, 'SIMPLE')
-
+    logging.info("[Step 3/3] Building post-load indexes and refreshing search views...")
     build_post_load_indexes(cursor)
-    populate_master_and_filter(cursor, inserted_total)
+    populate_master_and_filter(cursor)
     post_sync_cleanup(cursor, config)
+    logging.info("[Step 3/3] Search views dbo.NegativeList_Master & dbo.NegativeListFilter active.")
 
-    logging.info("Database Sync completed successfully in %.2f minutes.", (time.time() - global_start) / 60)
-
-# =====================================================================
-# MAIN ROUTINE
-# =====================================================================
 def main():
     args = parse_args()
     setup_logging(args.log_level)
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 5: PEP Consolidation & Database Sync [Started at %s] ===", start_time_str)
     global_start = time.time()
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 5: PRODUCTION SYNCHRONIZATION ENGINE           ")
+    logging.info("   Start Time: %s | Mode: %s", start_time_str, args.mode.upper())
+    logging.info("=========================================================")
 
     config = load_config(args.config)
     conn = get_connection(config)
@@ -502,28 +372,23 @@ def main():
 
     try:
         cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
-
-        action = args.action
-        logging.info("Executing Mode / Action: %s", action)
-
-        if action == "pep":
-            run_pep(cursor, config)
-        elif action == "sync":
-            run_sync(cursor, config)
-        else: # "all"
-            run_pep(cursor, config)
-            run_sync(cursor, config)
+        run_pep_consolidation(cursor, config)
+        run_production_sync(cursor, config, args.mode)
 
         elapsed_min = (time.time() - global_start) / 60
         end_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("=== Module 5: PEP Consolidation & Database Sync completed in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+
+        logging.info("=========================================================")
+        logging.info("   MODULE 5 COMPLETED SUCCESSFULLY                       ")
+        logging.info("   End Time: %s | Duration: %.2f minutes", end_time_str, elapsed_min)
+        logging.info("=========================================================")
+
     except Exception as e:
-        logging.error("Execution failed: %s", e)
-        raise
+        logging.error("Execution failed in Module 5: %s", e, exc_info=True)
+        sys.exit(1)
     finally:
         cursor.close()
         conn.close()
 
 if __name__ == "__main__":
     main()
-
