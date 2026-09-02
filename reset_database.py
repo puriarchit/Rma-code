@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-
 import json
 import os
 import pyodbc
@@ -28,17 +27,13 @@ def main():
     logging.info("   Target Database: %s", db["name"])
     logging.info("=========================================================")
 
- 
     logging.info("Dropping search and filter reporting views...")
     cursor.execute("DROP VIEW IF EXISTS dbo.NegativeList_Master;")
     cursor.execute("DROP VIEW IF EXISTS dbo.NegativeListFilter;")
 
-    
-    logging.info("Dropping production tables...")
+    logging.info("Dropping production table...")
     cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList;")
-    cursor.execute("DROP TABLE IF EXISTS dbo.NegativeList_Updated;")
 
-   
     logging.info("Dropping intermediate staging tables...")
     intermediate_tables = [
         "NegativeList_New1", "NegativeList_New1_Temp",
@@ -60,7 +55,6 @@ def main():
     for tbl in raw_tables:
         cursor.execute(f"DROP TABLE IF EXISTS dbo.[{tbl}];")
 
-   
     logging.info("Resetting version sequence...")
     cursor.execute("DROP SEQUENCE IF EXISTS dbo.NegativeListVersionSeq;")
 
