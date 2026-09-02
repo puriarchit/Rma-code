@@ -23,7 +23,11 @@ def main():
     setup_logging()
     global_start = time.time()
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 3: Field Formatting [Started at %s] ===", start_time_str)
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 3: ATTRIBUTE CLEANING & ID STANDARDIZATION     ")
+    logging.info("   Start Time: %s", start_time_str)
+    logging.info("=========================================================")
 
     config = load_config()
     db = config["database"]
@@ -41,12 +45,10 @@ def main():
 
     try:
         cursor.execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY SIMPLE")
-        cursor.execute(f"ALTER DATABASE [{db['name']}] MODIFY FILE (NAME = [{db['name']}], FILEGROWTH = 512MB)")
         cursor.execute(f"USE [{db['name']}]")
         cursor.execute("CHECKPOINT")
-        cursor.execute(f"DBCC SHRINKFILE ([{db['name']}_log], 64)")
-    except Exception as e:
-        logging.warning("Database maintenance note: %s", e)
+    except Exception:
+        pass
 
     cursor.execute("IF OBJECT_ID('Country', 'U') IS NULL BEGIN CREATE TABLE Country (tISO nvarchar(10) NULL, tCountry nvarchar(100) NULL) END")
     cursor.execute("SELECT COUNT(*) FROM Country")
@@ -80,7 +82,7 @@ def main():
             ('IQ', 'Iraq'), ('IE', 'Ireland'), ('IL', 'Israel'), ('IT', 'Italy'), 
             ('CI', 'Ivory Coast'), ('JM', 'Jamaica'), ('JP', 'Japan'), ('JO', 'Jordan'), 
             ('KZ', 'Kazakhstan'), ('KE', 'Kenya'), ('KI', 'Kiribati'), ('XK', 'Kosovo'), 
-            ('KW', 'Kuwait'), ('KG', 'Kyrgyzstan'), ('LA', 'Laos'), ('LV', 'Late-night'), 
+            ('KW', 'Kuwait'), ('KG', 'Kyrgyzstan'), ('LA', 'Laos'), ('LV', 'Latvia'), 
             ('LB', 'Lebanon'), ('LS', 'Lesotho'), ('LR', 'Liberia'), ('LY', 'Libya'), 
             ('LI', 'Liechtenstein'), ('LT', 'Lithuania'), ('LU', 'Luxembourg'), ('MO', 'Macau'), 
             ('MK', 'Macedonia'), ('MG', 'Madagascar'), ('MW', 'Malawi'), ('MY', 'Malaysia'), 
@@ -118,39 +120,29 @@ def main():
         ]
         insert_cursor.executemany("INSERT INTO Country (tISO, tCountry) VALUES (?, ?)", countries)
 
-    try:
-        cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'WLCharMap'")
-        if cursor.fetchone()[0] == 0:
-            logging.info("WLCharMap table is missing in target database. Automatically creating it...")
-            cursor.execute("CREATE TABLE [dbo].[WLCharMap](<[Symbol] [nvarchar](10>) NULL, [MapChar] [nvarchar](10) NULL)")
-            logging.info("WLCharMap table created successfully.")
+    cursor.execute("IF OBJECT_ID('WLCharMap', 'U') IS NULL BEGIN CREATE TABLE [dbo].[WLCharMap]([Symbol] [nvarchar](10) NULL, [MapChar] [nvarchar](10) NULL) END")
+    cursor.execute("SELECT COUNT(*) FROM dbo.WLCharMap")
+    if cursor.fetchone()[0] == 0:
+        char_mappings = [
+            ('À', 'A'), ('Á', 'A'), ('Â', 'A'), ('Ã', 'A'), ('Ä', 'A'), ('Å', 'A'), ('Æ', 'A'),
+            ('Ç', 'C'), ('È', 'E'), ('É', 'E'), ('Ê', 'E'), ('Ë', 'E'), ('Ì', 'I'), ('Í', 'I'),
+            ('Î', 'I'), ('Ï', 'I'), ('Ð', 'D'), ('Ñ', 'N'), ('Ò', 'O'), ('Ó', 'O'), ('Ô', 'O'),
+            ('Õ', 'O'), ('Ö', 'O'), ('Ø', 'O'), ('Ù', 'U'), ('Ú', 'U'), ('Û', 'U'), ('Ü', 'U'),
+            ('Ý', 'Y'), ('ß', 'S'), ('à', 'a'), ('á', 'a'), ('â', 'a'), ('ã', 'a'), ('ä', 'a'),
+            ('å', 'a'), ('æ', 'a'), ('ç', 'c'), ('è', 'e'), ('é', 'e'), ('ê', 'e'), ('ë', 'e'),
+            ('ì', 'i'), ('í', 'i'), ('î', 'i'), ('ï', 'i'), ('ð', 'd'), ('ñ', 'n'), ('ò', 'o'),
+            ('ó', 'o'), ('ô', 'o'), ('õ', 'o'), ('ö', 'o'), ('ø', 'o'), ('ù', 'u'), ('ú', 'u'),
+            ('û', 'u'), ('ü', 'u'), ('ý', 'y'), ('ÿ', 'y'), ('Œ', 'O'), ('œ', 'o'), ('Š', 'S'),
+            ('š', 's'), ('Ÿ', 'Y'), ('Ž', 'Z'), ('ž', 'z'), ('Þ', 'T'), ('þ', 't'), ('Ć', 'C'),
+            ('ć', 'c'), ('Č', 'C'), ('č', 'c'), ('Ď', 'D'), ('ď', 'd'), ('Đ', 'D'), ('đ', 'd'),
+            ('Ę', 'E'), ('ę', 'e'), ('Ě', 'E'), ('ě', 'e'), ('Ĺ', 'L'), ('ĺ', 'l'), ('Ľ', 'L'),
+            ('ľ', 'l'), ('Ł', 'L'), ('ł', 'l'), ('Ń', 'N'), ('ń', 'n'), ('Ň', 'N'), ('ň', 'n'),
+            ('Ŕ', 'R'), ('ŕ', 'r'), ('Ř', 'R'), ('ř', 'r'), ('Ś', 'S'), ('ś', 's')
+        ]
+        for sym, mc in char_mappings:
+            cursor.execute("INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES (?, ?)", (sym, mc))
 
-        cursor.execute("SELECT COUNT(*) FROM dbo.WLCharMap")
-        if cursor.fetchone()[0] == 0:
-            logging.info("WLCharMap is empty. Populating 96 character translation records...")
-            char_mappings = [
-                ('À', 'A'), ('Á', 'A'), ('Â', 'A'), ('Ã', 'A'), ('Ä', 'A'), ('Å', 'A'), ('Æ', 'A'),
-                ('Ç', 'C'), ('È', 'E'), ('É', 'E'), ('Ê', 'E'), ('Ë', 'E'), ('Ì', 'I'), ('Í', 'I'),
-                ('Î', 'I'), ('Ï', 'I'), ('Ð', 'D'), ('Ñ', 'N'), ('Ò', 'O'), ('Ó', 'O'), ('Ô', 'O'),
-                ('Õ', 'O'), ('Ö', 'O'), ('Ø', 'O'), ('Ù', 'U'), ('Ú', 'U'), ('Û', 'U'), ('Ü', 'U'),
-                ('Ý', 'Y'), ('ß', 'S'), ('à', 'a'), ('á', 'a'), ('â', 'a'), ('ã', 'a'), ('ä', 'a'),
-                ('å', 'a'), ('æ', 'a'), ('ç', 'c'), ('è', 'e'), ('é', 'e'), ('ê', 'e'), ('ë', 'e'),
-                ('ì', 'i'), ('í', 'i'), ('î', 'i'), ('ï', 'i'), ('ð', 'd'), ('ñ', 'n'), ('ò', 'o'),
-                ('ó', 'o'), ('ô', 'o'), ('õ', 'o'), ('ö', 'o'), ('ø', 'o'), ('ù', 'u'), ('ú', 'u'),
-                ('û', 'u'), ('ü', 'u'), ('ý', 'y'), ('ÿ', 'y'), ('Œ', 'O'), ('œ', 'o'), ('Š', 'S'),
-                ('š', 's'), ('Ÿ', 'Y'), ('Ž', 'Z'), ('ž', 'z'), ('Þ', 'T'), ('þ', 't'), ('Ć', 'C'),
-                ('ć', 'c'), ('Č', 'C'), ('č', 'c'), ('Ď', 'D'), ('ď', 'd'), ('Đ', 'D'), ('đ', 'd'),
-                ('Ę', 'E'), ('ę', 'e'), ('Ě', 'E'), ('ě', 'e'), ('Ĺ', 'L'), ('ĺ', 'l'), ('Ľ', 'L'),
-                ('ľ', 'l'), ('Ł', 'L'), ('ł', 'l'), ('Ń', 'N'), ('ń', 'n'), ('Ň', 'N'), ('ň', 'n'),
-                ('Ŕ', 'R'), ('ŕ', 'r'), ('Ř', 'R'), ('ř', 'r'), ('Ś', 'S'), ('ś', 's')
-            ]
-            for sym, mc in char_mappings:
-                cursor.execute("INSERT INTO dbo.WLCharMap (Symbol, MapChar) VALUES (?, ?)", (sym, mc))
-            logging.info("WLCharMap populated with 96 records successfully.")
-    except Exception as e:
-        logging.warning("Optional WLCharMap initialization note: %s", e)
-
-    logging.info("[1/5] Formatting EntityAddress -> EntityAddress_New...")
+    logging.info("[Step 1/5] Formatting EntityAddress -> dbo.EntityAddress_New...")
     start_step = time.time()
     cursor.execute("IF OBJECT_ID('EntityAddress_Dup', 'U') IS NOT NULL DROP TABLE EntityAddress_Dup")
     cursor.execute("CREATE TABLE [dbo].[EntityAddress_Dup]([EntityGUID] [nvarchar](50) NULL, [AddressLine1] [nvarchar](255) NULL, [AddressLine2] [nvarchar](255) NULL, [City] [nvarchar](50) NULL, [CountryCode] [nvarchar](50) NULL, [AddressLength] [int] NULL)")
@@ -256,9 +248,9 @@ def main():
     cursor.execute("DROP TABLE IF EXISTS EntityAddress2")
     cursor.execute("DROP TABLE IF EXISTS EntityAddress3")
     cursor.execute("DROP TABLE IF EXISTS EntityAddress_Dup")
-    logging.info("[1/5] EntityAddress_New completed in %.2f seconds.", time.time() - start_step)
+    logging.info("[Step 1/5] EntityAddress_New completed in %.2f seconds.", time.time() - start_step)
 
-    logging.info("[2/5] Mapping Citizenship -> Entity_Citizenship_New...")
+    logging.info("[Step 2/5] Formatting Entity_Citizenship -> dbo.Entity_Citizenship_New...")
     start_step = time.time()
     cursor.execute("IF OBJECT_ID('Entity_Citizenship_Duplicate', 'U') IS NOT NULL DROP TABLE Entity_Citizenship_Duplicate")
     cursor.execute("CREATE TABLE [dbo].[Entity_Citizenship_Duplicate]([EntityGUID] [nvarchar](50) NULL, [Rank] [bigint] NULL, [ISOStandard] [nvarchar](50) NULL, [AdministrativeUnitName] [nvarchar](200) NULL, [Citizenship] [nvarchar](100) NULL)")
@@ -305,9 +297,9 @@ def main():
     """)
 
     cursor.execute("DROP TABLE IF EXISTS Entity_Citizenship_Duplicate")
-    logging.info("[2/5] Entity_Citizenship_New completed in %.2f seconds.", time.time() - start_step)
+    logging.info("[Step 2/5] Entity_Citizenship_New completed in %.2f seconds.", time.time() - start_step)
 
-    logging.info("[3/5] Pivoting DOB -> EntityDOB_New...")
+    logging.info("[Step 3/5] Pivoting Dates of Birth -> dbo.EntityDOB_New...")
     start_step = time.time()
     cursor.execute("IF OBJECT_ID('EntityDOB_Test', 'U') IS NOT NULL DROP TABLE EntityDOB_Test")
     cursor.execute("CREATE TABLE [dbo].[EntityDOB_Test]([EntityGUID] [nvarchar](50) NULL, [DOB] [nvarchar](92) NULL, [row_rank] [bigint] NULL)")
@@ -322,9 +314,9 @@ def main():
             FROM (
                 SELECT EntityGUID,
                        DOB = CASE 
-                           WHEN LEN(RTRIM(LTRIM(ISNULL(BirthMonth,'')))) < 1 AND LEN(RTRIM(LTRIM(ISNULL(BirthDay,'')))) < 1 THEN CAST(BirthYear as nvarchar) 
-                           ELSE CAST(BirthYear as nvarchar) + '-' + CAST(ISNULL(BirthMonth,'') as nvarchar) + '-' + CAST(ISNULL(BirthDay,'') as nvarchar) 
-                       END 
+                            WHEN LEN(RTRIM(LTRIM(ISNULL(BirthMonth,'')))) < 1 AND LEN(RTRIM(LTRIM(ISNULL(BirthDay,'')))) < 1 THEN CAST(BirthYear as nvarchar) 
+                            ELSE CAST(BirthYear as nvarchar) + '-' + CAST(ISNULL(BirthMonth,'') as nvarchar) + '-' + CAST(ISNULL(BirthDay,'') as nvarchar) 
+                        END 
                 FROM EntityDOB
             ) t
             GROUP BY EntityGUID, DOB
@@ -335,7 +327,7 @@ def main():
         SELECT A.EntityGUID, A.DOB,
                CASE WHEN ISDATE(B.ALTDOB1) = 1 THEN CAST(B.ALTDOB1 AS DATETIME) ELSE NULL END,
                CASE WHEN ISDATE(C.ALTDOB2) = 1 THEN CAST(C.ALTDOB2 AS DATETIME) ELSE NULL END,
-               CASE WHEN ISDATE(D.ALTDOB3) = 1 THEN CAST(D.ALTDOB3 AS DATETIME) ELSE NULL END
+               CASE WHEN ISDATE(C.ALTDOB2) = 1 THEN CAST(C.ALTDOB2 AS DATETIME) ELSE NULL END
         FROM (SELECT EntityGUID, DOB FROM EntityDOB_Test WHERE row_rank = 1) A
         LEFT JOIN (SELECT EntityGUID, DOB AS ALTDOB1 FROM EntityDOB_Test WHERE row_rank = 2 AND LEN(DOB) > 7) B ON A.EntityGUID = B.EntityGUID
         LEFT JOIN (SELECT EntityGUID, DOB AS ALTDOB2 FROM EntityDOB_Test WHERE row_rank = 3 AND LEN(DOB) > 7) C ON A.EntityGUID = C.EntityGUID
@@ -343,9 +335,9 @@ def main():
     """)
 
     cursor.execute("DROP TABLE IF EXISTS EntityDOB_Test")
-    logging.info("[3/5] EntityDOB_New completed in %.2f seconds.", time.time() - start_step)
+    logging.info("[Step 3/5] EntityDOB_New completed in %.2f seconds.", time.time() - start_step)
 
-    logging.info("[4/5] Pivoting Identifications -> EntityIdentification_New...")
+    logging.info("[Step 4/5] Standardizing ID Cards Alphabetically -> dbo.EntityIdentification_New...")
     start_step = time.time()
     cursor.execute("IF OBJECT_ID('EntityIdentification_National', 'U') IS NOT NULL DROP TABLE EntityIdentification_National")
     cursor.execute("CREATE TABLE [dbo].[EntityIdentification_National]([EntityGUID] [nvarchar](50) NULL, [IdentificationTypeDesc] [nvarchar](85) NULL, [IdentificationNumber] [nvarchar](50) NULL)")
@@ -450,9 +442,11 @@ def main():
         SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber,
                ROW_NUMBER() OVER (PARTITION BY EntityGUID ORDER BY IdentificationTypeDesc ASC, IdentificationNumber ASC) as row_rank
         FROM (
-            SELECT EntityGUID,
-                   CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
-                   CASE WHEN LEN(IdentificationNumber) < 50 THEN IdentificationNumber ELSE SUBSTRING(IdentificationNumber, 1, 50) END AS IdentificationNumber
+            SELECT EntityGUID, IdentificationTypeDesc, IdentificationNumber
+            FROM (
+                SELECT EntityGUID,
+                       CASE WHEN LEN(IdentificationTypeDesc) < 85 THEN IdentificationTypeDesc ELSE SUBSTRING(IdentificationTypeDesc, 1, 85) END AS IdentificationTypeDesc, 
+                       CASE WHEN LEN(IdentificationNumber) < 50 THEN IdentificationNumber ELSE SUBSTRING(IdentificationNumber, 1, 50) END AS IdentificationNumber
                 FROM EntityIdentification e
                 WHERE NOT EXISTS (
                     SELECT 1 
@@ -461,6 +455,7 @@ def main():
                 )
             ) t
             GROUP BY EntityGUID, IdentificationTypeDesc, IdentificationNumber
+        ) P
     """)
 
     cursor.execute("""
@@ -479,9 +474,9 @@ def main():
 
     cursor.execute("DROP TABLE IF EXISTS EntityIdentification_National")
     cursor.execute("DROP TABLE IF EXISTS EntityIdentification_Test")
-    logging.info("[4/5] EntityIdentification_New completed in %.2f seconds.", time.time() - start_step)
+    logging.info("[Step 4/5] EntityIdentification_New completed in %.2f seconds.", time.time() - start_step)
 
-    logging.info("[5/5] Merging EntityRemark -> EntityRemark_New...")
+    logging.info("[Step 5/5] Merging Remarks -> dbo.EntityRemark_New...")
     start_step = time.time()
     cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
     cursor.execute("CREATE NONCLUSTERED INDEX IX_EntityRemark_EntityGUID ON EntityRemark(EntityGUID)")
@@ -539,7 +534,6 @@ def main():
     current_guid = None
     current_remarks = []
     batch_remark = []
-    batch_size = 50000
 
     while True:
         rows = cursor.fetchmany(batch_size)
@@ -573,16 +567,15 @@ def main():
 
     cursor.execute("DROP TABLE IF EXISTS EntityRemark_DUP")
     cursor.execute("DROP INDEX IF EXISTS IX_EntityRemark_EntityGUID ON EntityRemark")
-    logging.info("[5/5] EntityRemark_New completed in %.2f seconds.", time.time() - start_step)
+    logging.info("[Step 5/5] EntityRemark_New completed in %.2f seconds.", time.time() - start_step)
 
     try:
-        logging.info("Reclaiming raw staging space (TRUNCATE consumed raw tables)...")
         cursor.execute("TRUNCATE TABLE EntityAddress")
         cursor.execute("TRUNCATE TABLE EntityDOB")
-        cursor.execute("TRUNCATE TABLE EntityRemark")
         cursor.execute("TRUNCATE TABLE EntityIdentification")
-    except Exception as ex:
-        logging.warning("Space reclaim note: %s", ex)
+        cursor.execute("TRUNCATE TABLE EntityRemark")
+    except Exception:
+        pass
 
     conn_insert.close()
     cursor.close()
@@ -590,7 +583,11 @@ def main():
 
     elapsed_min = (time.time() - global_start) / 60
     end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 3: Field Formatting completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 3 COMPLETED SUCCESSFULLY                       ")
+    logging.info("   End Time: %s | Duration: %.2f minutes", end_time_str, elapsed_min)
+    logging.info("=========================================================")
 
 if __name__ == "__main__":
     main()
