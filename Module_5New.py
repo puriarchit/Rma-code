@@ -49,15 +49,15 @@ def set_recovery_model(config: dict, model: str = "SIMPLE"):
         logging.warning("Note setting database recovery model: %s", e)
 
 def get_target_version_id(cursor, mode: str) -> int:
+    if mode == "first":
+        return 1
+
     cursor.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList' AND schema_id = SCHEMA_ID('dbo')")
     if cursor.fetchone()[0] == 0:
         return 1
 
     cursor.execute("SELECT MAX(ISNULL(VersionID, 0)) FROM dbo.NegativeList WITH (NOLOCK)")
     max_ver = cursor.fetchone()[0] or 0
-
-    if mode == "first":
-        return 1
     return max_ver + 1
 
 def prepare_page_compressed_heap(cursor):
@@ -140,17 +140,8 @@ def ensure_indexes(cursor):
         """
     )
 
-def bulk_insert_base(cursor, run_version_id: int, mode: str):
-    where_clause = ""
-    if mode == "inc":
-        where_clause = """
-        WHERE NOT EXISTS (
-            SELECT 1 FROM dbo.NegativeList AS P WITH (NOLOCK)
-            WHERE P.EntityGUID = A.EntityGUID AND P.EntityAliasGUID IS NULL
-        )
-        """
-
-    query = f"""
+def bulk_insert_base(cursor, run_version_id: int):
+    query = """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -179,7 +170,10 @@ def bulk_insert_base(cursor, run_version_id: int, mode: str):
             A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
             ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
         FROM dbo.NegativeList_New1 AS A WITH (NOLOCK)
-        {where_clause};
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.NegativeList AS P WITH (NOLOCK)
+            WHERE P.EntityGUID = A.EntityGUID AND P.EntityAliasGUID IS NULL
+        );
     """
     cursor.execute(query, (run_version_id,))
     inserted = cursor.rowcount
@@ -188,17 +182,8 @@ def bulk_insert_base(cursor, run_version_id: int, mode: str):
         inserted = cursor.fetchone()[0] or 0
     return inserted
 
-def bulk_insert_alias(cursor, run_version_id: int, inserted_base: int, mode: str):
-    inc_filter = ""
-    if mode == "inc":
-        inc_filter = """
-        AND NOT EXISTS (
-            SELECT 1 FROM dbo.NegativeList AS P WITH (NOLOCK)
-            WHERE P.EntityGUID = A.EntityGUID AND P.EntityAliasGUID = B.EntityAliasGUID
-        )
-        """
-
-    query = f"""
+def bulk_insert_alias(cursor, run_version_id: int, inserted_base: int):
+    query = """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -253,7 +238,10 @@ def bulk_insert_alias(cursor, run_version_id: int, inserted_base: int, mode: str
         WHERE B.AliasTypeDesc NOT IN (
               'Acronym','Call Sign','Chinese Commercial Code (CCC)',
               'Native Script For Alias','Native Script For Entity')
-        {inc_filter};
+        AND NOT EXISTS (
+            SELECT 1 FROM dbo.NegativeList AS P WITH (NOLOCK)
+            WHERE P.EntityGUID = A.EntityGUID AND P.EntityAliasGUID = B.EntityAliasGUID
+        );
     """
     cursor.execute(query, (run_version_id,))
     inserted = cursor.rowcount
@@ -332,8 +320,8 @@ def run_production_sync(cursor, config, mode: str):
     prepare_page_compressed_heap(cursor)
     set_recovery_model(config, 'SIMPLE')
     
-    inserted_base = bulk_insert_base(cursor, run_version_id, mode)
-    inserted_alias = bulk_insert_alias(cursor, run_version_id, inserted_base, mode)
+    inserted_base = bulk_insert_base(cursor, run_version_id)
+    inserted_alias = bulk_insert_alias(cursor, run_version_id, inserted_base)
     total_rows = inserted_base + inserted_alias
     
     logging.info("  Base Profiles: %s rows | Aliases: %s rows | VersionID: %s", f"{inserted_base:,}", f"{inserted_alias:,}", run_version_id)
