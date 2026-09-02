@@ -199,19 +199,19 @@ def bulk_insert_alias(cursor, run_version_id: int, inserted_base: int):
                  WHEN A.EntityType='Vessel'       THEN '4'
                  ELSE '6' END,
             SUBSTRING(A.Gender,1,7),
-            CAST(SUBSTRING(
+            CAST(SUBSTRING(REPLACE(
                 CASE 
                     WHEN NULLIF(LTRIM(RTRIM(B.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(B.LastName)), '') IS NOT NULL 
                     THEN LTRIM(RTRIM(B.LastName))
                     ELSE LTRIM(RTRIM(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,'')))
-                END, 1, 300) AS NVARCHAR(300)),
-            CAST(SUBSTRING(
+                END, '-', ' '), 1, 300) AS NVARCHAR(300)),
+            CAST(SUBSTRING(REPLACE(
                 CASE 
                     WHEN NULLIF(LTRIM(RTRIM(B.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(B.LastName)), '') IS NOT NULL 
                     THEN NULL
                     ELSE NULLIF(LTRIM(RTRIM(B.LastName)), '')
-                END, 1, 255) AS NVARCHAR(255)),
-            CAST(SUBSTRING(REPLACE(ISNULL(B.Name, ''), ',', ''), 1, 500) AS NVARCHAR(500)),
+                END, '-', ' '), 1, 255) AS NVARCHAR(255)),
+            CAST(SUBSTRING(REPLACE(REPLACE(ISNULL(B.Name, ''), ',', ''), '-', ' '), 1, 500) AS NVARCHAR(500)),
             SUBSTRING(A.Title,1,255),
             A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
             SUBSTRING(A.AddressLine1,1,200),
@@ -227,7 +227,7 @@ def bulk_insert_alias(cursor, run_version_id: int, inserted_base: int):
             A.Nationality,
             SUBSTRING(A.Citizenship,1,70),
             A.POB,
-            CAST(SUBSTRING(REPLACE(ISNULL(B.Name, ''), ',', ''), 1, 500) AS NVARCHAR(500)),
+            CAST(SUBSTRING(REPLACE(REPLACE(ISNULL(B.Name, ''), ',', ''), '-', ' '), 1, 500) AS NVARCHAR(500)),
             ?,
             'add',
             CONVERT(char(10),GETDATE(),126),
