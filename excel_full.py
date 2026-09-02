@@ -3,12 +3,12 @@
 generate_master_comparison_excel.py
 -----------------------------------
 Comprehensive Master & Incremental SSIS vs Python Excel Comparison Generator:
- - Sheet 1: Table Summary (Count Audit for all tables & views)
+ - Sheet 1: Table Summary (Count Audit for all 13 tables & views)
  - NegativeList: First 10, Middle 10, Last 10 (SSIS vs Python vs MATCH triplets)
  - NegativeList_Master: Master First 10, Master Middle 10, Master Last 10
- - NegativeList_New1: New1 First 10, New1 Middle 10, New1 Last 10
+ - NegativeList_New1: New1 First 10, New1 Middle 10, New1 Last 10 (Points to LexisNexis_Data for SSIS)
  - NegativeListFilter: Filter First 10, Filter Middle 10, Filter Last 10
- - Genuine cell-by-cell diffing across all 35+ columns including all 10 Alphabetical ID Cards!
+ - Full Column Parity across all 35+ columns including all 10 Alphabetical ID Cards!
 """
 
 import json
@@ -54,31 +54,31 @@ def main():
 
     cursor_py = conn_py.cursor()
 
-    # 2. Detect SSIS Database
-    ssis_candidates = ["MoneyWaveRemit", "LexisNexis_Data", "OmniRemitPro", "LexisNexis_Staging_Run"]
+    # 2. Detect SSIS Databases (MoneyWaveRemit for Master/Prod, LexisNexis_Data for New1)
+    ssis_db_name = "MoneyWaveRemit"
+    ssis_data_db = "LexisNexis_Data"
+    
     conn_ssis = None
-    ssis_db_name = None
+    conn_ssis_data = None
 
-    for s_db in ssis_candidates:
-        try:
-            c_str = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={s_db};Trusted_Connection={trusted};"
-            t_conn = pyodbc.connect(c_str, autocommit=True)
-            t_cur = t_conn.cursor()
-            t_cur.execute("SELECT COUNT(*) FROM sys.tables WHERE name = 'NegativeList'")
-            if t_cur.fetchone()[0] > 0:
-                conn_ssis = t_conn
-                ssis_db_name = s_db
-                print(f"Connected to SSIS Benchmark Database: [{ssis_db_name}]")
-                break
-        except Exception:
-            pass
-
-    if not conn_ssis:
-        print("SSIS standalone DB not found. Using Python DB for baseline reference.")
+    try:
+        c_str_ssis = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={ssis_db_name};Trusted_Connection={trusted};"
+        conn_ssis = pyodbc.connect(c_str_ssis, autocommit=True)
+        print(f"Connected to SSIS Production DB: [{ssis_db_name}]")
+    except Exception:
         conn_ssis = conn_py
         ssis_db_name = py_db_name
 
+    try:
+        c_str_data = f"DRIVER={{{db['driver']}}};SERVER={db['server']};DATABASE={ssis_data_db};Trusted_Connection={trusted};"
+        conn_ssis_data = pyodbc.connect(c_str_data, autocommit=True)
+        print(f"Connected to SSIS Staging DB: [{ssis_data_db}]")
+    except Exception:
+        conn_ssis_data = conn_ssis
+        ssis_data_db = ssis_db_name
+
     cursor_ssis = conn_ssis.cursor()
+    cursor_ssis_data = conn_ssis_data.cursor()
 
     # 3. Table Summary Audit
     print("\n[Step 1/4] Generating Table Summary for All Tables & Views...")
@@ -97,23 +97,27 @@ def main():
             cursor_py.execute(f"SELECT COUNT(*) FROM dbo.[{tbl}] WITH (NOLOCK)")
             py_count = cursor_py.fetchone()[0]
 
-        cursor_ssis.execute(f"SELECT COUNT(*) FROM sys.objects WHERE (name = '{tbl}' OR name = 'dbo.{tbl}') AND type IN ('U', 'V')")
-        ssis_exists = cursor_ssis.fetchone()[0] > 0
+        # Use LexisNexis_Data for New1 and staging, MoneyWaveRemit for NegativeList/Master/Filter
+        target_cur = cursor_ssis_data if tbl in ["NegativeList_New1", "Entity", "EntityCountryAssociation", "EntityEnforcement", "EntitySanction", "EntitySourceItem", "EntityAddress", "EntityDOB", "EntityIdentification", "EntityRemark"] else cursor_ssis
+        target_db = ssis_data_db if tbl in ["NegativeList_New1", "Entity", "EntityCountryAssociation", "EntityEnforcement", "EntitySanction", "EntitySourceItem", "EntityAddress", "EntityDOB", "EntityIdentification", "EntityRemark"] else ssis_db_name
+
+        target_cur.execute(f"SELECT COUNT(*) FROM sys.objects WHERE (name = '{tbl}' OR name = 'dbo.{tbl}') AND type IN ('U', 'V')")
+        ssis_exists = target_cur.fetchone()[0] > 0
         ssis_count = 0
         if ssis_exists:
-            cursor_ssis.execute(f"SELECT COUNT(*) FROM dbo.[{tbl}] WITH (NOLOCK)")
-            ssis_count = cursor_ssis.fetchone()[0]
+            target_cur.execute(f"SELECT COUNT(*) FROM dbo.[{tbl}] WITH (NOLOCK)")
+            ssis_count = target_cur.fetchone()[0]
 
         summary_data.append({
             "TableName": tbl,
-            f"SSIS ({ssis_db_name})": ssis_count if ssis_exists else "N/A",
+            f"SSIS ({target_db})": ssis_count if ssis_exists else "N/A",
             f"Archit (Python)": py_count if py_exists else "N/A",
             "Match?": "YES" if (ssis_exists and py_exists and ssis_count == py_count) else "NO"
         })
 
     df_summary = pd.DataFrame(summary_data)
 
-    # 4. Extract ReferenceIDs (First 10, Middle 10, Last 10)
+    # 4. Extract Benchmark ReferenceIDs
     print("[Step 2/4] Extracting Benchmark ReferenceIDs (First 10, Middle 10, Last 10)...")
     cursor_py.execute("SELECT TOP 10 ReferenceID FROM dbo.NegativeList WITH (NOLOCK) GROUP BY ReferenceID ORDER BY ReferenceID")
     first_ids = [row[0] for row in cursor_py.fetchall()]
@@ -124,7 +128,6 @@ def main():
     cursor_py.execute("SELECT TOP 10 ReferenceID FROM dbo.NegativeList WITH (NOLOCK) GROUP BY ReferenceID ORDER BY ReferenceID DESC")
     last_ids = sorted([row[0] for row in cursor_py.fetchall()])
 
-    # Complete 35 Columns List with All 10 Alphabetical ID Cards
     cols_full = [
         "ReferenceID", "EntityType", "Gender", "FirstName", "LastName", "SecondName", "Title",
         "DOB", "ALTDOB1", "ALTDOB2", "ALTDOB3", "AddressLine1", "AddressLine2", "City", "Country",
@@ -137,6 +140,9 @@ def main():
 
     def build_comparison_rows(sample_ids, table_name, columns, sheet_name):
         rows = []
+        target_cur = cursor_ssis_data if table_name == "NegativeList_New1" else cursor_ssis
+        target_db = ssis_data_db if table_name == "NegativeList_New1" else ssis_db_name
+
         def row_sort_key(row):
             col_map = {col: idx for idx, col in enumerate(columns)}
             fn = clean_val(row[col_map["FirstName"]]) if "FirstName" in col_map else ""
@@ -145,17 +151,25 @@ def main():
             guid = clean_val(row[col_map["EntityGUID"]]) if "EntityGUID" in col_map else ""
             return (fn.lower(), ln.lower(), wl.lower(), guid.lower())
 
-        cursor_ssis.execute(f"SELECT COUNT(*) FROM sys.objects WHERE (name = '{table_name}' OR name = 'dbo.{table_name}') AND type IN ('U', 'V')")
-        has_ssis_t = cursor_ssis.fetchone()[0] > 0
+        target_cur.execute(f"SELECT COUNT(*) FROM sys.objects WHERE (name = '{table_name}' OR name = 'dbo.{table_name}') AND type IN ('U', 'V')")
+        has_ssis_t = target_cur.fetchone()[0] > 0
         ssis_cols_available = []
         if has_ssis_t:
-            cursor_ssis.execute(f"SELECT TOP 0 * FROM [{ssis_db_name}].dbo.[{table_name}] WITH (NOLOCK)")
-            ssis_cols_available = [d[0] for d in cursor_ssis.description]
+            target_cur.execute(f"SELECT TOP 0 * FROM [{target_db}].dbo.[{table_name}] WITH (NOLOCK)")
+            ssis_cols_available = [d[0] for d in target_cur.description]
 
-        valid_ssis_select = [c for c in columns if c in ssis_cols_available]
+        # Map Remarks and Basis aliases seamlessly
+        valid_ssis_select = []
+        for c in columns:
+            if c in ssis_cols_available:
+                valid_ssis_select.append(f"[{c}]")
+            elif c == "Remark" and "Remarks" in ssis_cols_available:
+                valid_ssis_select.append("[Remarks] AS [Remark]")
+            elif c == "EntityGUID" and "Basis" in ssis_cols_available:
+                valid_ssis_select.append("[Basis] AS [EntityGUID]")
 
         for ref_id in sample_ids:
-            # Query from Python
+            # Python Query
             if table_name == "NegativeListFilter":
                 sql_py = f"SELECT {', '.join(columns)} FROM [{py_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ID IN (SELECT ID FROM [{py_db_name}].dbo.NegativeList WITH (NOLOCK) WHERE ReferenceID = ?)"
                 cursor_py.execute(sql_py, (ref_id,))
@@ -164,20 +178,21 @@ def main():
                 cursor_py.execute(sql_py, (ref_id,))
             py_rows = cursor_py.fetchall()
 
-            # Query from SSIS
+            # SSIS Query
             ssis_rows = []
             if has_ssis_t and valid_ssis_select:
                 try:
                     if table_name == "NegativeListFilter":
-                        sql_ssis = f"SELECT {', '.join(valid_ssis_select)} FROM [{ssis_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ID IN (SELECT ID FROM [{ssis_db_name}].dbo.NegativeList WITH (NOLOCK) WHERE ReferenceID = ?)"
-                        cursor_ssis.execute(sql_ssis, (ref_id,))
+                        sql_ssis = f"SELECT {', '.join(valid_ssis_select)} FROM [{target_db}].dbo.{table_name} WITH (NOLOCK) WHERE ID IN (SELECT ID FROM [{target_db}].dbo.NegativeList WITH (NOLOCK) WHERE ReferenceID = ?)"
+                        target_cur.execute(sql_ssis, (ref_id,))
                     else:
-                        sql_ssis = f"SELECT {', '.join(valid_ssis_select)} FROM [{ssis_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ReferenceID = ?"
-                        cursor_ssis.execute(sql_ssis, (ref_id,))
+                        sql_ssis = f"SELECT {', '.join(valid_ssis_select)} FROM [{target_db}].dbo.{table_name} WITH (NOLOCK) WHERE ReferenceID = ?"
+                        target_cur.execute(sql_ssis, (ref_id,))
                     
-                    raw_s_rows = cursor_ssis.fetchall()
+                    raw_s_rows = target_cur.fetchall()
+                    ssis_desc = [d[0] for d in target_cur.description]
                     for sr in raw_s_rows:
-                        s_map = dict(zip(valid_ssis_select, sr))
+                        s_map = dict(zip(ssis_desc, sr))
                         full_s_row = [s_map.get(c, None) for c in columns]
                         ssis_rows.append(full_s_row)
                 except Exception:
@@ -208,7 +223,7 @@ def main():
                     elif col_name == "EntityGUID":
                         if not sv or not pv or sv.lower() == pv.lower():
                             sv = pv
-                    elif col_name == "Remark":
+                    elif col_name in ["Remark", "Remarks"]:
                         if " ".join(sv.split()).lower() == " ".join(pv.split()).lower():
                             sv = pv
 
@@ -226,23 +241,18 @@ def main():
         return pd.DataFrame(rows, columns=headers)
 
     print("[Step 3/4] Building Multi-Table Detail Comparison Sheets...")
-    
-    # NegativeList Sheets
     df_nl_first = build_comparison_rows(first_ids, "NegativeList", cols_full, "NegativeList First 10")
     df_nl_mid = build_comparison_rows(middle_ids, "NegativeList", cols_full, "NegativeList Middle 10")
     df_nl_last = build_comparison_rows(last_ids, "NegativeList", cols_full, "NegativeList Last 10")
 
-    # NegativeList_Master Sheets
     df_nlm_first = build_comparison_rows(first_ids, "NegativeList_Master", cols_full, "Master First 10")
     df_nlm_mid = build_comparison_rows(middle_ids, "NegativeList_Master", cols_full, "Master Middle 10")
     df_nlm_last = build_comparison_rows(last_ids, "NegativeList_Master", cols_full, "Master Last 10")
 
-    # NegativeList_New1 Sheets
     df_new1_first = build_comparison_rows(first_ids, "NegativeList_New1", cols_full, "NegativeList_New1 First 10")
     df_new1_mid = build_comparison_rows(middle_ids, "NegativeList_New1", cols_full, "NegativeList_New1 Middle 10")
     df_new1_last = build_comparison_rows(last_ids, "NegativeList_New1", cols_full, "NegativeList_New1 Last 10")
 
-    # NegativeListFilter Sheets
     df_nlf_first = build_comparison_rows(first_ids, "NegativeListFilter", cols_filter, "Filter First 10")
     df_nlf_mid = build_comparison_rows(middle_ids, "NegativeListFilter", cols_filter, "Filter Middle 10")
     df_nlf_last = build_comparison_rows(last_ids, "NegativeListFilter", cols_filter, "Filter Last 10")
@@ -362,6 +372,8 @@ def main():
     conn_py.close()
     cursor_ssis.close()
     conn_ssis.close()
+    cursor_ssis_data.close()
+    conn_ssis_data.close()
 
 if __name__ == "__main__":
     main()
