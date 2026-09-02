@@ -23,7 +23,11 @@ def main():
     setup_logging()
     global_start = time.time()
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 4: Watchlist Consolidation [Started at %s] ===", start_time_str)
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 4: WATCHLIST CONSOLIDATION                     ")
+    logging.info("   Start Time: %s", start_time_str)
+    logging.info("=========================================================")
 
     config = load_config()
     db = config["database"]
@@ -38,25 +42,12 @@ def main():
 
     try:
         cursor.execute(f"ALTER DATABASE [{db['name']}] SET RECOVERY SIMPLE")
-        cursor.execute(f"ALTER DATABASE [{db['name']}] MODIFY FILE (NAME = [{db['name']}], FILEGROWTH = 512MB)")
         cursor.execute(f"USE [{db['name']}]")
-        
-        obsolete_tables = [
-            "AssociatedEntity", "ConsolidatedSanction", 
-            "EntityAdverseMedia"
-        ]
-        for table in obsolete_tables:
-            try:
-                cursor.execute(f"TRUNCATE TABLE [{table}]")
-            except Exception:
-                pass
-                
         cursor.execute("CHECKPOINT")
-        logging.info("Staging table maintenance completed.")
-    except Exception as ex:
-        logging.warning("Maintenance note: %s", ex)
+    except Exception:
+        pass
 
-    logging.info("[1/4] Indexing staging tables...")
+    logging.info("[Step 1/4] Creating staging indexes for fast consolidation...")
     index_start = time.time()
 
     index_queries = [
@@ -74,12 +65,12 @@ def main():
             if cursor.fetchone():
                 continue
             cursor.execute(f"CREATE CLUSTERED INDEX [{idx_name}] ON [{tbl_name}]({col_name})")
-        except Exception as ex:
-            logging.warning("Index note on %s: %s", tbl_name, ex)
+        except Exception:
+            pass
 
-    logging.info("[1/4] Indexing completed in %.2f seconds.", time.time() - index_start)
+    logging.info("[Step 1/4] Staging indexes verified in %.2f seconds.", time.time() - index_start)
 
-    logging.info("[2/4] Setting up target table NegativeList_New1...")
+    logging.info("[Step 2/4] Setting up calculation table dbo.NegativeList_New1...")
     cursor.execute("IF OBJECT_ID('NegativeList_New1', 'U') IS NOT NULL DROP TABLE NegativeList_New1")
     cursor.execute("""
         CREATE TABLE [dbo].[NegativeList_New1](
@@ -120,17 +111,8 @@ def main():
         ) WITH (DATA_COMPRESSION = PAGE)
     """)
 
-    try:
-        cursor.execute("UPDATE STATISTICS Entity")
-        cursor.execute("UPDATE STATISTICS EntityRemark_New")
-        cursor.execute("UPDATE STATISTICS EntitySourceItem_New")
-    except Exception as e:
-        logging.warning("Statistics note: %s", e)
+    logging.info("[Step 2/4] Calculation staging table schema ready.")
 
-    logging.info("[2/4] Target table NegativeList_New1 setup completed.")
-
-    logging.info("Building temporary lookup tables...")
-    step_start = time.time()
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("""
         SELECT A.EntityGUID, B.tCountry AS Nationality
@@ -150,34 +132,6 @@ def main():
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 
-    logging.info("Temporary lookup tables created in %.2f seconds.", time.time() - step_start)
-
-    # Database diagnostics to investigate remaining row count discrepancies
-    try:
-        cursor.execute("SELECT COUNT(DISTINCT EntityGUID) FROM #PEP_GUIDs")
-        pep_guids_cnt = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM EntityCountryAssociation WHERE AssociationTypeDesc = 'PEP'")
-        raw_pep_assoc_cnt = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM #TempNationalities")
-        temp_nat_cnt = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT EntityGUID) FROM #TempNationalities")
-        temp_nat_dist_cnt = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM EntityAddress_New")
-        addr_new_cnt = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT EntityGUID) FROM EntityAddress_New")
-        addr_new_dist_cnt = cursor.fetchone()[0]
-        
-        logging.info("=== DIAGNOSTICS ===")
-        logging.info(f"Distinct PEP GUIDs in #PEP_GUIDs: {pep_guids_cnt}")
-        logging.info(f"Raw 'PEP' rows in EntityCountryAssociation: {raw_pep_assoc_cnt}")
-        logging.info(f"Total rows in #TempNationalities: {temp_nat_cnt}")
-        logging.info(f"Distinct GUIDs in #TempNationalities: {temp_nat_dist_cnt}")
-        logging.info(f"Total rows in EntityAddress_New: {addr_new_cnt}")
-        logging.info(f"Distinct GUIDs in EntityAddress_New: {addr_new_dist_cnt}")
-        logging.info("===================")
-    except Exception as diag_ex:
-        logging.warning("Failed to collect diagnostics: %s", diag_ex)
-
     if ROW_LIMIT is not None:
         cte_prefix = f"""
         ;WITH Batch AS (
@@ -191,8 +145,7 @@ def main():
         cte_prefix = ""
         from_clause = "FROM Entity A WITH (NOLOCK)"
 
-    # Load character translation map
-    cursor.execute("SELECT Symbol, MapChar FROM LexisNexis_Data.dbo.WLCharMap")
+    cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
     char_map = cursor.fetchall()
     
     def get_translate_sql(expr):
@@ -226,10 +179,7 @@ def main():
     SN_Expr = f"""CAST(SUBSTRING(
         REPLACE(REPLACE(REPLACE({T_SecondName}, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500))"""
 
-    logging.info("[3/4] Executing watchlist consolidation into NegativeList_New1...")
-
-    # Stage 1: Non-PEP Profiles
-    logging.info("  [3/4] [Stage 1/2] Consolidating Non-PEP profiles...")
+    logging.info("[Step 3/4] Consolidating Non-PEP watchlist profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -276,10 +226,9 @@ def main():
            OR isnull(F.SourceName, G.SourceName) IS NOT NULL
         OPTION (MERGE JOIN, RECOMPILE)
     """)
-    logging.info("  [3/4] Non-PEP profiles completed in %.2f seconds.", time.time() - stage1_start)
+    logging.info("[Step 3/4] Non-PEP profiles consolidated in %.2f seconds.", time.time() - stage1_start)
 
-    # Stage 2: PEP Profiles
-    logging.info("  [3/4] [Stage 2/2] Consolidating PEP profiles...")
+    logging.info("[Step 4/4] Consolidating Politically Exposed Persons (PEPs)...")
     stage2_start = time.time()
     cursor.execute(f"""
         {cte_prefix}
@@ -316,39 +265,40 @@ def main():
         LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
         LEFT JOIN EntityRemark_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
         LEFT JOIN EntitySourceItem_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
-        --LEFT JOIN EntityEnforcement F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
-        --LEFT JOIN EntitySanction G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
         LEFT JOIN EntityIdentification_National_New H WITH (NOLOCK) ON A.EntityGUID = H.EntityGUID
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
         OPTION (MERGE JOIN, RECOMPILE)
     """)
-    logging.info("  [3/4] PEP profiles completed in %.2f seconds.", time.time() - stage2_start)
+    logging.info("[Step 4/4] PEP profiles consolidated in %.2f seconds.", time.time() - stage2_start)
 
     cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
     cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
 
-    logging.info("[4/4] Cleaning up intermediate staging tables...")
+    cursor.execute("SELECT COUNT(*) FROM dbo.NegativeList_New1")
+    total_base_rows = cursor.fetchone()[0]
+    logging.info("[Step 4/4] Total Base Profiles in dbo.NegativeList_New1: %s rows.", f"{total_base_rows:,}")
+
     intermediate_tables = [
-        "EntityAddress_New",
-        "EntityDOB_New",
-        "EntityIdentification_New",
-        "EntityIdentification_National_New",
-        "Entity_Citizenship_New",
-        "EntityRemark_New",
-        "EntitySourceItem_New"
+        "EntityAddress_New", "EntityDOB_New", "EntityIdentification_New",
+        "EntityIdentification_National_New", "Entity_Citizenship_New",
+        "EntityRemark_New", "EntitySourceItem_New"
     ]
     for tbl in intermediate_tables:
         try:
             cursor.execute(f"DROP TABLE IF EXISTS dbo.[{tbl}]")
-            logging.info("  Dropped intermediate table %s", tbl)
-        except Exception as ex:
-            logging.warning("  Could not drop %s: %s", tbl, ex)
+        except Exception:
+            pass
 
     elapsed_min = (time.time() - global_start) / 60
     end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 4: Watchlist Consolidation completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 4 COMPLETED SUCCESSFULLY                       ")
+    logging.info("   End Time: %s | Duration: %.2f minutes", end_time_str, elapsed_min)
+    logging.info("=========================================================")
 
 if __name__ == "__main__":
     main()
+
