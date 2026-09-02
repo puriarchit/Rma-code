@@ -22,24 +22,16 @@ def main():
     logging.info("=========================================================")
     logging.info("   ETL PIPELINE ORCHESTRATOR - INCREMENTAL RUN MODE       ")
     logging.info("   Start Time: %s", start_time_str)
-    logging.info("   Flow matches: PackageExecutionList_INC (Exact order)  ")
+    logging.info("   Scope: 6 Automated Steps (with Module_MasterSync)      ")
     logging.info("=========================================================")
 
-    # SSIS Incremental Run flow mapping (matching the sequence in the txt file):
-    # 1. Files_1 & Files_2 -> Module1.py (Raw Ingestion)
-    # 2. NegativeList_Master -> Module5.py --action sync (Syncs previously consolidated batch to production)
-    # 3. EntitySourceItem_1 to 5 -> Module2_SourceItem.py (Source URIs aggregation)
-    # 4. Entity_Citizenship, EntityAddress, EntityCountryAssociation, EntityDOB, EntityIdentification, EntityRemark -> Module3_Formatting.py (Fields formatting & pivots)
-    # 5. NegativeList_1_1 to 1_3 -> Module4_Consolidation.py (Consolidates Non-PEPs into NegativeList_New1)
-    # 6. NegativeList_2_1 to 4_4 -> Module5.py --action pep (Consolidates PEPs into NegativeList_New1)
-
     steps = [
-        ("Module 1: Ingestion (Files_1, Files_2)", "Module1.py", []),
-        ("Module 5: Database Sync (NegativeList_Master)", "Module5.py", ["--action", "sync"]),
-        ("Module 2: Source URI Merging (EntitySourceItem_1 to 5)", "Module2_SourceItem.py", []),
-        ("Module 3: Field Formatting (EntityAddress, DOB, Citizenship, ID, Remark)", "Module3_Formatting.py", []),
-        ("Module 4: Watchlist Consolidation (NegativeList_1_1 to 1_3)", "Module4_Consolidation.py", []),
-        ("Module 5: PEP Watchlist Sync (NegativeList_2_1 to 4_4)", "Module5.py", ["--action", "sync"])
+        ("Step 1: Delta Ingestion (Files_1, Files_2)", "Module1.py", []),
+        ("Step 2: Pre-Delta Master Sync (NegativeList_Master)", "Module_MasterSync.py", []),
+        ("Step 3: Source URI Merging (EntitySourceItem_1 to 5)", "Module2_SourceItem.py", []),
+        ("Step 4: Field Formatting (EntityAddress, DOB, Citizenship, ID, Remark)", "Module3_Formatting.py", []),
+        ("Step 5: Watchlist Consolidation (NegativeList_1_1 to 1_3)", "Module4_Consolidation.py", []),
+        ("Step 6: Production Sync (NegativeList_2_1 to 4_5)", "Module5.py", ["--mode", "inc"])
     ]
 
     summary = []
@@ -48,9 +40,9 @@ def main():
         script_path = os.path.join(script_dir, script_name)
         mod_start = time.time()
         mod_time_str = datetime.now().strftime("%H:%M:%S")
-        logging.info("\n---------------------------------------------------------")
+
+        logging.info("")
         logging.info(">>> [%s] Launching %s...", mod_time_str, name)
-        logging.info("---------------------------------------------------------")
 
         try:
             cmd = [sys.executable, script_path] + args
@@ -73,9 +65,8 @@ def main():
     logging.info("   Total Duration: %.2f minutes", pipeline_elapsed)
     logging.info("=========================================================")
     for name, status, duration in summary:
-        logging.info(" - %-55s : %-10s (%s)", name, status, duration)
+        logging.info(" - %-65s : %-10s (%s)", name, status, duration)
     logging.info("=========================================================")
 
 if __name__ == "__main__":
     main()
-
