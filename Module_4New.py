@@ -132,19 +132,6 @@ def main():
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 
-    if ROW_LIMIT is not None:
-        cte_prefix = f"""
-        ;WITH Batch AS (
-            SELECT TOP ({ROW_LIMIT}) EntityGUID
-            FROM Entity WITH (NOLOCK)
-            ORDER BY EntityGUID
-        )
-        """
-        from_clause = "FROM Batch bt INNER JOIN Entity A WITH (NOLOCK) ON bt.EntityGUID = A.EntityGUID"
-    else:
-        cte_prefix = ""
-        from_clause = "FROM Entity A WITH (NOLOCK)"
-
     cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
     char_map = cursor.fetchall()
     
@@ -160,29 +147,30 @@ def main():
     def apply_formatting(expr):
         return f"REPLACE(REPLACE(REPLACE({expr}, '-', ' '), ',', ''), '''', '')"
 
-    T_FirstName = get_translate_sql(apply_formatting("ISNULL(A.FirstName,'') + ' ' + ISNULL(A.MiddleName,'')"))
-    T_LastName = get_translate_sql(apply_formatting("ISNULL(A.LastName,'')"))
-    T_SecondName = get_translate_sql(apply_formatting("ISNULL(A.Name,'')"))
+    T_FirstName = get_translate_sql(apply_formatting("ISNULL(FirstName,'') + ' ' + ISNULL(MiddleName,'')"))
+    T_LastName = get_translate_sql(apply_formatting("ISNULL(LastName,'')"))
+    T_SecondName = get_translate_sql(apply_formatting("ISNULL(Name,'')"))
 
-    FN_Expr = f"""CAST(SUBSTRING(
-        CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
-             THEN {T_LastName} 
-             ELSE {T_FirstName} 
-        END, 1, 4000) AS NVARCHAR(4000))"""
-
-    LN_Expr = f"""CAST(SUBSTRING(
-        CASE WHEN LEN(TRIM({T_FirstName})) < 1 AND LEN(TRIM({T_LastName})) > 0 
-             THEN '' 
-             ELSE {T_LastName} 
-        END, 1, 250) AS NVARCHAR(250))"""
-
-    SN_Expr = f"""CAST(SUBSTRING(
-        REPLACE(REPLACE(REPLACE({T_SecondName}, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500))"""
+    if ROW_LIMIT is not None:
+        entity_source = f"(SELECT TOP ({ROW_LIMIT}) * FROM Entity WITH (NOLOCK) ORDER BY EntityGUID)"
+    else:
+        entity_source = "Entity"
 
     logging.info("[Step 3/4] Consolidating Non-PEP watchlist profiles...")
     stage1_start = time.time()
     cursor.execute(f"""
-        {cte_prefix}
+        ;WITH PreTranslatedEntity AS (
+            SELECT 
+                EntityGUID,
+                EntityID,
+                EntityTypeDesc,
+                Gender,
+                Title,
+                {T_FirstName} AS T_FirstName,
+                {T_LastName} AS T_LastName,
+                {T_SecondName} AS T_SecondName
+            FROM {entity_source} WITH (NOLOCK)
+        )
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -194,9 +182,18 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            {FN_Expr} as FirstName,
-            {LN_Expr} as LastName,
-            {SN_Expr} as SecondName,
+            CAST(SUBSTRING(
+                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
+                     THEN A.T_LastName 
+                     ELSE A.T_FirstName 
+                END, 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(
+                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
+                     THEN '' 
+                     ELSE A.T_LastName 
+                END, 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(
+                REPLACE(REPLACE(REPLACE(A.T_SecondName, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country,
@@ -210,7 +207,7 @@ def main():
             J.Nationality,
             K.Citizenship,
             C.POB
-        {from_clause}
+        FROM PreTranslatedEntity A
         LEFT JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
         LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
         LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
@@ -224,14 +221,25 @@ def main():
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
         WHERE (p.EntityGUID IS NULL AND isnull(F.SourceName, G.SourceName) IS NULL)
            OR isnull(F.SourceName, G.SourceName) IS NOT NULL
-        OPTION (MERGE JOIN, RECOMPILE)
+        OPTION (RECOMPILE)
     """)
     logging.info("[Step 3/4] Non-PEP profiles consolidated in %.2f seconds.", time.time() - stage1_start)
 
     logging.info("[Step 4/4] Consolidating Politically Exposed Persons (PEPs)...")
     stage2_start = time.time()
     cursor.execute(f"""
-        {cte_prefix}
+        ;WITH PreTranslatedEntity AS (
+            SELECT 
+                EntityGUID,
+                EntityID,
+                EntityTypeDesc,
+                Gender,
+                Title,
+                {T_FirstName} AS T_FirstName,
+                {T_LastName} AS T_LastName,
+                {T_SecondName} AS T_SecondName
+            FROM {entity_source} WITH (NOLOCK)
+        )
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -243,9 +251,18 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            {FN_Expr} as FirstName,
-            {LN_Expr} as LastName,
-            {SN_Expr} as SecondName,
+            CAST(SUBSTRING(
+                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
+                     THEN A.T_LastName 
+                     ELSE A.T_FirstName 
+                END, 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(
+                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
+                     THEN '' 
+                     ELSE A.T_LastName 
+                END, 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(
+                REPLACE(REPLACE(REPLACE(A.T_SecondName, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country,
@@ -259,7 +276,7 @@ def main():
             J.Nationality,
             K.Citizenship,
             C.POB
-        {from_clause}
+        FROM PreTranslatedEntity A
         INNER JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
         LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
         LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
@@ -269,7 +286,7 @@ def main():
         LEFT JOIN EntityIdentification_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
         LEFT JOIN #TempNationalities J ON A.EntityGUID = J.EntityGUID
         LEFT JOIN Entity_Citizenship_New K WITH (NOLOCK) ON A.EntityGUID = K.EntityGUID
-        OPTION (MERGE JOIN, RECOMPILE)
+        OPTION (RECOMPILE)
     """)
     logging.info("[Step 4/4] PEP profiles consolidated in %.2f seconds.", time.time() - stage2_start)
 
@@ -301,4 +318,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
