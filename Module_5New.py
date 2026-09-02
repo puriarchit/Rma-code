@@ -140,9 +140,17 @@ def ensure_indexes(cursor):
         """
     )
 
-def bulk_insert_base(cursor, run_version_id: int):
-    cursor.execute(
+def bulk_insert_base(cursor, run_version_id: int, mode: str):
+    where_clause = ""
+    if mode == "inc":
+        where_clause = """
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dbo.NegativeList AS P WITH (NOLOCK)
+            WHERE P.EntityGUID = A.EntityGUID AND P.EntityAliasGUID IS NULL
+        )
         """
+
+    query = f"""
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -170,19 +178,27 @@ def bulk_insert_base(cursor, run_version_id: int):
             A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
             A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
             ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
-        FROM dbo.NegativeList_New1 AS A WITH (NOLOCK);
-        """,
-        (run_version_id,)
-    )
+        FROM dbo.NegativeList_New1 AS A WITH (NOLOCK)
+        {where_clause};
+    """
+    cursor.execute(query, (run_version_id,))
     inserted = cursor.rowcount
     if inserted < 0:
         cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
         inserted = cursor.fetchone()[0] or 0
     return inserted
 
-def bulk_insert_alias(cursor, run_version_id, inserted_base):
-    cursor.execute(
+def bulk_insert_alias(cursor, run_version_id: int, inserted_base: int, mode: str):
+    inc_filter = ""
+    if mode == "inc":
+        inc_filter = """
+        AND NOT EXISTS (
+            SELECT 1 FROM dbo.NegativeList AS P WITH (NOLOCK)
+            WHERE P.EntityGUID = A.EntityGUID AND P.EntityAliasGUID = B.EntityAliasGUID
+        )
         """
+
+    query = f"""
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -236,10 +252,10 @@ def bulk_insert_alias(cursor, run_version_id, inserted_base):
             ON A.EntityGUID = B.EntityGUID
         WHERE B.AliasTypeDesc NOT IN (
               'Acronym','Call Sign','Chinese Commercial Code (CCC)',
-              'Native Script For Alias','Native Script For Entity');
-        """,
-        (run_version_id,)
-    )
+              'Native Script For Alias','Native Script For Entity')
+        {inc_filter};
+    """
+    cursor.execute(query, (run_version_id,))
     inserted = cursor.rowcount
     if inserted < 0:
         cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
@@ -316,8 +332,8 @@ def run_production_sync(cursor, config, mode: str):
     prepare_page_compressed_heap(cursor)
     set_recovery_model(config, 'SIMPLE')
     
-    inserted_base = bulk_insert_base(cursor, run_version_id)
-    inserted_alias = bulk_insert_alias(cursor, run_version_id, inserted_base)
+    inserted_base = bulk_insert_base(cursor, run_version_id, mode)
+    inserted_alias = bulk_insert_alias(cursor, run_version_id, inserted_base, mode)
     total_rows = inserted_base + inserted_alias
     
     logging.info("  Base Profiles: %s rows | Aliases: %s rows | VersionID: %s", f"{inserted_base:,}", f"{inserted_alias:,}", run_version_id)
