@@ -63,10 +63,10 @@ def run_master_sync():
         logging.info("[Step 1/2] Building NegativeList_Present tracking index...")
         cursor.execute("""
             DROP TABLE IF EXISTS #NegativeList_Present;
-            SELECT DISTINCT Basis AS EntityGUID, EntityAliasGUID
+            SELECT DISTINCT EntityGUID, EntityAliasGUID
             INTO #NegativeList_Present
             FROM dbo.NegativeList WITH (NOLOCK)
-            WHERE Basis IS NOT NULL;
+            WHERE EntityGUID IS NOT NULL;
             CREATE CLUSTERED INDEX IX_NLP_EntityGUID ON #NegativeList_Present(EntityGUID);
         """)
 
@@ -94,3 +94,4 @@ def run_master_sync():
 
 if __name__ == "__main__":
     run_master_sync()
+
