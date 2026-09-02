@@ -132,45 +132,14 @@ def main():
     """)
     cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
 
-    cursor.execute("SELECT Symbol, MapChar FROM dbo.WLCharMap")
-    char_map = cursor.fetchall()
-    
-    def get_translate_sql(expr):
-        collate_clause = "COLLATE SQL_Latin1_General_CP1_CS_AS"
-        sql = f"CAST({expr} AS NVARCHAR(MAX)) {collate_clause}"
-        for sym, mc in char_map:
-            sym_esc = sym.replace("'", "''")
-            mc_esc = mc.replace("'", "''")
-            sql = f"REPLACE({sql}, N'{sym_esc}' {collate_clause}, N'{mc_esc}' {collate_clause})"
-        return sql
-
-    def apply_formatting(expr):
-        return f"REPLACE(REPLACE(REPLACE({expr}, '-', ' '), ',', ''), '''', '')"
-
-    T_FirstName = get_translate_sql(apply_formatting("ISNULL(FirstName,'') + ' ' + ISNULL(MiddleName,'')"))
-    T_LastName = get_translate_sql(apply_formatting("ISNULL(LastName,'')"))
-    T_SecondName = get_translate_sql(apply_formatting("ISNULL(Name,'')"))
-
     if ROW_LIMIT is not None:
         entity_source = f"(SELECT TOP ({ROW_LIMIT}) * FROM Entity WITH (NOLOCK) ORDER BY EntityGUID)"
     else:
         entity_source = "Entity"
 
-    logging.info("[Step 3/4] Consolidating Non-PEP watchlist profiles...")
+    logging.info("[Step 3/4] Consolidating Non-PEP watchlist profiles (Original Clean SSIS Logic)...")
     stage1_start = time.time()
     cursor.execute(f"""
-        ;WITH PreTranslatedEntity AS (
-            SELECT 
-                EntityGUID,
-                EntityID,
-                EntityTypeDesc,
-                Gender,
-                Title,
-                {T_FirstName} AS T_FirstName,
-                {T_LastName} AS T_LastName,
-                {T_SecondName} AS T_SecondName
-            FROM {entity_source} WITH (NOLOCK)
-        )
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -182,18 +151,9 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(
-                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
-                     THEN A.T_LastName 
-                     ELSE A.T_FirstName 
-                END, 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(
-                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
-                     THEN '' 
-                     ELSE A.T_LastName 
-                END, 1, 250) AS NVARCHAR(250)) as LastName,
-            CAST(SUBSTRING(
-                REPLACE(REPLACE(REPLACE(A.T_SecondName, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500)) as SecondName,
+            CAST(SUBSTRING(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, ''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(ISNULL(A.LastName, ''), 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(ISNULL(A.Name, ''), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country,
@@ -207,7 +167,7 @@ def main():
             J.Nationality,
             K.Citizenship,
             C.POB
-        FROM PreTranslatedEntity A
+        FROM {entity_source} A WITH (NOLOCK)
         LEFT JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
         LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
         LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
@@ -228,18 +188,6 @@ def main():
     logging.info("[Step 4/4] Consolidating Politically Exposed Persons (PEPs)...")
     stage2_start = time.time()
     cursor.execute(f"""
-        ;WITH PreTranslatedEntity AS (
-            SELECT 
-                EntityGUID,
-                EntityID,
-                EntityTypeDesc,
-                Gender,
-                Title,
-                {T_FirstName} AS T_FirstName,
-                {T_LastName} AS T_LastName,
-                {T_SecondName} AS T_SecondName
-            FROM {entity_source} WITH (NOLOCK)
-        )
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
             ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
@@ -251,18 +199,9 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(
-                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
-                     THEN A.T_LastName 
-                     ELSE A.T_FirstName 
-                END, 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(
-                CASE WHEN LEN(TRIM(A.T_FirstName)) < 1 AND LEN(TRIM(A.T_LastName)) > 0 
-                     THEN '' 
-                     ELSE A.T_LastName 
-                END, 1, 250) AS NVARCHAR(250)) as LastName,
-            CAST(SUBSTRING(
-                REPLACE(REPLACE(REPLACE(A.T_SecondName, '-', ' '), ',', ''), '''', ''), 1, 500) AS NVARCHAR(500)) as SecondName,
+            CAST(SUBSTRING(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, ''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(ISNULL(A.LastName, ''), 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(ISNULL(A.Name, ''), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country,
@@ -276,7 +215,7 @@ def main():
             J.Nationality,
             K.Citizenship,
             C.POB
-        FROM PreTranslatedEntity A
+        FROM {entity_source} A WITH (NOLOCK)
         INNER JOIN #PEP_GUIDs p ON A.EntityGUID = p.EntityGUID
         LEFT JOIN EntityDOB_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
         LEFT JOIN EntityAddress_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
@@ -318,5 +257,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
