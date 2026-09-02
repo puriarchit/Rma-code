@@ -34,7 +34,11 @@ def main():
     setup_logging()
     global_start = time.time()
     start_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Starting Module 2: Source URI Merging [Started at %s] ===", start_time_str)
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 2: SOURCE URL AGGREGATION                      ")
+    logging.info("   Start Time: %s", start_time_str)
+    logging.info("=========================================================")
 
     config = load_config()
     conn = get_connection(config)
@@ -42,18 +46,15 @@ def main():
 
     cursor.execute("SET NOCOUNT ON; SET XACT_ABORT ON;")
 
-    logging.info("[1/3] Resetting target table EntitySourceItem_New...")
-    step_start = time.time()
+    logging.info("[Step 1/2] Initializing target table dbo.EntitySourceItem_New...")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_New', 'U') IS NOT NULL DROP TABLE EntitySourceItem_New")
     cursor.execute("CREATE TABLE [dbo].[EntitySourceItem_New]([EntityGUID] [nvarchar](50) NULL, [SourceURI] [nvarchar](max) NULL) WITH (DATA_COMPRESSION = PAGE)")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Dup', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Dup")
     cursor.execute("IF OBJECT_ID('EntitySourceItem_Uniqrecord', 'U') IS NOT NULL DROP TABLE EntitySourceItem_Uniqrecord")
-    logging.info("[1/3] Target table reset completed in %.2f seconds.", time.time() - step_start)
+    logging.info("[Step 1/2] Target table ready.")
 
-    logging.info("[2/3] Merging source links into EntitySourceItem_New...")
+    logging.info("[Step 2/2] Merging and consolidating source website URLs...")
     step_start = time.time()
-
-    # Database level replacement for '&amp;' formatting to match SSIS exactly inside the staging table
     cursor.execute("""
         INSERT INTO dbo.EntitySourceItem_New WITH (TABLOCK) (EntityGUID, SourceURI)
         SELECT
@@ -64,26 +65,23 @@ def main():
         GROUP BY EntityGUID;
     """)
 
-    merge_time = time.time() - step_start
-
     cursor.execute("SELECT COUNT(*) FROM dbo.EntitySourceItem_New")
     inserted_count = cursor.fetchone()[0]
+    merge_time = time.time() - step_start
 
-    logging.info("[2/3] Source URI merging completed in %.2f seconds (%.2f mins). Total Profiles: %s.", merge_time, merge_time / 60, f"{inserted_count:,}")
-
-    logging.info("[3/3] Cleaning up raw staging tables...")
-    try:
-        cursor.execute("TRUNCATE TABLE EntitySourceItem")
-        logging.info("  Reclaimed space: truncated staging table EntitySourceItem.")
-    except Exception as e:
-        logging.warning("Could not truncate EntitySourceItem: %s", e)
-
-    elapsed_min = (time.time() - global_start) / 60
-    end_time_str = datetime.now().strftime("%H:%M:%S")
-    logging.info("=== Module 2: Source URI Merging completed successfully in %.2f minutes [Finished at %s] ===", elapsed_min, end_time_str)
+    logging.info("[Step 2/2] Aggregated %s entity URL profiles in %.2f seconds.", f"{inserted_count:,}", merge_time)
 
     cursor.close()
     conn.close()
 
+    elapsed_min = (time.time() - global_start) / 60
+    end_time_str = datetime.now().strftime("%H:%M:%S")
+
+    logging.info("=========================================================")
+    logging.info("   MODULE 2 COMPLETED SUCCESSFULLY                       ")
+    logging.info("   End Time: %s | Duration: %.2f minutes", end_time_str, elapsed_min)
+    logging.info("=========================================================")
+
 if __name__ == "__main__":
     main()
+
