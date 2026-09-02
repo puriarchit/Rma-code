@@ -4,11 +4,11 @@ generate_master_comparison_excel.py
 -----------------------------------
 Comprehensive Master & Incremental SSIS vs Python Excel Comparison Generator:
  - Sheet 1: Table Summary (Count Audit for all 13 tables & views)
- - NegativeList: First 10, Middle 10, Last 10 (SSIS vs Python vs MATCH triplets)
+ - NegativeList: First 10, Middle 10, Last 10
  - NegativeList_Master: Master First 10, Master Middle 10, Master Last 10
- - NegativeList_New1: New1 First 10, New1 Middle 10, New1 Last 10 (Points to LexisNexis_Data for SSIS)
+ - NegativeList_New1: New1 First 10, New1 Middle 10, New1 Last 10
  - NegativeListFilter: Filter First 10, Filter Middle 10, Filter Last 10
- - Full Column Parity across all 35+ columns including all 10 Alphabetical ID Cards!
+ - Robust schema-aware dynamic select preventing 'Invalid column name' on Remarks/Basis
 """
 
 import json
@@ -54,7 +54,7 @@ def main():
 
     cursor_py = conn_py.cursor()
 
-    # 2. Detect SSIS Databases (MoneyWaveRemit for Master/Prod, LexisNexis_Data for New1)
+    # 2. Detect SSIS Databases
     ssis_db_name = "MoneyWaveRemit"
     ssis_data_db = "LexisNexis_Data"
     
@@ -97,7 +97,6 @@ def main():
             cursor_py.execute(f"SELECT COUNT(*) FROM dbo.[{tbl}] WITH (NOLOCK)")
             py_count = cursor_py.fetchone()[0]
 
-        # Use LexisNexis_Data for New1 and staging, MoneyWaveRemit for NegativeList/Master/Filter
         target_cur = cursor_ssis_data if tbl in ["NegativeList_New1", "Entity", "EntityCountryAssociation", "EntityEnforcement", "EntitySanction", "EntitySourceItem", "EntityAddress", "EntityDOB", "EntityIdentification", "EntityRemark"] else cursor_ssis
         target_db = ssis_data_db if tbl in ["NegativeList_New1", "Entity", "EntityCountryAssociation", "EntityEnforcement", "EntitySanction", "EntitySourceItem", "EntityAddress", "EntityDOB", "EntityIdentification", "EntityRemark"] else ssis_db_name
 
@@ -151,6 +150,20 @@ def main():
             guid = clean_val(row[col_map["EntityGUID"]]) if "EntityGUID" in col_map else ""
             return (fn.lower(), ln.lower(), wl.lower(), guid.lower())
 
+        # Schema-aware Python Select Clause
+        cursor_py.execute(f"SELECT TOP 0 * FROM [{py_db_name}].dbo.[{table_name}] WITH (NOLOCK)")
+        py_cols_available = [d[0] for d in cursor_py.description]
+
+        valid_py_select = []
+        for c in columns:
+            if c in py_cols_available:
+                valid_py_select.append(f"[{c}]")
+            elif c == "Remark" and "Remarks" in py_cols_available:
+                valid_py_select.append("[Remarks] AS [Remark]")
+            elif c == "EntityGUID" and "Basis" in py_cols_available:
+                valid_py_select.append("[Basis] AS [EntityGUID]")
+
+        # Schema-aware SSIS Select Clause
         target_cur.execute(f"SELECT COUNT(*) FROM sys.objects WHERE (name = '{table_name}' OR name = 'dbo.{table_name}') AND type IN ('U', 'V')")
         has_ssis_t = target_cur.fetchone()[0] > 0
         ssis_cols_available = []
@@ -158,7 +171,6 @@ def main():
             target_cur.execute(f"SELECT TOP 0 * FROM [{target_db}].dbo.[{table_name}] WITH (NOLOCK)")
             ssis_cols_available = [d[0] for d in target_cur.description]
 
-        # Map Remarks and Basis aliases seamlessly
         valid_ssis_select = []
         for c in columns:
             if c in ssis_cols_available:
@@ -170,13 +182,22 @@ def main():
 
         for ref_id in sample_ids:
             # Python Query
-            if table_name == "NegativeListFilter":
-                sql_py = f"SELECT {', '.join(columns)} FROM [{py_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ID IN (SELECT ID FROM [{py_db_name}].dbo.NegativeList WITH (NOLOCK) WHERE ReferenceID = ?)"
-                cursor_py.execute(sql_py, (ref_id,))
-            else:
-                sql_py = f"SELECT {', '.join(columns)} FROM [{py_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ReferenceID = ?"
-                cursor_py.execute(sql_py, (ref_id,))
-            py_rows = cursor_py.fetchall()
+            py_rows = []
+            if valid_py_select:
+                try:
+                    if table_name == "NegativeListFilter":
+                        sql_py = f"SELECT {', '.join(valid_py_select)} FROM [{py_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ID IN (SELECT ID FROM [{py_db_name}].dbo.NegativeList WITH (NOLOCK) WHERE ReferenceID = ?)"
+                    else:
+                        sql_py = f"SELECT {', '.join(valid_py_select)} FROM [{py_db_name}].dbo.{table_name} WITH (NOLOCK) WHERE ReferenceID = ?"
+                    cursor_py.execute(sql_py, (ref_id,))
+                    raw_py_rows = cursor_py.fetchall()
+                    py_desc = [d[0] for d in cursor_py.description]
+                    for pr in raw_py_rows:
+                        p_map = dict(zip(py_desc, pr))
+                        full_p_row = [p_map.get(c, None) for c in columns]
+                        py_rows.append(full_p_row)
+                except Exception as e:
+                    print(f"Error querying Python {table_name}: {e}")
 
             # SSIS Query
             ssis_rows = []
@@ -184,19 +205,17 @@ def main():
                 try:
                     if table_name == "NegativeListFilter":
                         sql_ssis = f"SELECT {', '.join(valid_ssis_select)} FROM [{target_db}].dbo.{table_name} WITH (NOLOCK) WHERE ID IN (SELECT ID FROM [{target_db}].dbo.NegativeList WITH (NOLOCK) WHERE ReferenceID = ?)"
-                        target_cur.execute(sql_ssis, (ref_id,))
                     else:
                         sql_ssis = f"SELECT {', '.join(valid_ssis_select)} FROM [{target_db}].dbo.{table_name} WITH (NOLOCK) WHERE ReferenceID = ?"
-                        target_cur.execute(sql_ssis, (ref_id,))
-                    
+                    target_cur.execute(sql_ssis, (ref_id,))
                     raw_s_rows = target_cur.fetchall()
                     ssis_desc = [d[0] for d in target_cur.description]
                     for sr in raw_s_rows:
                         s_map = dict(zip(ssis_desc, sr))
                         full_s_row = [s_map.get(c, None) for c in columns]
                         ssis_rows.append(full_s_row)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Error querying SSIS {table_name}: {e}")
 
             py_rows = sorted(py_rows, key=row_sort_key)
             if ssis_rows:
