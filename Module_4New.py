@@ -137,7 +137,7 @@ def main():
     else:
         entity_source = "Entity"
 
-    logging.info("[Step 3/4] Consolidating Non-PEP watchlist profiles (Original Clean SSIS Logic)...")
+    logging.info("[Step 3/4] Consolidating Non-PEP watchlist profiles (Fix 1 & Fix 2 Applied)...")
     stage1_start = time.time()
     cursor.execute(f"""
         INSERT INTO NegativeList_New1 WITH (TABLOCK) (
@@ -151,9 +151,19 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, ''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(ISNULL(A.LastName, ''), 1, 250) AS NVARCHAR(250)) as LastName,
-            CAST(SUBSTRING(ISNULL(A.Name, ''), 1, 500) AS NVARCHAR(500)) as SecondName,
+            CAST(SUBSTRING(
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
+                    THEN LTRIM(RTRIM(A.LastName))
+                    ELSE LTRIM(RTRIM(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, '')))
+                END, 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
+                    THEN NULL
+                    ELSE NULLIF(LTRIM(RTRIM(A.LastName)), '')
+                END, 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(REPLACE(ISNULL(A.Name, ''), ',', ''), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country,
@@ -199,9 +209,19 @@ def main():
             CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
             CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
             CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(SUBSTRING(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, ''), 1, 4000) AS NVARCHAR(4000)) as FirstName,
-            CAST(SUBSTRING(ISNULL(A.LastName, ''), 1, 250) AS NVARCHAR(250)) as LastName,
-            CAST(SUBSTRING(ISNULL(A.Name, ''), 1, 500) AS NVARCHAR(500)) as SecondName,
+            CAST(SUBSTRING(
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
+                    THEN LTRIM(RTRIM(A.LastName))
+                    ELSE LTRIM(RTRIM(ISNULL(A.FirstName, '') + ' ' + ISNULL(A.MiddleName, '')))
+                END, 1, 4000) AS NVARCHAR(4000)) as FirstName,
+            CAST(SUBSTRING(
+                CASE 
+                    WHEN NULLIF(LTRIM(RTRIM(A.FirstName)), '') IS NULL AND NULLIF(LTRIM(RTRIM(A.LastName)), '') IS NOT NULL 
+                    THEN NULL
+                    ELSE NULLIF(LTRIM(RTRIM(A.LastName)), '')
+                END, 1, 250) AS NVARCHAR(250)) as LastName,
+            CAST(SUBSTRING(REPLACE(ISNULL(A.Name, ''), ',', ''), 1, 500) AS NVARCHAR(500)) as SecondName,
             CAST(SUBSTRING(A.Title, 1, 500) AS NVARCHAR(500)) as Title,
             B.DOB, B.ALTDOB1, B.ALTDOB2, B.ALTDOB3,
             C.AddressLine1, C.AddressLine2, C.City, C.Country,
@@ -257,4 +277,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
