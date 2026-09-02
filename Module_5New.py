@@ -123,7 +123,6 @@ def prepare_page_compressed_heap(cursor):
             IdNo4               NVARCHAR(255)  NULL,
             IdOtherInfo5        NVARCHAR(MAX)  NULL,
             IdNo5               NVARCHAR(255)  NULL,
-            Basis               NVARCHAR(50)   NULL,
             EntityGUID          NVARCHAR(50)   NULL,
             EntityAliasGUID     NVARCHAR(50)   NULL,
             Nationality         NVARCHAR(255)  NULL,
@@ -158,21 +157,34 @@ def bulk_insert_base(cursor, run_version_id):
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID
+            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
         )
         SELECT
-            ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
-            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Basis, EntityGUID, NULL, Nationality, Citizenship, POB, NULL, ?
-        FROM dbo.NegativeList_New1 WITH (NOLOCK)
+            A.ReferenceID,
+            CASE WHEN A.EntityType='Individual' THEN '3' WHEN A.EntityType='Country' THEN '1' WHEN A.EntityType='Organization' THEN '9' WHEN A.EntityType='Vessel' THEN '4' ELSE '6' END,
+            SUBSTRING(A.Gender, 1, 7),
+            A.FirstName,
+            SUBSTRING(A.LastName, 1, 150),
+            SUBSTRING(A.SecondName, 1, 300),
+            SUBSTRING(A.Title, 1, 255),
+            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
+            SUBSTRING(A.AddressLine1, 1, 200), SUBSTRING(A.AddressLine2, 1, 200),
+            A.City, A.Country,
+            A.WLType, A.OriginalSource, A.Remark, A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2, A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4, A.IdOtherInfo5, A.IdNo5,
+            A.EntityGUID, NULL, A.Nationality, SUBSTRING(A.Citizenship, 1, 70), A.POB, NULL,
+            ?, 'add', CONVERT(char(10), GETDATE(), 126), GETDATE()
+        FROM dbo.NegativeList_New1 AS A WITH (NOLOCK);
         """,
-        (run_version_id,),
+        (run_version_id,)
     )
-    return cursor.rowcount
+    inserted = cursor.rowcount
+    if inserted < 0:
+        cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
+        inserted = cursor.fetchone()[0] or 0
+    return inserted
 
-def bulk_insert_alias(cursor, run_version_id):
+def bulk_insert_alias(cursor, run_version_id, inserted_base):
     cursor.execute(
         """
         INSERT INTO dbo.NegativeList WITH (TABLOCK) (
@@ -180,25 +192,54 @@ def bulk_insert_alias(cursor, run_version_id):
             DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country,
             WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
             IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Basis, EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID
+            EntityGUID, EntityAliasGUID, Nationality, Citizenship, POB, Alias, VersionID, Action, FileName, CreationDate
         )
         SELECT
-            n.ReferenceID, n.EntityType, n.Gender,
-            CASE WHEN a.FirstName IS NOT NULL AND a.FirstName <> '' THEN a.FirstName ELSE n.FirstName END,
-            CASE WHEN a.LastName  IS NOT NULL AND a.LastName  <> '' THEN a.LastName  ELSE n.LastName  END,
-            n.SecondName, n.Title,
-            n.DOB, n.ALTDOB1, n.ALTDOB2, n.ALTDOB3, n.AddressLine1, n.AddressLine2, n.City, n.Country,
-            n.WLType, n.OriginalSource, n.Remark, n.NationalIDInfo, n.NationalIDNo,
-            n.IdOtherInfo1, n.IdNo1, n.IdOtherInfo2, n.IdNo2, n.IdOtherInfo3, n.IdNo3, n.IdOtherInfo4, n.IdNo4, n.IdOtherInfo5, n.IdNo5,
-            n.Basis, n.EntityGUID, a.EntityAliasGUID, n.Nationality, n.Citizenship, n.POB, a.Name, ?
-        FROM dbo.NegativeList_New1 n WITH (NOLOCK)
-        INNER JOIN dbo.EntityAlias a WITH (NOLOCK)
-            ON n.EntityGUID = a.EntityGUID
-        WHERE a.AliasTypeDesc IN ('Also Known As', 'Formerly Known As', 'Maiden Name', 'Spelling Variation')
+            A.ReferenceID,
+            CASE WHEN A.EntityType='Individual'   THEN '3'
+                 WHEN A.EntityType='Country'      THEN '1'
+                 WHEN A.EntityType='Organization' THEN '9'
+                 WHEN A.EntityType='Vessel'       THEN '4'
+                 ELSE '6' END,
+            SUBSTRING(A.Gender,1,7),
+            CAST(SUBSTRING(ISNULL(B.FirstName,'') + ' ' + ISNULL(B.MiddleName,''),1,300) AS NVARCHAR(300)),
+            CAST(SUBSTRING(B.LastName,1,255) AS NVARCHAR(255)),
+            CAST(SUBSTRING(B.Name,1,500)     AS NVARCHAR(500)),
+            SUBSTRING(A.Title,1,255),
+            A.DOB, A.ALTDOB1, A.ALTDOB2, A.ALTDOB3,
+            SUBSTRING(A.AddressLine1,1,200),
+            SUBSTRING(A.AddressLine2,1,200),
+            A.City, A.Country,
+            A.WLType, A.OriginalSource, A.Remark,
+            A.NationalIDInfo, A.NationalIDNo,
+            A.IdOtherInfo1, A.IdNo1, A.IdOtherInfo2, A.IdNo2,
+            A.IdOtherInfo3, A.IdNo3, A.IdOtherInfo4, A.IdNo4,
+            A.IdOtherInfo5, A.IdNo5,
+            A.EntityGUID,
+            B.EntityAliasGUID,
+            A.Nationality,
+            SUBSTRING(A.Citizenship,1,70),
+            A.POB,
+            SUBSTRING(B.Name,1,500),
+            ?,
+            'add',
+            CONVERT(char(10),GETDATE(),126),
+            GETDATE()
+        FROM dbo.NegativeList_New1 AS A WITH (NOLOCK)
+        INNER JOIN dbo.EntityAlias B WITH (NOLOCK)
+            ON A.EntityGUID = B.EntityGUID
+        WHERE B.AliasTypeDesc NOT IN (
+              'Acronym','Call Sign','Chinese Commercial Code (CCC)',
+              'Native Script For Alias','Native Script For Entity');
         """,
-        (run_version_id,),
+        (run_version_id,)
     )
-    return cursor.rowcount
+    inserted = cursor.rowcount
+    if inserted < 0:
+        cursor.execute("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.NegativeList') AND index_id IN (0, 1)")
+        total_rows = cursor.fetchone()[0] or 0
+        inserted = total_rows - inserted_base
+    return inserted
 
 def build_post_load_indexes(cursor):
     cursor.execute(
@@ -264,7 +305,7 @@ def run_production_sync(cursor, config, mode: str):
     set_recovery_model(config, 'SIMPLE')
     
     inserted_base = bulk_insert_base(cursor, run_version_id)
-    inserted_alias = bulk_insert_alias(cursor, run_version_id)
+    inserted_alias = bulk_insert_alias(cursor, run_version_id, inserted_base)
     total_rows = inserted_base + inserted_alias
     
     logging.info("  Base Profiles: %s rows | Aliases: %s rows | VersionID: %s", f"{inserted_base:,}", f"{inserted_alias:,}", run_version_id)
@@ -312,4 +353,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
