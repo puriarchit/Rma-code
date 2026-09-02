@@ -38,85 +38,6 @@ def get_connection(config: dict) -> pyodbc.Connection:
     )
     return pyodbc.connect(conn_str, autocommit=True)
 
-def run_pep_consolidation(cursor, config):
-    logging.info("[Step 1/3] Consolidating PEP watchlists...")
-    ROW_LIMIT = config.get("benchmark_row_limit", None)
-    step_start = time.time()
-
-    cursor.execute("DROP TABLE IF EXISTS #TempNationalities")
-    cursor.execute("""
-        SELECT A.EntityGUID, B.tCountry AS Nationality
-        INTO #TempNationalities
-        FROM EntityCountryAssociation A WITH (NOLOCK)
-        LEFT JOIN Country B WITH (NOLOCK) ON A.ISOStandard = B.tISO
-        WHERE A.AssociationTypeDesc = 'Nationality'
-    """)
-    cursor.execute("CREATE CLUSTERED INDEX IX_TempNationalities_EntityGUID ON #TempNationalities(EntityGUID)")
-
-    cursor.execute("DROP TABLE IF EXISTS #PEP_GUIDs")
-    cursor.execute("""
-        SELECT DISTINCT EntityGUID
-        INTO #PEP_GUIDs
-        FROM EntityCountryAssociation WITH (NOLOCK)
-        WHERE AssociationTypeDesc = 'PEP'
-    """)
-    cursor.execute("CREATE CLUSTERED INDEX IX_PEP_GUIDs_EntityGUID ON #PEP_GUIDs(EntityGUID)")
-
-    if ROW_LIMIT is not None:
-        cte_prefix = f"""
-        ;WITH Batch AS (
-            SELECT TOP ({ROW_LIMIT}) EntityGUID
-            FROM Entity WITH (NOLOCK)
-            ORDER BY EntityGUID
-        )
-        """
-        from_clause = "FROM Batch bt INNER JOIN Entity A WITH (NOLOCK) ON bt.EntityGUID = A.EntityGUID"
-    else:
-        cte_prefix = ""
-        from_clause = "FROM Entity A WITH (NOLOCK)"
-
-    cursor.execute(f"""
-        {cte_prefix}
-        INSERT INTO NegativeList_New1 WITH (TABLOCK) (
-            EntityGUID, ReferenceID, EntityType, Gender, FirstName, LastName, SecondName, Title,
-            DOB, ALTDOB1, ALTDOB2, ALTDOB3, AddressLine1, AddressLine2, City, Country, POB,
-            WLType, OriginalSource, Remark, NationalIDInfo, NationalIDNo,
-            IdOtherInfo1, IdNo1, IdOtherInfo2, IdNo2, IdOtherInfo3, IdNo3, IdOtherInfo4, IdNo4, IdOtherInfo5, IdNo5,
-            Nationality, Citizenship
-        )
-        SELECT 
-            A.EntityGUID,
-            CAST(SUBSTRING(A.EntityID, 1, 50) AS NVARCHAR(50)) as ReferenceID,
-            CAST(SUBSTRING(A.EntityTypeDesc, 1, 50) AS NVARCHAR(50)) as EntityType,
-            CAST(SUBSTRING(A.Gender, 1, 50) AS NVARCHAR(50)) as Gender,
-            CAST(B.FirstName AS NVARCHAR(300)) as FirstName,
-            CAST(B.LastName AS NVARCHAR(255)) as LastName,
-            CAST(B.SecondName AS NVARCHAR(500)) as SecondName,
-            CAST(A.Title AS NVARCHAR(255)) as Title,
-            C.DOB, C.ALTDOB1, C.ALTDOB2, C.ALTDOB3,
-            D.Address1 as AddressLine1, D.Address2 as AddressLine2, D.City, D.Country,
-            CAST(NULL AS NVARCHAR(500)) as POB,
-            'PEP' as WLType,
-            CAST(G.OriginalSource AS NVARCHAR(MAX)) as OriginalSource,
-            CAST(F.Remark AS NVARCHAR(MAX)) as Remark,
-            CAST(NULL AS NVARCHAR(MAX)) as NationalIDInfo,
-            CAST(NULL AS NVARCHAR(255)) as NationalIDNo,
-            E.IdOtherInfo1, E.IdNo1, E.IdOtherInfo2, E.IdNo2, E.IdOtherInfo3, E.IdNo3, E.IdOtherInfo4, E.IdNo4, E.IdOtherInfo5, E.IdNo5,
-            H.Nationality,
-            CAST(I.CountryName AS NVARCHAR(100)) as Citizenship
-        {from_clause}
-        INNER JOIN #PEP_GUIDs PG ON A.EntityGUID = PG.EntityGUID
-        LEFT JOIN EntityAlias_New B WITH (NOLOCK) ON A.EntityGUID = B.EntityGUID
-        LEFT JOIN EntityDOB_New C WITH (NOLOCK) ON A.EntityGUID = C.EntityGUID
-        LEFT JOIN EntityAddress_New D WITH (NOLOCK) ON A.EntityGUID = D.EntityGUID
-        LEFT JOIN EntityIdentification_New E WITH (NOLOCK) ON A.EntityGUID = E.EntityGUID
-        LEFT JOIN EntityRemark_New F WITH (NOLOCK) ON A.EntityGUID = F.EntityGUID
-        LEFT JOIN EntitySourceItem_New G WITH (NOLOCK) ON A.EntityGUID = G.EntityGUID
-        LEFT JOIN #TempNationalities H ON A.EntityGUID = H.EntityGUID
-        LEFT JOIN Entity_Citizenship_New I WITH (NOLOCK) ON A.EntityGUID = I.EntityGUID
-    """)
-    logging.info("[Step 1/3] PEP watchlist consolidation completed in %.2f seconds.", time.time() - step_start)
-
 def get_target_version_id(cursor, mode: str) -> str:
     if mode == "first":
         cursor.execute("""
@@ -334,7 +255,7 @@ def post_sync_cleanup(cursor, config):
     set_recovery_model(config, "SIMPLE")
 
 def run_production_sync(cursor, config, mode: str):
-    logging.info("[Step 2/3] Synchronizing production table dbo.NegativeList...")
+    logging.info("[Step 1/2] Synchronizing production table dbo.NegativeList...")
     ensure_indexes(cursor)
 
     run_version_id = get_target_version_id(cursor, mode)
@@ -347,13 +268,13 @@ def run_production_sync(cursor, config, mode: str):
     total_rows = inserted_base + inserted_alias
     
     logging.info("  Base Profiles: %s rows | Aliases: %s rows | VersionID: %s", f"{inserted_base:,}", f"{inserted_alias:,}", run_version_id)
-    logging.info("[Step 2/3] Total Production Rows: %s rows populated.", f"{total_rows:,}")
+    logging.info("[Step 1/2] Total Production Rows: %s rows populated.", f"{total_rows:,}")
 
-    logging.info("[Step 3/3] Building post-load indexes and refreshing search views...")
+    logging.info("[Step 2/2] Building post-load indexes and refreshing search views...")
     build_post_load_indexes(cursor)
     populate_master_and_filter(cursor)
     post_sync_cleanup(cursor, config)
-    logging.info("[Step 3/3] Search views dbo.NegativeList_Master & dbo.NegativeListFilter active.")
+    logging.info("[Step 2/2] Search views dbo.NegativeList_Master & dbo.NegativeListFilter active.")
 
 def main():
     args = parse_args()
@@ -372,7 +293,6 @@ def main():
 
     try:
         cursor.execute("SET XACT_ABORT ON; SET NOCOUNT ON;")
-        run_pep_consolidation(cursor, config)
         run_production_sync(cursor, config, args.mode)
 
         elapsed_min = (time.time() - global_start) / 60
@@ -392,3 +312,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
