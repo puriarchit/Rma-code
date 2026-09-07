@@ -327,11 +327,15 @@ def run_production_sync(cursor, config, mode: str):
     logging.info("  Base Profiles: %s rows | Aliases: %s rows | VersionID: %s", f"{inserted_base:,}", f"{inserted_alias:,}", run_version_id)
     logging.info("[Step 1/2] Total Production Rows: %s rows populated.", f"{total_rows:,}")
 
-    logging.info("[Step 2/2] Building post-load indexes and refreshing search views...")
-    build_post_load_indexes(cursor)
-    populate_master_and_filter(cursor)
-    post_sync_cleanup(cursor, config)
-    logging.info("[Step 2/2] Search views dbo.NegativeList_Master & dbo.NegativeListFilter active.")
+    if mode == "first":
+        logging.info("[Step 2/2] Building post-load indexes and creating search views...")
+        build_post_load_indexes(cursor)
+        populate_master_and_filter(cursor)
+        post_sync_cleanup(cursor, config)
+        logging.info("[Step 2/2] Search views dbo.NegativeList_Master & dbo.NegativeListFilter active.")
+    else:
+        post_sync_cleanup(cursor, config)
+        logging.info("[Step 2/2] Incremental delta sync committed successfully. Search views remain active.")
 
 def main():
     args = parse_args()
