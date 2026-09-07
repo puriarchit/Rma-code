@@ -22,16 +22,15 @@ def main():
     logging.info("=========================================================")
     logging.info("   ETL PIPELINE ORCHESTRATOR - INCREMENTAL RUN MODE       ")
     logging.info("   Start Time: %s", start_time_str)
-    logging.info("   Scope: 6 Automated Steps (with Module_MasterSync)      ")
+    logging.info("   Scope: Daily Delta Processing (Modules 1-5)            ")
     logging.info("=========================================================")
 
     steps = [
-        ("Step 1: Delta Ingestion (Files_1, Files_2)", "Module1.py", []),
-        ("Step 2: Pre-Delta Master Sync (NegativeList_Master)", "Module_MasterSync.py", []),
-        ("Step 3: Source URI Merging (EntitySourceItem_1 to 5)", "Module2_SourceItem.py", []),
-        ("Step 4: Field Formatting (EntityAddress, DOB, Citizenship, ID, Remark)", "Module3_Formatting.py", []),
-        ("Step 5: Watchlist Consolidation (NegativeList_1_1 to 1_3)", "Module4_Consolidation.py", []),
-        ("Step 6: Production Sync (NegativeList_2_1 to 4_5)", "Module5.py", ["--mode", "inc"])
+        ("Module 1: Delta Ingestion (Files_1, Files_2)", "Module1_BulkIngestion.py", []),
+        ("Module 2: Source URI Merging (EntitySourceItem_1 to 5)", "Module2_SourceItem.py", []),
+        ("Module 3: Field Formatting (EntityAddress, DOB, Citizenship, ID, Remark)", "Module3_Formatting.py", []),
+        ("Module 4: Watchlist Consolidation (NegativeList_1_1 to 1_3)", "Module4_Consolidation.py", []),
+        ("Module 5: Production Sync (NegativeList_2_1 to 4_4)", "Module5_ProductionSync.py", ["--mode", "inc"])
     ]
 
     summary = []
