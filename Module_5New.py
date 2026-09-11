@@ -303,6 +303,81 @@ def populate_master_and_filter(cursor):
         """
     )
 
+def sync_deletes(cursor, run_version_id: int) -> int:
+    query = """
+        IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EntityDeletes' AND schema_id = SCHEMA_ID('dbo'))
+        BEGIN
+            UPDATE N
+            SET Action = 'del',
+                VersionID = ?,
+                LastUpdatedBy = '3',
+                LastUpdatedDate = GETDATE()
+            FROM dbo.NegativeList N
+            INNER JOIN dbo.EntityDeletes D
+                ON N.EntityGUID = D.EntityGUID
+            WHERE ISNULL(N.Action, '') <> 'del';
+        END
+    """
+    cursor.execute(query, (run_version_id,))
+    deleted = cursor.rowcount if cursor.rowcount >= 0 else 0
+    return deleted
+
+def sync_updates(cursor, run_version_id: int) -> int:
+    query = """
+        UPDATE N
+        SET ReferenceID = A.ReferenceID,
+            EntityType = CASE WHEN A.EntityType = 'Individual'   THEN '3'
+                              WHEN A.EntityType = 'Country'      THEN '1'
+                              WHEN A.EntityType = 'Organization' THEN '9'
+                              WHEN A.EntityType = 'Vessel'       THEN '4'
+                              ELSE '6' END,
+            Gender = SUBSTRING(A.Gender, 1, 7),
+            FirstName = A.FirstName,
+            LastName = A.LastName,
+            SecondName = A.SecondName,
+            Title = SUBSTRING(A.Title, 1, 255),
+            DOB = A.DOB,
+            ALTDOB1 = A.ALTDOB1,
+            ALTDOB2 = A.ALTDOB2,
+            ALTDOB3 = A.ALTDOB3,
+            AddressLine1 = SUBSTRING(A.AddressLine1, 1, 200),
+            AddressLine2 = SUBSTRING(A.AddressLine2, 1, 200),
+            City = A.City,
+            Country = A.Country,
+            WLType = A.WLType,
+            OriginalSource = A.OriginalSource,
+            Remark = A.Remark,
+            NationalIDInfo = A.NationalIDInfo,
+            NationalIDNo = A.NationalIDNo,
+            IdOtherInfo1 = A.IdOtherInfo1, IdNo1 = A.IdNo1,
+            IdOtherInfo2 = A.IdOtherInfo2, IdNo2 = A.IdNo2,
+            IdOtherInfo3 = A.IdOtherInfo3, IdNo3 = A.IdNo3,
+            IdOtherInfo4 = A.IdOtherInfo4, IdNo4 = A.IdNo4,
+            IdOtherInfo5 = A.IdOtherInfo5, IdNo5 = A.IdNo5,
+            Nationality = A.Nationality,
+            Citizenship = SUBSTRING(A.Citizenship, 1, 70),
+            POB = A.POB,
+            VersionID = ?,
+            Action = 'chg',
+            LastUpdatedBy = '3',
+            LastUpdatedDate = GETDATE()
+        FROM dbo.NegativeList N
+        INNER JOIN dbo.NegativeList_New1 A
+            ON N.EntityGUID = A.EntityGUID
+        WHERE N.EntityAliasGUID IS NULL
+          AND (
+              ISNULL(N.FirstName, '') <> ISNULL(A.FirstName, '')
+              OR ISNULL(N.LastName, '') <> ISNULL(A.LastName, '')
+              OR ISNULL(N.AddressLine1, '') <> ISNULL(SUBSTRING(A.AddressLine1, 1, 200), '')
+              OR ISNULL(N.DOB, '') <> ISNULL(A.DOB, '')
+              OR ISNULL(N.IdNo1, '') <> ISNULL(A.IdNo1, '')
+              OR ISNULL(N.NationalIDNo, '') <> ISNULL(A.NationalIDNo, '')
+          );
+    """
+    cursor.execute(query, (run_version_id,))
+    updated = cursor.rowcount if cursor.rowcount >= 0 else 0
+    return updated
+
 def post_sync_cleanup(cursor, config):
     try:
         cursor.execute("CHECKPOINT;")
@@ -320,6 +395,14 @@ def run_production_sync(cursor, config, mode: str):
     prepare_page_compressed_heap(cursor)
     set_recovery_model(config, 'SIMPLE')
     
+    if mode == "inc":
+        deleted_count = sync_deletes(cursor, run_version_id)
+        updated_count = sync_updates(cursor, run_version_id)
+        if deleted_count > 0:
+            logging.info("  [Deletes Sync] De-listed entities marked as 'del': %s rows", f"{deleted_count:,}")
+        if updated_count > 0:
+            logging.info("  [Updates Sync] Changed entities updated as 'chg': %s rows", f"{updated_count:,}")
+
     inserted_base = bulk_insert_base(cursor, run_version_id)
     inserted_alias = bulk_insert_alias(cursor, run_version_id, inserted_base)
     total_rows = inserted_base + inserted_alias
