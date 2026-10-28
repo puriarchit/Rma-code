@@ -24,3 +24,6 @@ SELECT
     IdNo2 COLLATE DATABASE_DEFAULT AS IdNo2
 FROM LexisNexis_Staging.dbo.NegativeList_New1
 WHERE ReferenceID = '10003457';
+
+
+pip install -r requirements.txt --ignore-requires-python
